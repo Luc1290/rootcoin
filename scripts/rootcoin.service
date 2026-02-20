@@ -1,0 +1,20 @@
+[Unit]
+Description=RootCoin Trading Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rootcoin
+WorkingDirectory=/home/rootcoin/rootcoin
+ExecStart=/home/rootcoin/rootcoin/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8001
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/rootcoin/rootcoin/.env
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=rootcoin
+
+[Install]
+WantedBy=multi-user.target
