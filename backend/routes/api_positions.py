@@ -84,6 +84,17 @@ async def set_oco(position_id: int, body: OcoBody):
         raise HTTPException(400, f"Binance: {e.message}")
 
 
+@router.post("/{position_id}/cancel-orders")
+async def cancel_orders(position_id: int):
+    try:
+        result = await order_manager.cancel_position_orders(position_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")
+
+
 @router.post("/{position_id}/close")
 async def close_position(position_id: int):
     try:

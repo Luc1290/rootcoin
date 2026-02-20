@@ -300,6 +300,42 @@ async def cancel_order(order_db_id: int) -> dict:
     return result
 
 
+async def cancel_position_orders(position_id: int) -> dict:
+    pos = _get_position(position_id)
+    cancelled = 0
+    updates = {}
+
+    if pos.sl_order_id:
+        try:
+            await cancel_order_by_binance_id(pos.symbol, pos.sl_order_id, pos.market_type)
+            cancelled += 1
+        except Exception:
+            pass
+        updates["sl_order_id"] = None
+
+    if pos.tp_order_id:
+        try:
+            await cancel_order_by_binance_id(pos.symbol, pos.tp_order_id, pos.market_type)
+            cancelled += 1
+        except Exception:
+            pass
+        updates["tp_order_id"] = None
+
+    if pos.oco_order_list_id:
+        try:
+            await _cancel_oco(pos.symbol, pos.oco_order_list_id, pos.market_type)
+            cancelled += 1
+        except Exception:
+            pass
+        updates["oco_order_list_id"] = None
+
+    if updates:
+        await _update_position_order_ref(pos, **updates)
+
+    log.info("position_orders_cancelled", symbol=pos.symbol, position_id=position_id, cancelled=cancelled)
+    return {"cancelled": cancelled}
+
+
 async def cancel_order_by_binance_id(symbol: str, order_id: str, market_type: str) -> dict:
     if market_type == "SPOT":
         return await binance_client.cancel_order(symbol, order_id)

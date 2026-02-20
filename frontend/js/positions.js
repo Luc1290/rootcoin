@@ -37,6 +37,7 @@ const Positions = (() => {
             if (p.sl_order_id) orderBadges.push('<span class="text-xs bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded">SL</span>');
             if (p.tp_order_id) orderBadges.push('<span class="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">TP</span>');
             if (p.oco_order_list_id) orderBadges.push('<span class="text-xs bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded">OCO</span>');
+            if (hasOrders) orderBadges.push(`<button class="text-xs bg-orange-900/50 text-orange-400 px-1.5 py-0.5 rounded cursor-pointer hover:bg-orange-800/50" onclick="Positions.confirmCancelOrders(${p.id})">&#x2715;</button>`);
 
             return `
             <div class="position-card" data-id="${p.id}">
@@ -183,6 +184,26 @@ const Positions = (() => {
         await apiPost(`/api/positions/${id}/close`, {});
     }
 
+    function confirmCancelOrders(id) {
+        const pos = currentPositions.find(p => p.id === id);
+        if (!pos) return;
+        const types = [];
+        if (pos.sl_order_id) types.push('SL');
+        if (pos.tp_order_id) types.push('TP');
+        if (pos.oco_order_list_id) types.push('OCO');
+        showModal('Annuler les ordres', `
+            <p class="text-gray-400 mb-4">Annuler ${types.join(' + ')} sur <strong>${pos.symbol}</strong> ?</p>
+            <div class="flex gap-2">
+                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Retour</button>
+                <button onclick="Positions.submitCancelOrders(${id})" class="action-btn bg-orange-600 flex-1">Annuler ordres</button>
+            </div>
+        `);
+    }
+
+    async function submitCancelOrders(id) {
+        await apiPost(`/api/positions/${id}/cancel-orders`, {});
+    }
+
     // Real-time updates
     WS.on('positions_snapshot', render);
 
@@ -200,5 +221,6 @@ const Positions = (() => {
     return {
         load, render, showSL, showTP, showOCO, confirmClose,
         submitSL, submitTP, submitOCO, submitClose, hideModal,
+        confirmCancelOrders, submitCancelOrders,
     };
 })();
