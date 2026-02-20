@@ -1,3 +1,4 @@
+import asyncio
 import time as _time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -17,6 +18,9 @@ DUST_THRESHOLD_USD = Decimal("5")
 MIN_MARGIN_LONG_USD = Decimal("50")
 SHORT_CLOSE_GRACE = 300
 ESTIMATED_EXIT_FEE_RATE = Decimal("0.001")  # 0.1% taker fee
+RESIDUAL_SELL_THRESHOLD_USD = Decimal("15")
+RESIDUAL_SELL_RETRIES = 3
+RESIDUAL_SELL_DELAY = 2
 
 _positions: dict[int, Position] = {}
 _recent_short_closes: dict[str, float] = {}
@@ -601,6 +605,10 @@ async def _reduce_or_close(position: Position, qty: Decimal, price: Decimal):
 
         if position.side == "SHORT" and position.market_type != "SPOT":
             _recent_short_closes[position.symbol] = _time.monotonic()
+        if position.market_type != "SPOT":
+            asyncio.create_task(
+                _sell_margin_residual(position.symbol, position.market_type)
+            )
 
         log.info("position_closed", symbol=position.symbol, side=position.side,
                  pnl=str(realized))
@@ -610,6 +618,60 @@ async def _reduce_or_close(position: Position, qty: Decimal, price: Decimal):
         await _save_position(position)
         log.info("position_reduced", symbol=position.symbol, remaining=str(new_qty),
                  realized_pnl=str(realized))
+
+
+async def _sell_margin_residual(symbol: str, market_type: str):
+    from backend.utils.symbol_filters import round_quantity
+
+    base_asset = _extract_base_asset(symbol)
+
+    for attempt in range(1, RESIDUAL_SELL_RETRIES + 1):
+        await asyncio.sleep(RESIDUAL_SELL_DELAY)
+        try:
+            if market_type == "CROSS_MARGIN":
+                balances = await binance_client.get_cross_margin_balances()
+                bal = next((b for b in balances if b["asset"] == base_asset), None)
+                if not bal:
+                    return
+                free = Decimal(bal.get("free", "0"))
+            else:
+                pairs = await binance_client.get_isolated_margin_balances()
+                pair = next((p for p in pairs if p.get("symbol") == symbol), None)
+                if not pair:
+                    return
+                free = Decimal(pair.get("baseAsset", {}).get("free", "0"))
+
+            if free <= 0:
+                return
+
+            client = await binance_client.get_client()
+            ticker = await client.get_symbol_ticker(symbol=symbol)
+            price = Decimal(ticker["price"])
+            value = free * price
+
+            if value < RESIDUAL_SELL_THRESHOLD_USD:
+                log.info("margin_residual_below_threshold", symbol=symbol,
+                         qty=str(free), value_usd=str(value))
+                return
+
+            qty = round_quantity(symbol, free)
+            if qty <= 0:
+                return
+
+            kwargs = dict(symbol=symbol, side="SELL", type="MARKET", quantity=str(qty))
+            if market_type == "ISOLATED_MARGIN":
+                kwargs["isIsolated"] = "TRUE"
+
+            await binance_client.place_margin_order(**kwargs)
+            log.info("margin_residual_sold", symbol=symbol, qty=str(qty),
+                     value_usd=str(value))
+            return
+
+        except Exception:
+            log.warning("margin_residual_sell_failed", symbol=symbol,
+                        attempt=attempt, exc_info=True)
+
+    log.error("margin_residual_sell_exhausted", symbol=symbol)
 
 
 async def _handle_list_status(msg: dict):

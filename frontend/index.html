@@ -4,30 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#111827">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="icon" type="image/png" href="/static/icon-192.png">
     <title>RootCoin</title>
     <link rel="stylesheet" href="/static/css/output.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="min-h-screen flex flex-col">
 
-    <!-- Header -->
-    <header class="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
-        <div class="flex items-center gap-2">
-            <span class="text-lg font-bold tracking-tight">RootCoin</span>
-        </div>
-        <div class="flex items-center gap-3 text-sm text-gray-400">
+    <!-- Header + Navigation -->
+    <header class="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center gap-4 shrink-0">
+        <img src="/static/logo.svg" alt="RootCoin" style="height:48px;width:auto" class="shrink-0">
+        <nav class="flex gap-1 overflow-x-auto flex-1 justify-center">
+            <button class="tab-btn active px-3 py-2 text-sm font-medium min-w-[70px]" data-tab="positions">Positions</button>
+            <button class="tab-btn px-3 py-2 text-sm font-medium min-w-[70px]" data-tab="trades">Trades</button>
+            <button class="tab-btn px-3 py-2 text-sm font-medium min-w-[70px]" data-tab="balances">Balances</button>
+        </nav>
+        <div class="flex items-center gap-3 text-sm text-gray-400 shrink-0">
             <span id="clock"></span>
             <span id="ws-status" class="w-2.5 h-2.5 rounded-full bg-red-500" title="Disconnected"></span>
         </div>
     </header>
-
-    <!-- Navigation tabs -->
-    <nav class="bg-gray-900 border-b border-gray-800 px-2 flex gap-1 shrink-0 overflow-x-auto">
-        <button class="tab-btn active px-4 py-3 text-sm font-medium min-w-[80px]" data-tab="positions">Positions</button>
-        <button class="tab-btn px-4 py-3 text-sm font-medium min-w-[80px]" data-tab="trades">Trades</button>
-        <button class="tab-btn px-4 py-3 text-sm font-medium min-w-[80px]" data-tab="balances">Balances</button>
-    </nav>
 
     <!-- Main content -->
     <main class="flex-1 overflow-y-auto">

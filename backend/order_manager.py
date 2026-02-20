@@ -100,7 +100,7 @@ async def place_stop_loss(position_id: int, stop_price: Decimal) -> dict:
     if _is_margin(pos):
         if _is_isolated(pos):
             kwargs["isIsolated"] = "TRUE"
-        kwargs["sideEffectType"] = "NO_SIDE_EFFECT"
+        kwargs["sideEffectType"] = "AUTO_REPAY"
         result = await binance_client.place_margin_order(**kwargs)
     else:
         result = await binance_client.place_order(**kwargs)
@@ -140,7 +140,7 @@ async def place_take_profit(position_id: int, tp_price: Decimal) -> dict:
     if _is_margin(pos):
         if _is_isolated(pos):
             kwargs["isIsolated"] = "TRUE"
-        kwargs["sideEffectType"] = "NO_SIDE_EFFECT"
+        kwargs["sideEffectType"] = "AUTO_REPAY"
         result = await binance_client.place_margin_order(**kwargs)
     else:
         result = await binance_client.place_order(**kwargs)
@@ -202,7 +202,7 @@ async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> d
         )
         if _is_isolated(pos):
             kwargs["isIsolated"] = "TRUE"
-        kwargs["sideEffectType"] = "NO_SIDE_EFFECT"
+        kwargs["sideEffectType"] = "AUTO_REPAY"
         result = await binance_client.place_margin_oco_order(**kwargs)
     else:
         # Spot OCO uses new format: above/below
