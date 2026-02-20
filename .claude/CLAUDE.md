@@ -66,6 +66,7 @@ rootcoin/
 ## Frontend
 - **Mobile-first** : l'iPhone sera l'usage principal. Concevoir d'abord pour petit écran, puis adapter desktop
 - **Responsive** : Tailwind breakpoints (sm → md → lg), touch-friendly (boutons min 44px)
+- **Tailwind CSS v3 compilé** : après toute modif de classes Tailwind → `npx tailwindcss -i frontend/css/tailwind.css -o frontend/css/output.css --minify`
 
 ## Logging / Monitoring
 - **Logging structuré JSON** : utiliser `structlog` ou le module `logging` avec un formatter JSON

@@ -18,7 +18,7 @@ Application de trading avec dashboard web permettant de :
 | **Backend** | Python 3.11+ / FastAPI | Async natif, WebSocket, léger |
 | **Binance API** | python-binance 1.0.35+ | Meilleur support spot+margin, WebSocket user data stream à jour (post-deprecation listenKey) |
 | **Base de données** | SQLite via SQLAlchemy + aiosqlite | Léger, pas de serveur DB, suffisant pour un utilisateur |
-| **Frontend** | HTML/CSS/JS vanilla + Tailwind CSS | Pas de build, servi directement par FastAPI |
+| **Frontend** | HTML/CSS/JS vanilla + Tailwind CSS v3 (compilé) | Servi directement par FastAPI |
 | **Temps réel** | WebSocket natif (backend↔frontend) + Binance WS streams | Mises à jour instantanées |
 | **Déploiement** | systemd + GitHub | Pas de Docker, simple `git pull` + restart |
 | **Accès distant** | Tailscale | VPN mesh, accès sécurisé depuis PC/iPhone |
@@ -103,7 +103,9 @@ rootcoin/
 ├── frontend/
 │   ├── index.html              # Dashboard principal (SPA)
 │   ├── css/
-│   │   └── style.css           # Styles custom (+ Tailwind CDN)
+│   │   ├── tailwind.css        # Source Tailwind (directives @tailwind)
+│   │   ├── output.css          # CSS compilé (généré, ne pas éditer)
+│   │   └── style.css           # Styles custom
 │   └── js/
 │       ├── app.js              # Logique principale
 │       ├── websocket.js        # Connexion WebSocket au backend
@@ -1053,6 +1055,15 @@ Si `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` sont configurés dans `.env` :
 - Les anciens endpoints `POST/PUT/DELETE /api/v3/userDataStream` sont retirés depuis le 20/02/2026
 - Support natif Ed25519 et RSA pour la signature
 - La signature doit être calculée APRÈS percent-encoding des paramètres (changement du 15/01/2026)
+
+### Tailwind CSS (build)
+- Tailwind v3 compilé en production (pas de CDN)
+- Source : `frontend/css/tailwind.css` → Build : `frontend/css/output.css`
+- Recompiler après toute modification de classes Tailwind dans le HTML/JS :
+  ```bash
+  npx tailwindcss -i frontend/css/tailwind.css -o frontend/css/output.css --minify
+  ```
+- Config : `tailwind.config.js` (scan `frontend/**/*.{html,js}`)
 
 ### Limitations connues
 - La notion de "position" en spot/margin est reconstruite côté application, pas native Binance
