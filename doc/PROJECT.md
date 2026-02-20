@@ -498,23 +498,31 @@ GET /api/prices/BTCUSDC → [{"price": "67599.98", ...}, ...]
     - Mini chart de prix pour chaque position
     - Chart d'évolution du portfolio dans la vue Balances
 
-### Phase 5 : Déploiement VPS
+### Phase 5 : Déploiement VPS --- DONE
 **Objectif** : Faire tourner le système 24/7 sur un VPS accessible de partout.
 
-17. **GitHub repo**
-    - Repo privé sur GitHub
+**Déployé le 20/02/2026** : VPS Hetzner CX23 (Nuremberg), Ubuntu 24.04, Tailscale sécurisé.
+```
+Dashboard accessible via http://100.83.87.98:8001 (Tailscale uniquement)
+IP publique bloquée par ufw, accès SSH + Tailscale only
+Service systemd actif, auto-restart on crash
+```
+
+17. **GitHub repo** --- DONE
+    - Repo privé sur GitHub : github.com/Luc1290/rootcoin
     - `.gitignore` : `.env`, `data/*.db`, `__pycache__/`, `*.pyc`
-    - Workflow : dev local → `git push` → VPS `git pull` + restart
+    - Deploy key SSH configurée sur le VPS
+    - Workflow : dev local → `git push` → `deploy-vps.bat` (un clic)
 
-18. **Setup VPS**
-    - `scripts/setup_vps.sh`
-    - Installation Python 3.11+, pip, venv
-    - Installation Tailscale
-    - Configuration firewall (n'ouvrir que le port Tailscale)
-    - Clone du repo GitHub + création du venv + install deps
-    - Création du service systemd `rootcoin`
+18. **Setup VPS** --- DONE
+    - Hetzner CX23 (2 vCPU, 4 Go RAM, 80 Go SSD) — Nuremberg
+    - `scripts/setup_vps.sh` — installation automatisée
+    - Python 3.11+, venv, dépendances installées
+    - Tailscale installé et connecté
+    - Firewall ufw : SSH only, port 8001 bloqué en public (accessible via Tailscale)
+    - Code cloné dans `/home/rootcoin_app`
 
-19. **Service systemd**
+19. **Service systemd** --- DONE
     - Fichier `scripts/rootcoin.service`
     - `Restart=always` → redémarre auto si crash
     - `RestartSec=5` → attend 5s avant de relancer
@@ -524,40 +532,39 @@ GET /api/prices/BTCUSDC → [{"price": "67599.98", ...}, ...]
     ```ini
     [Unit]
     Description=RootCoin Trading Dashboard
-    After=network.target
+    After=network-online.target
+    Wants=network-online.target
 
     [Service]
     Type=simple
-    User=rootcoin
-    WorkingDirectory=/home/rootcoin/rootcoin
-    ExecStart=/home/rootcoin/rootcoin/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8001
+    User=root
+    WorkingDirectory=/home/rootcoin_app
+    ExecStart=/home/rootcoin_app/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8001
     Restart=always
     RestartSec=5
-    EnvironmentFile=/home/rootcoin/rootcoin/.env
+    EnvironmentFile=/home/rootcoin_app/.env
 
     [Install]
     WantedBy=multi-user.target
     ```
 
-20. **Accès distant**
-    - Tailscale installé sur le VPS
-    - Dashboard accessible via `http://<tailscale-ip>:8001`
-    - HTTPS optionnel via Tailscale HTTPS (certificats automatiques)
-    - Accès depuis iPhone via Tailscale app + Safari
+20. **Accès distant** --- DONE
+    - Tailscale installé sur VPS, PC et iPhone
+    - Dashboard accessible via `http://100.83.87.98:8001` (Tailscale)
+    - IP publique (`162.55.219.185`) bloquée par firewall
+    - Accès depuis iPhone via Tailscale app + Safari (ajouté sur l'écran d'accueil)
+    - Accès depuis PC via Chrome (installé comme app dans la barre des tâches)
 
-21. **Workflow de mise à jour**
-    ```bash
-    # Sur le VPS, en une commande :
-    cd /home/rootcoin/rootcoin && git pull && sudo systemctl restart rootcoin
-    ```
-    - Optionnel : script `scripts/deploy.sh` qui fait le pull + restart
-    - Optionnel : webhook GitHub → auto-pull sur le VPS à chaque push
+21. **Workflow de mise à jour** --- DONE
+    - `deploy-vps.bat` à la racine du projet : deploy en un double-clic depuis le PC
+    - Ou manuellement : `ssh root@100.83.87.98 "bash /home/rootcoin_app/scripts/deploy.sh"`
+    - Script `scripts/deploy.sh` : git pull → update deps → rebuild Tailwind → restart service
 
-22. **Monitoring et maintenance**
+22. **Monitoring et maintenance** --- DONE
     - systemd gère le restart auto
     - Logs via `journalctl -u rootcoin -f` (structurés JSON)
-    - Script de backup DB (`scripts/backup_db.sh`)
-    - Notifications Telegram en cas d'erreur critique
+    - Script de backup DB (`scripts/backup_db.sh`) — rétention 30 jours
+    - Notifications Telegram en cas d'erreur critique (à configurer)
 
 ---
 
