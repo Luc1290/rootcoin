@@ -1,0 +1,10 @@
+fastapi==0.129.*
+uvicorn[standard]==0.41.*
+python-binance==1.0.35
+sqlalchemy[asyncio]==2.0.*
+aiosqlite==0.22.*
+python-dotenv==1.0.*
+pydantic==2.*
+pydantic-settings==2.*
+httpx==0.28.*
+structlog==25.*

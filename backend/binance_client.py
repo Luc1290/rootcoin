@@ -1,0 +1,167 @@
+import structlog
+from binance import AsyncClient
+from binance.exceptions import BinanceAPIException
+
+from backend.config import settings
+
+log = structlog.get_logger()
+
+_client: AsyncClient | None = None
+
+
+async def init_client() -> AsyncClient:
+    global _client
+    if _client is None:
+        _client = await AsyncClient.create(
+            api_key=settings.binance_api_key,
+            api_secret=settings.binance_secret_key,
+        )
+        log.info("binance_client_initialized")
+    return _client
+
+
+async def get_client() -> AsyncClient:
+    if _client is None:
+        raise RuntimeError("Binance client not initialized")
+    return _client
+
+
+async def close_client():
+    global _client
+    if _client:
+        await _client.close_connection()
+        _client = None
+        log.info("binance_client_closed")
+
+
+async def get_spot_balances() -> list[dict]:
+    client = await get_client()
+    try:
+        account = await client.get_account()
+        return account["balances"]
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_account", code=e.code, msg=e.message)
+        raise
+
+
+async def get_cross_margin_balances() -> list[dict]:
+    client = await get_client()
+    try:
+        account = await client.get_margin_account()
+        return account["userAssets"]
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_margin_account", code=e.code, msg=e.message)
+        raise
+
+
+async def get_isolated_margin_balances() -> list[dict]:
+    client = await get_client()
+    try:
+        account = await client.get_isolated_margin_account()
+        return account.get("assets", [])
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_isolated_margin_account", code=e.code, msg=e.message)
+        raise
+
+
+async def get_open_orders(symbol: str | None = None) -> list[dict]:
+    client = await get_client()
+    try:
+        kwargs = {}
+        if symbol:
+            kwargs["symbol"] = symbol
+        return await client.get_open_orders(**kwargs)
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_open_orders", code=e.code, msg=e.message)
+        raise
+
+
+async def get_margin_open_orders(symbol: str | None = None, is_isolated: bool = False) -> list[dict]:
+    client = await get_client()
+    try:
+        kwargs = {}
+        if symbol:
+            kwargs["symbol"] = symbol
+        if is_isolated:
+            kwargs["isIsolated"] = "TRUE"
+        return await client.get_open_margin_orders(**kwargs)
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_open_margin_orders", code=e.code, msg=e.message)
+        raise
+
+
+async def get_my_trades(symbol: str, limit: int = 500) -> list[dict]:
+    client = await get_client()
+    try:
+        return await client.get_my_trades(symbol=symbol, limit=limit)
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_my_trades", symbol=symbol, code=e.code, msg=e.message)
+        raise
+
+
+async def get_margin_trades(symbol: str, limit: int = 500, is_isolated: bool = False) -> list[dict]:
+    client = await get_client()
+    try:
+        kwargs = {"symbol": symbol, "limit": limit}
+        if is_isolated:
+            kwargs["isIsolated"] = "TRUE"
+        return await client.get_margin_trades(**kwargs)
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_margin_trades", symbol=symbol, code=e.code, msg=e.message)
+        raise
+
+
+async def place_order(**kwargs) -> dict:
+    client = await get_client()
+    try:
+        result = await client.create_order(**kwargs)
+        log.info("order_placed", **{k: str(v) for k, v in kwargs.items()})
+        return result
+    except BinanceAPIException as e:
+        log.error("order_failed", code=e.code, msg=e.message, **{k: str(v) for k, v in kwargs.items()})
+        raise
+
+
+async def place_margin_order(**kwargs) -> dict:
+    client = await get_client()
+    try:
+        result = await client.create_margin_order(**kwargs)
+        log.info("margin_order_placed", **{k: str(v) for k, v in kwargs.items()})
+        return result
+    except BinanceAPIException as e:
+        log.error("margin_order_failed", code=e.code, msg=e.message, **{k: str(v) for k, v in kwargs.items()})
+        raise
+
+
+async def cancel_order(symbol: str, order_id: str) -> dict:
+    client = await get_client()
+    try:
+        result = await client.cancel_order(symbol=symbol, orderId=order_id)
+        log.info("order_cancelled", symbol=symbol, order_id=order_id)
+        return result
+    except BinanceAPIException as e:
+        log.error("cancel_order_failed", symbol=symbol, order_id=order_id, code=e.code, msg=e.message)
+        raise
+
+
+async def cancel_margin_order(symbol: str, order_id: str, is_isolated: bool = False) -> dict:
+    client = await get_client()
+    try:
+        kwargs = {"symbol": symbol, "orderId": order_id}
+        if is_isolated:
+            kwargs["isIsolated"] = "TRUE"
+        result = await client.cancel_margin_order(**kwargs)
+        log.info("margin_order_cancelled", symbol=symbol, order_id=order_id)
+        return result
+    except BinanceAPIException as e:
+        log.error("cancel_margin_order_failed", symbol=symbol, order_id=order_id, code=e.code, msg=e.message)
+        raise
+
+
+async def get_exchange_info() -> dict:
+    client = await get_client()
+    try:
+        return await client.get_exchange_info()
+    except BinanceAPIException as e:
+        log.error("binance_api_error", endpoint="get_exchange_info", code=e.code, msg=e.message)
+        raise

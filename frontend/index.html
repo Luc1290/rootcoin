@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr" class="bg-gray-950 text-white">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>RootCoin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gray-900 border-b border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+            <span class="text-lg font-bold tracking-tight">RootCoin</span>
+        </div>
+        <div class="flex items-center gap-3 text-sm text-gray-400">
+            <span id="clock"></span>
+            <span id="ws-status" class="w-2.5 h-2.5 rounded-full bg-red-500" title="Disconnected"></span>
+        </div>
+    </header>
+
+    <!-- Navigation tabs -->
+    <nav class="bg-gray-900 border-b border-gray-800 px-2 flex gap-1 shrink-0 overflow-x-auto">
+        <button class="tab-btn active px-4 py-3 text-sm font-medium min-w-[80px]" data-tab="positions">Positions</button>
+        <button class="tab-btn px-4 py-3 text-sm font-medium min-w-[80px]" data-tab="trades">Trades</button>
+        <button class="tab-btn px-4 py-3 text-sm font-medium min-w-[80px]" data-tab="balances">Balances</button>
+    </nav>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-y-auto">
+        <!-- Positions view -->
+        <div id="view-positions" class="view p-4">
+            <div id="positions-empty" class="text-center text-gray-500 py-12">
+                Aucune position ouverte
+            </div>
+            <div id="positions-list" class="space-y-3 hidden"></div>
+        </div>
+
+        <!-- Trades view -->
+        <div id="view-trades" class="view p-4 hidden">
+            <div class="mb-3">
+                <select id="trades-filter" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm w-full">
+                    <option value="">Tous les symboles</option>
+                </select>
+            </div>
+            <div id="trades-list" class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="text-gray-400 text-left">
+                        <tr>
+                            <th class="pb-2">Date</th>
+                            <th class="pb-2">Symbole</th>
+                            <th class="pb-2">Side</th>
+                            <th class="pb-2 text-right">Prix</th>
+                            <th class="pb-2 text-right">Qty</th>
+                            <th class="pb-2 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trades-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Balances view -->
+        <div id="view-balances" class="view p-4 hidden">
+            <div id="portfolio-total" class="text-2xl font-bold mb-4">--</div>
+            <div id="balances-list" class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="text-gray-400 text-left">
+                        <tr>
+                            <th class="pb-2">Asset</th>
+                            <th class="pb-2">Wallet</th>
+                            <th class="pb-2 text-right">Free</th>
+                            <th class="pb-2 text-right">Locked</th>
+                            <th class="pb-2 text-right">Net</th>
+                        </tr>
+                    </thead>
+                    <tbody id="balances-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="fixed inset-0 bg-black/60 hidden z-50 flex items-end sm:items-center justify-center">
+        <div id="modal-content" class="bg-gray-900 border border-gray-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-6">
+            <h3 id="modal-title" class="text-lg font-semibold mb-4"></h3>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
+
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/positions.js"></script>
+    <script src="/static/js/trades.js"></script>
+    <script src="/static/js/balances.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
