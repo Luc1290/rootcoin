@@ -9,7 +9,7 @@ from backend import binance_client, ws_manager
 from backend.config import settings
 from backend.database import async_session
 from backend.models import Position, Trade
-from backend.ws_manager import EVENT_EXECUTION_REPORT, EVENT_PRICE_UPDATE
+from backend.ws_manager import EVENT_EXECUTION_REPORT, EVENT_LIST_STATUS, EVENT_PRICE_UPDATE
 
 log = structlog.get_logger()
 
@@ -27,6 +27,7 @@ _recent_short_closes: dict[str, float] = {}
 async def start():
     await _scan_existing_positions()
     ws_manager.on(EVENT_EXECUTION_REPORT, _handle_execution_report)
+    ws_manager.on(EVENT_LIST_STATUS, _handle_list_status)
     ws_manager.on(EVENT_PRICE_UPDATE, _handle_price_update)
     log.info("position_tracker_started")
 
@@ -172,6 +173,9 @@ async def _scan_existing_positions():
     for symbol, _ in found_keys:
         await ws_manager.subscribe_symbol(symbol)
 
+    # Verify order refs against Binance open orders
+    await _verify_order_refs()
+
     log.info("position_scan_complete", count=len(_positions))
 
 
@@ -260,6 +264,51 @@ async def _calculate_entry_price(
     return weighted / accumulated
 
 
+async def _verify_order_refs():
+    for pos in list(_positions.values()):
+        if not (pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id):
+            continue
+        try:
+            if pos.market_type == "SPOT":
+                open_orders = await binance_client.get_open_orders(pos.symbol)
+            else:
+                open_orders = await binance_client.get_margin_open_orders(
+                    pos.symbol, is_isolated=(pos.market_type == "ISOLATED_MARGIN"),
+                )
+        except Exception:
+            log.warning("verify_orders_failed", symbol=pos.symbol)
+            continue
+
+        open_ids = {str(o["orderId"]) for o in open_orders}
+        open_list_ids = {str(o.get("orderListId", "")) for o in open_orders} - {"", "-1"}
+        updates = {}
+        if pos.sl_order_id and pos.sl_order_id not in open_ids:
+            updates["sl_order_id"] = None
+        if pos.tp_order_id and pos.tp_order_id not in open_ids:
+            updates["tp_order_id"] = None
+        if pos.oco_order_list_id and pos.oco_order_list_id not in open_list_ids:
+            updates["oco_order_list_id"] = None
+        if updates:
+            for k, v in updates.items():
+                setattr(pos, k, v)
+            await _save_position(pos)
+            log.info("stale_order_refs_cleared", symbol=pos.symbol, cleared=list(updates.keys()))
+
+
+async def _clean_order_ref(order_id: str):
+    for pos in _positions.values():
+        updates = {}
+        if pos.sl_order_id == order_id:
+            updates["sl_order_id"] = None
+        if pos.tp_order_id == order_id:
+            updates["tp_order_id"] = None
+        if updates:
+            for k, v in updates.items():
+                setattr(pos, k, v)
+            await _save_position(pos)
+            log.info("order_ref_cleaned", symbol=pos.symbol, order_id=order_id, cleared=list(updates.keys()))
+
+
 # --- Execution report handler ---
 
 
@@ -289,6 +338,14 @@ async def _determine_market_type(symbol: str) -> str:
 
 async def _handle_execution_report(msg: dict):
     status = msg.get("X", "")
+
+    # Handle order cancellation/expiration — clean position refs
+    if status in ("CANCELED", "EXPIRED", "REJECTED"):
+        order_id = str(msg.get("i", ""))
+        if order_id:
+            await _clean_order_ref(order_id)
+        return
+
     if status not in ("PARTIALLY_FILLED", "FILLED"):
         return
 
@@ -445,6 +502,18 @@ async def _reduce_or_close(position: Position, qty: Decimal, price: Decimal):
         await _save_position(position)
         log.info("position_reduced", symbol=position.symbol, remaining=str(new_qty),
                  realized_pnl=str(realized))
+
+
+async def _handle_list_status(msg: dict):
+    list_status = msg.get("l", "")
+    order_list_id = str(msg.get("g", ""))
+    if list_status == "ALL_DONE" and order_list_id:
+        for pos in _positions.values():
+            if pos.oco_order_list_id == order_list_id:
+                pos.oco_order_list_id = None
+                await _save_position(pos)
+                log.info("oco_ref_cleaned", symbol=pos.symbol, order_list_id=order_list_id)
+                break
 
 
 # --- Price updates ---

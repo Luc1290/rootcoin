@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from binance.exceptions import BinanceAPIException
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -55,6 +56,8 @@ async def set_stop_loss(position_id: int, body: PriceBody):
         return {"status": "ok", "order_id": str(result["orderId"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")
 
 
 @router.post("/{position_id}/tp")
@@ -64,6 +67,8 @@ async def set_take_profit(position_id: int, body: PriceBody):
         return {"status": "ok", "order_id": str(result["orderId"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")
 
 
 @router.post("/{position_id}/oco")
@@ -75,6 +80,8 @@ async def set_oco(position_id: int, body: OcoBody):
         return {"status": "ok", "order_list_id": str(result.get("orderListId", ""))}
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")
 
 
 @router.post("/{position_id}/close")
@@ -84,3 +91,5 @@ async def close_position(position_id: int):
         return {"status": "ok", "order_id": str(result["orderId"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")
