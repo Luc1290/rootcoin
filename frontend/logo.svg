@@ -1,0 +1,311 @@
+<svg viewBox="0 0 420 120" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="textGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1dffe0" />
+      <stop offset="100%" stop-color="#2389ff" />
+    </linearGradient>
+    
+    <linearGradient id="organicGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#043628" />
+      <stop offset="100%" stop-color="#09d4a4" />
+    </linearGradient>
+    
+    <linearGradient id="techGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#072858" />
+      <stop offset="100%" stop-color="#2389ff" />
+    </linearGradient>
+    
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
+      <feOffset dx="0" dy="1" result="offsetblur" />
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.2" />
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="1" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+    
+    <pattern id="subtleTexture" patternUnits="userSpaceOnUse" width="100" height="100" patternTransform="scale(0.15)">
+      <rect width="100" height="100" fill="none" />
+      <path d="M0,50 L100,50 M50,0 L50,100" stroke="#ffffff" stroke-width="0.5" opacity="0.03" />
+    </pattern>
+  </defs>
+  
+  <!-- Fond subtil avec dégradé -->
+  <rect width="400" height="120" fill="url(#subtleTexture)" opacity="0.5" />
+  
+  <!-- Main Text avec design sophistiqué -->
+  <g filter="url(#softShadow)">
+    <text x="150" y="70" font-family="'Courier New', monospace" font-size="42" font-weight="bold" fill="url(#textGradient)">RooT:_</text>
+    <!-- Fine ligne d'accent sous le texte -->
+    <line x1="150" y1="76" x2="265" y2="76" stroke="url(#textGradient)" stroke-width="0.8" opacity="0.7" />
+  </g>
+  
+  <!-- Système de racines avec végétation technique (gauche) -->
+  <g filter="url(#softShadow)">
+    <!-- Tronc principal avec aspect technique -->
+    <path d="M90 60 C90 70, 80 80, 75 90 C70 100, 65 110, 55 115" stroke="url(#organicGradient)" stroke-width="2" fill="none" stroke-linecap="round" />
+    
+    <!-- Branches principales -->
+    <path d="M90 60 C85 70, 75 75, 65 70 C55 65, 45 60, 35 65" stroke="url(#organicGradient)" stroke-width="1.8" fill="none" stroke-linecap="round" />
+    <path d="M65 70 C62 75, 58 78, 53 75 C48 72, 43 68, 40 72" stroke="url(#organicGradient)" stroke-width="1.2" fill="none" stroke-linecap="round" />
+    <path d="M53 75 C50 78, 48 82, 45 85" stroke="url(#organicGradient)" stroke-width="0.9" fill="none" stroke-linecap="round" />
+    
+    <path d="M90 60 C88 65, 85 70, 80 78 C75 85, 70 90, 72 95" stroke="url(#organicGradient)" stroke-width="1.8" fill="none" stroke-linecap="round" />
+    <path d="M80 78 C78 83, 75 87, 70 90" stroke="url(#organicGradient)" stroke-width="1.2" fill="none" stroke-linecap="round" />
+    
+    <path d="M75 90 C80 95, 85 100, 80 105" stroke="url(#organicGradient)" stroke-width="1.2" fill="none" stroke-linecap="round" />
+    
+    <!-- Points de terminaison avec design technique -->
+    <circle cx="35" cy="65" r="2" fill="#09d4a4" opacity="0.9" />
+    <circle cx="35" cy="65" r="4" stroke="#09d4a4" stroke-width="0.5" fill="none" opacity="0.5" />
+    
+    <circle cx="40" cy="72" r="1.5" fill="#09d4a4" opacity="0.9" />
+    <circle cx="40" cy="72" r="3" stroke="#09d4a4" stroke-width="0.5" fill="none" opacity="0.5" />
+    
+    <circle cx="45" cy="85" r="1.5" fill="#09d4a4" opacity="0.9" />
+    <circle cx="70" cy="90" r="1.5" fill="#09d4a4" opacity="0.9" />
+    <circle cx="80" cy="105" r="1.5" fill="#09d4a4" opacity="0.9" />
+    <circle cx="55" cy="115" r="2" fill="#09d4a4" opacity="0.9" />
+    <circle cx="55" cy="115" r="4" stroke="#09d4a4" stroke-width="0.5" fill="none" opacity="0.5" />
+    
+    <circle cx="72" cy="95" r="1.5" fill="#09d4a4" opacity="0.9" />
+    
+    <!-- Éléments végétaux autour des nœuds techniques -->
+    <!-- Feuilles et racines sur le nœud 1 -->
+    <g transform="translate(35, 65)">
+      <!-- Petites feuilles organiques -->
+      <path d="M-5,-4 C-8,-6 -10,-5 -9,-2 C-8,0 -5,-1 -5,-4" fill="#075a32" opacity="0.8" />
+      <path d="M-5,4 C-8,6 -10,5 -9,2 C-8,0 -5,1 -5,4" fill="#075a32" opacity="0.8" />
+      <path d="M4,5 C7,7 9,6 8,3 C7,1 4,2 4,5" fill="#075a32" opacity="0.8" />
+      
+      <!-- Veines des feuilles -->
+      <path d="M-8,-4 L-7,-3" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      <path d="M-8,4 L-7,3" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      <path d="M7,5 L6,4" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      
+      <!-- Éléments techniques intégrés aux feuilles -->
+      <path d="M-9,-2 C-12,-2 -12,-5 -9,-5" stroke="#09d4a4" stroke-width="0.5" opacity="0.8" stroke-linecap="round" />
+      <circle cx="-9" cy="-5" r="1" fill="#09d4a4" opacity="0.8" />
+      
+      <path d="M8,3 C11,3 13,5 10,8" stroke="#09d4a4" stroke-width="0.5" opacity="0.8" stroke-linecap="round" />
+      <circle cx="10" cy="8" r="1" fill="#09d4a4" opacity="0.8" />
+    </g>
+    
+    <!-- Végétation technique sur le nœud 2 -->
+    <g transform="translate(55, 115)">
+      <!-- Feuilles organiques -->
+      <path d="M-6,-4 C-9,-7 -11,-6 -8,-3 C-7,-1 -6,-2 -6,-4" fill="#075a32" opacity="0.8" />
+      <path d="M6,-4 C9,-7 11,-6 8,-3 C7,-1 6,-2 6,-4" fill="#075a32" opacity="0.8" />
+      <path d="M0,-7 C0,-10 2,-12 4,-10 C5,-8 2,-7 0,-7" fill="#075a32" opacity="0.8" />
+      
+      <!-- Veines et détails -->
+      <path d="M-8,-5 L-7,-4" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      <path d="M8,-5 L7,-4" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      <path d="M2,-10 L2,-8" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      
+      <!-- Racines fines avec aspect technique -->
+      <path d="M-8,-3 C-11,-3 -13,-5 -14,-8" stroke="#09d4a4" stroke-width="0.5" opacity="0.8" stroke-linecap="round" />
+      <circle cx="-14" cy="-8" r="1" fill="#09d4a4" opacity="0.8" />
+      
+      <path d="M8,-3 C11,-3 13,-5 14,-8" stroke="#09d4a4" stroke-width="0.5" opacity="0.8" stroke-linecap="round" />
+      <circle cx="14" cy="-8" r="1" fill="#09d4a4" opacity="0.8" />
+    </g>
+    
+    <!-- Végétation additionnelle -->
+    <g transform="translate(40, 72)">
+      <!-- Petite feuille organique -->
+      <path d="M-6,-3 C-9,-5 -11,-4 -10,-1 C-9,1 -6,0 -6,-3" fill="#075a32" opacity="0.8" />
+      <path d="M-10,-1 L-9,-2" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+      
+      <!-- Petites pousses -->
+      <path d="M5,-3 C7,-6 9,-7 10,-5 C11,-3 8,-2 5,-3" fill="#075a32" opacity="0.7" />
+      <path d="M10,-5 L9,-6" stroke="#09d4a4" stroke-width="0.2" opacity="0.9" />
+    </g>
+    
+    <!-- Végétation supplémentaire autour des racines -->
+    <g transform="translate(45, 85)">
+      <path d="M-4,-3 C-6,-5 -7,-4 -6,-2 C-5,0 -3,-1 -4,-3" fill="#075a32" opacity="0.7" />
+      <path d="M4,3 C6,5 7,4 6,2 C5,0 3,1 4,3" fill="#075a32" opacity="0.7" />
+    </g>
+    
+    <g transform="translate(70, 90)">
+      <path d="M-3,-3 C-5,-5 -6,-4 -5,-2 C-4,0 -2,-1 -3,-3" fill="#075a32" opacity="0.7" />
+    </g>
+    
+    <g transform="translate(80, 105)">
+      <path d="M3,3 C5,5 6,4 5,2 C4,0 2,1 3,3" fill="#075a32" opacity="0.7" />
+    </g>
+  </g>
+  
+  <!-- Système de circuit ultra-technique interconnecté (droite) -->
+  <g filter="url(#softShadow)">
+    <!-- Structure principale avec design high-tech -->
+    <path d="M310 60 L350 60" stroke="url(#techGradient)" stroke-width="1" fill="none" stroke-linecap="round" />
+    
+    <!-- Branches de circuits avec design avancé -->
+    <path d="M310 60 L300 50 L285 50 L275 40" stroke="url(#techGradient)" stroke-width="0.8" fill="none" stroke-linecap="round" />
+    <path d="M285 50 L280 60 L265 60" stroke="url(#techGradient)" stroke-width="0.6" fill="none" stroke-linecap="round" />
+    <path d="M310 60 L300 70 L285 70 L275 80" stroke="url(#techGradient)" stroke-width="0.8" fill="none" stroke-linecap="round" />
+    <path d="M285 70 L280 80 L265 80" stroke="url(#techGradient)" stroke-width="0.6" fill="none" stroke-linecap="round" />
+    
+    <!-- Circuit étendu ultra-technique - rejoint en un seul système -->
+    <path d="M350 60 L365 45 L380 45 L390 38" stroke="url(#techGradient)" stroke-width="0.7" fill="none" stroke-linecap="round" />
+    <path d="M380 45 L385 40 L395 40" stroke="url(#techGradient)" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    <path d="M365 45 L360 35 L375 35 L385 30" stroke="url(#techGradient)" stroke-width="0.6" fill="none" stroke-linecap="round" />
+    <path d="M375 35 L380 25 L390 25" stroke="url(#techGradient)" stroke-width="0.4" fill="none" stroke-linecap="round" />
+    
+    <path d="M350 60 L365 75 L380 75 L390 82" stroke="url(#techGradient)" stroke-width="0.7" fill="none" stroke-linecap="round" />
+    <path d="M380 75 L385 80 L395 80" stroke="url(#techGradient)" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    <path d="M365 75 L360 85 L375 85 L385 90" stroke="url(#techGradient)" stroke-width="0.6" fill="none" stroke-linecap="round" />
+    <path d="M375 85 L380 95 L390 95" stroke="url(#techGradient)" stroke-width="0.4" fill="none" stroke-linecap="round" />
+    
+    <!-- Extensions techniques connectées - maintenant interconnectées -->
+    <!-- Connexion supérieure -->
+    <path d="M395 40 L400 40 L405 35" stroke="#2389ff" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    <path d="M405 35 L410 35" stroke="#2389ff" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    <circle cx="410" cy="35" r="1.5" fill="#2389ff" opacity="0.9" />
+    
+    <!-- Connexion supérieure au circuit central -->
+    <path d="M390 25 L395 20 L400 20" stroke="#2389ff" stroke-width="0.4" fill="none" stroke-linecap="round" />
+    <path d="M400 20 L405 15 L410 15" stroke="#2389ff" stroke-width="0.4" fill="none" stroke-linecap="round" />
+    <circle cx="410" cy="15" r="1" fill="#2389ff" opacity="0.9" />
+    
+    <!-- Connexion entre les nœuds supérieurs -->
+    <path d="M410 15 L410 25 L410 35" stroke="#2389ff" stroke-width="0.3" fill="none" stroke-linecap="round" />
+    
+    <!-- Connexion inférieure -->
+    <path d="M395 80 L400 80 L405 85" stroke="#2389ff" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    <path d="M405 85 L410 85" stroke="#2389ff" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    <circle cx="410" cy="85" r="1.5" fill="#2389ff" opacity="0.9" />
+    
+    <!-- Connexion inférieure au circuit central -->
+    <path d="M390 95 L395 100 L400 100" stroke="#2389ff" stroke-width="0.4" fill="none" stroke-linecap="round" />
+    <path d="M400 100 L405 105 L410 105" stroke="#2389ff" stroke-width="0.4" fill="none" stroke-linecap="round" />
+    <circle cx="410" cy="105" r="1" fill="#2389ff" opacity="0.9" />
+    
+    <!-- Connexion entre les nœuds inférieurs -->
+    <path d="M410 85 L410 95 L410 105" stroke="#2389ff" stroke-width="0.3" fill="none" stroke-linecap="round" />
+    
+    <!-- Circuit unifié vertical -->
+    <path d="M410 15 C415 25, 420 45, 410 60 C400 75, 405 95, 410 105" stroke="#2389ff" stroke-width="0.5" fill="none" stroke-linecap="round" />
+    
+    <!-- Composants sur le circuit unifié -->
+    <circle cx="410" cy="60" r="2" fill="#2389ff" opacity="0.9" />
+    <circle cx="410" cy="60" r="4" stroke="#2389ff" stroke-width="0.3" fill="none" opacity="0.7" />
+    
+    <circle cx="415" cy="30" r="1" fill="#2389ff" opacity="0.8" />
+    <circle cx="415" cy="90" r="1" fill="#2389ff" opacity="0.8" />
+    
+    <rect x="408" y="44" width="4" height="4" stroke="#2389ff" stroke-width="0.3" fill="none" opacity="0.8" />
+    <rect x="408" y="72" width="4" height="4" stroke="#2389ff" stroke-width="0.3" fill="none" opacity="0.8" />
+    
+    <!-- Composants techniques -->
+    <rect x="273" y="38" width="4" height="4" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.8" />
+    
+    <path d="M265 60 L260 60 L255 65 L260 70 L265 70" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.8" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="260" cy="65" r="1" fill="#2389ff" opacity="0.8" />
+    
+    <path d="M265 80 L260 80 L255 75 L250 75" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.8" stroke-linecap="round" />
+    <rect x="246" y="73" width="4" height="4" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.8" />
+    
+    <!-- Composants high-tech et emblématiques -->
+    <g transform="translate(390, 38)">
+      <circle cx="0" cy="0" r="3" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.8" />
+      <path d="M-2,-2 L2,2 M-2,2 L2,-2" stroke="#2389ff" stroke-width="0.5" opacity="0.8" />
+    </g>
+    
+    <g transform="translate(385, 90)">
+      <rect x="-2" y="-2" width="4" height="4" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.8" />
+      <circle cx="0" cy="0" r="1" fill="#2389ff" opacity="0.9" />
+    </g>
+    
+    <!-- Circuit board style patterns -->
+    <path d="M380 35 L377 32 L377 28" stroke="#2389ff" stroke-width="0.3" fill="none" opacity="0.7" />
+    <circle cx="377" cy="28" r="1" fill="#2389ff" opacity="0.7" />
+    
+    <path d="M380 85 L377 88 L377 92" stroke="#2389ff" stroke-width="0.3" fill="none" opacity="0.7" />
+    <rect x="375" y="92" width="4" height="2" fill="#2389ff" opacity="0.7" />
+    
+    <!-- CPU-like component -->
+    <rect x="283" y="65" width="10" height="10" stroke="#2389ff" stroke-width="0.5" fill="none" opacity="0.9" />
+    <line x1="285" y1="67" x2="291" y2="67" stroke="#2389ff" stroke-width="0.3" opacity="0.9" />
+    <line x1="285" y1="70" x2="291" y2="70" stroke="#2389ff" stroke-width="0.3" opacity="0.9" />
+    <line x1="285" y1="73" x2="291" y2="73" stroke="#2389ff" stroke-width="0.3" opacity="0.9" />
+    <path d="M283 68 L280 68 M283 72 L280 72" stroke="#2389ff" stroke-width="0.3" opacity="0.9" />
+    <path d="M293 68 L296 68 M293 72 L296 72" stroke="#2389ff" stroke-width="0.3" opacity="0.9" />
+  </g>
+  
+  <!-- Connection centrale design -->
+  <g filter="url(#softShadow)">
+    <!-- Ligne de connexion technique contournant le texte -->
+    <path d="M90 60 C100 40, 120 30, 130 30" stroke="#043628" stroke-width="1.5" fill="none" opacity="0.9" stroke-linecap="round" />
+    <path d="M130 30 C140 30, 150 30, 170 30" stroke="url(#organicGradient)" stroke-width="1.3" fill="none" opacity="0.8" stroke-linecap="round" />
+    <path d="M170 30 C190 30, 210 30, 230 30" stroke="#088a75" stroke-width="1.2" fill="none" opacity="0.8" stroke-linecap="round" />
+    <path d="M230 30 C250 30, 270 30, 280 30" stroke="#0599a0" stroke-width="1.2" fill="none" opacity="0.8" stroke-linecap="round" />
+    <path d="M280 30 C290 30, 300 40, 310 60" stroke="url(#techGradient)" stroke-width="1" fill="none" opacity="0.9" stroke-linecap="round" />
+    
+    <!-- Points de transition technique -->
+    <circle cx="170" cy="30" r="1.5" fill="#09d4a4" opacity="0.9" />
+    <circle cx="200" cy="30" r="1.5" fill="#0cbfb0" opacity="0.9" />
+    <circle cx="230" cy="30" r="1.5" fill="#0faaba" opacity="0.9" />
+    <circle cx="260" cy="30" r="1.5" fill="#1294c5" opacity="0.9" />
+    <circle cx="290" cy="35" r="1.5" fill="#2389ff" opacity="0.9" />
+    
+    <!-- Transition technique avec marques de mesure -->
+    <line x1="190" y1="28" x2="190" y2="32" stroke="#0cbfb0" stroke-width="0.5" opacity="0.7" />
+    <line x1="200" y1="28" x2="200" y2="32" stroke="#0cbfb0" stroke-width="0.5" opacity="0.7" />
+    <line x1="210" y1="28" x2="210" y2="32" stroke="#0cbfb0" stroke-width="0.5" opacity="0.7" />
+    <line x1="220" y1="28" x2="220" y2="32" stroke="#0faaba" stroke-width="0.5" opacity="0.7" />
+    <line x1="230" y1="28" x2="230" y2="32" stroke="#0faaba" stroke-width="0.5" opacity="0.7" />
+    <line x1="240" y1="28" x2="240" y2="32" stroke="#0faaba" stroke-width="0.5" opacity="0.7" />
+    <line x1="250" y1="28" x2="250" y2="32" stroke="#1294c5" stroke-width="0.5" opacity="0.7" />
+    <line x1="260" y1="28" x2="260" y2="32" stroke="#1294c5" stroke-width="0.5" opacity="0.7" />
+    <line x1="270" y1="28" x2="270" y2="32" stroke="#1294c5" stroke-width="0.5" opacity="0.7" />
+    
+    <!-- Component technique sur la ligne -->
+    <rect x="214" y="27" width="12" height="6" fill="none" stroke="#0faaba" stroke-width="0.3" opacity="0.8" />
+    <circle cx="220" cy="30" r="1" fill="#0faaba" opacity="0.9" />
+    
+    <rect x="244" y="27" width="12" height="6" fill="none" stroke="#1294c5" stroke-width="0.3" opacity="0.8" />
+    <line x1="247" y1="30" x2="253" y2="30" stroke="#1294c5" stroke-width="0.5" opacity="0.9" />
+  </g>
+  
+  <!-- Éléments binaires/data avancés -->
+  <g opacity="0.15">
+    <text x="360" y="30" font-family="'Arial', sans-serif" font-size="2.5" fill="#2389ff">01011001</text>
+    <text x="360" y="90" font-family="'Arial', sans-serif" font-size="2.5" fill="#2389ff">10110010</text>
+    <text x="270" y="38" font-family="'Arial', sans-serif" font-size="2.5" fill="#2389ff">11001010</text>
+    <text x="240" y="82" font-family="'Arial', sans-serif" font-size="2.5" fill="#2389ff">00101101</text>
+  </g>
+  
+  <!-- Grille technique additionnelle -->
+  <g opacity="0.1">
+    <!-- Lignes horizontales fines -->
+    <line x1="320" y1="30" x2="420" y2="30" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="320" y1="40" x2="420" y2="40" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="320" y1="50" x2="420" y2="50" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="320" y1="60" x2="420" y2="60" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="320" y1="70" x2="420" y2="70" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="320" y1="80" x2="420" y2="80" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="320" y1="90" x2="420" y2="90" stroke="#2389ff" stroke-width="0.2" />
+    
+    <!-- Lignes verticales fines -->
+    <line x1="330" y1="20" x2="330" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="340" y1="20" x2="340" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="350" y1="20" x2="350" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="360" y1="20" x2="360" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="370" y1="20" x2="370" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="380" y1="20" x2="380" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="390" y1="20" x2="390" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="400" y1="20" x2="400" y2="100" stroke="#2389ff" stroke-width="0.2" />
+    <line x1="410" y1="20" x2="410" y2="100" stroke="#2389ff" stroke-width="0.2" />
+  </g>
+</svg>
