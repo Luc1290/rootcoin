@@ -30,7 +30,7 @@ async def _broadcast(message: dict):
             await ws.send_text(raw)
         except Exception:
             dead.add(ws)
-    _clients -= dead
+    _clients.difference_update(dead)
 
 
 async def _on_price_update(msg: dict):
@@ -74,7 +74,10 @@ def _pos_to_ws(pos) -> dict:
     duration = ""
     if pos.opened_at:
         from datetime import datetime, timezone
-        delta = datetime.now(timezone.utc) - pos.opened_at
+        opened = pos.opened_at
+        if opened.tzinfo is None:
+            opened = opened.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - opened
         hours, rem = divmod(int(delta.total_seconds()), 3600)
         minutes = rem // 60
         if hours > 24:
