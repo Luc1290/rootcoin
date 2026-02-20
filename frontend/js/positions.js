@@ -19,12 +19,18 @@ const Positions = (() => {
         list.innerHTML = positions.map(p => {
             const pnl = parseFloat(p.pnl_usd) || 0;
             const pnlPct = parseFloat(p.pnl_pct) || 0;
+            const fees = parseFloat(p.entry_fees_usd) || 0;
+            const exitFees = parseFloat(p.exit_fees_est) || 0;
+            const totalFees = fees + exitFees;
             const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
             const sideClass = p.side === 'LONG' ? 'side-long' : 'side-short';
             const entry = parseFloat(p.entry_price) || 0;
             const current = parseFloat(p.current_price) || 0;
             const qty = parseFloat(p.quantity) || 0;
             const value = (current * qty).toFixed(2);
+            const grossPnl = p.side === 'LONG'
+                ? (current - entry) * qty
+                : (entry - current) * qty;
 
             const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
             const orderBadges = [];
@@ -56,10 +62,11 @@ const Positions = (() => {
                         <div>$${value}</div>
                     </div>
                     <div>
-                        <div class="text-gray-500 text-xs">PnL</div>
+                        <div class="text-gray-500 text-xs">PnL net</div>
                         <div class="${pnlClass} font-semibold">
                             ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
                         </div>
+                        <div class="text-gray-600 text-xs">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
                     </div>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">

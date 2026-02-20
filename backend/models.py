@@ -26,6 +26,7 @@ class Position(Base):
     sl_order_id: Mapped[str | None] = mapped_column(String)
     tp_order_id: Mapped[str | None] = mapped_column(String)
     oco_order_list_id: Mapped[str | None] = mapped_column(String)
+    entry_fees_usd: Mapped[Decimal] = mapped_column(Numeric, default=Decimal("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
