@@ -24,6 +24,7 @@ EVENT_LIST_STATUS = "list_status"
 EVENT_PRICE_UPDATE = "price_update"
 
 BINANCE_WS_URL = "wss://stream.binance.com:9443"
+BINANCE_WS_API_URL = "wss://ws-api.binance.com:443/ws-api/v3"
 BINANCE_API_URL = "https://api.binance.com"
 
 MAX_BACKOFF = 60
@@ -152,17 +153,35 @@ class WSManager:
             try:
                 self._listen_token = await self._obtain_listen_token()
 
-                url = f"{BINANCE_WS_URL}/ws/{self._listen_token}"
-                async with websockets.connect(url) as ws:
+                async with websockets.connect(BINANCE_WS_API_URL) as ws:
+                    # Subscribe via the new listenToken method
+                    subscribe_msg = {
+                        "id": self._next_id(),
+                        "method": "userDataStream.subscribe.listenToken",
+                        "params": {"listenToken": self._listen_token},
+                    }
+                    await ws.send(json.dumps(subscribe_msg))
+
+                    # Wait for subscribe response
+                    resp_raw = await ws.recv()
+                    resp = json.loads(resp_raw)
+                    if "error" in resp:
+                        raise RuntimeError(f"Subscribe failed: {resp['error']}")
+
                     connected_at = time.monotonic()
                     backoff = 1
-                    log.info("user_data_stream_connected")
+                    log.info("user_data_stream_connected", method="listenToken")
 
                     async for raw in ws:
                         if not self._running:
                             break
                         msg = json.loads(raw)
-                        await self._handle_user_event(msg)
+                        # WS API wraps events in {"subscriptionId": ..., "event": {...}}
+                        event_data = msg.get("event")
+                        if isinstance(event_data, dict) and "e" in event_data:
+                            await self._handle_user_event(event_data)
+                        elif "e" in msg:
+                            await self._handle_user_event(msg)
 
                         if connected_at and (time.monotonic() - connected_at) > STABLE_CONNECTION_RESET:
                             backoff = 1

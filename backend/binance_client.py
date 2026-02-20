@@ -133,6 +133,30 @@ async def place_margin_order(**kwargs) -> dict:
         raise
 
 
+async def place_oco_order(**kwargs) -> dict:
+    client = await get_client()
+    try:
+        # POST /api/v3/orderList/oco
+        result = await client._post("orderList/oco", True, data=kwargs)
+        log.info("oco_placed", **{k: str(v) for k, v in kwargs.items()})
+        return result
+    except BinanceAPIException as e:
+        log.error("oco_failed", code=e.code, msg=e.message, **{k: str(v) for k, v in kwargs.items()})
+        raise
+
+
+async def place_margin_oco_order(**kwargs) -> dict:
+    client = await get_client()
+    try:
+        # POST /sapi/v1/margin/order/oco
+        result = await client._request_margin_api("post", "margin/order/oco", True, data=kwargs)
+        log.info("margin_oco_placed", **{k: str(v) for k, v in kwargs.items()})
+        return result
+    except BinanceAPIException as e:
+        log.error("margin_oco_failed", code=e.code, msg=e.message, **{k: str(v) for k, v in kwargs.items()})
+        raise
+
+
 async def cancel_order(symbol: str, order_id: str) -> dict:
     client = await get_client()
     try:

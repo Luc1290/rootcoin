@@ -191,28 +191,38 @@ async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> d
 
     validate_order(pos.symbol, qty, sl_price)
 
-    # For LONG close (SELL): TP is above current price, SL is below
-    # aboveType = TP, belowType = SL
-    if pos.side == "LONG":
+    if _is_margin(pos):
+        # Margin OCO uses old format: price (LIMIT_MAKER/TP) + stopPrice/stopLimitPrice (SL)
         kwargs = dict(
             symbol=pos.symbol, side=side, quantity=str(qty),
-            aboveType="TAKE_PROFIT_LIMIT", abovePrice=str(tp_limit),
-            aboveStopPrice=str(tp_price), aboveTimeInForce="GTC",
-            belowType="STOP_LOSS_LIMIT", belowPrice=str(sl_limit),
-            belowStopPrice=str(sl_price), belowTimeInForce="GTC",
+            price=str(tp_limit),
+            stopPrice=str(sl_price),
+            stopLimitPrice=str(sl_limit),
+            stopLimitTimeInForce="GTC",
         )
+        if _is_isolated(pos):
+            kwargs["isIsolated"] = "TRUE"
+        kwargs["sideEffectType"] = "NO_SIDE_EFFECT"
+        result = await binance_client.place_margin_oco_order(**kwargs)
     else:
-        # For SHORT close (BUY): SL is above current price, TP is below
-        kwargs = dict(
-            symbol=pos.symbol, side=side, quantity=str(qty),
-            aboveType="STOP_LOSS_LIMIT", abovePrice=str(sl_limit),
-            aboveStopPrice=str(sl_price), aboveTimeInForce="GTC",
-            belowType="TAKE_PROFIT_LIMIT", belowPrice=str(tp_limit),
-            belowStopPrice=str(tp_price), belowTimeInForce="GTC",
-        )
-
-    # TODO: margin OCO via /sapi/v1/margin/order/oco when needed
-    result = await binance_client.place_order(**kwargs)
+        # Spot OCO uses new format: above/below
+        if pos.side == "LONG":
+            kwargs = dict(
+                symbol=pos.symbol, side=side, quantity=str(qty),
+                aboveType="TAKE_PROFIT_LIMIT", abovePrice=str(tp_limit),
+                aboveStopPrice=str(tp_price), aboveTimeInForce="GTC",
+                belowType="STOP_LOSS_LIMIT", belowPrice=str(sl_limit),
+                belowStopPrice=str(sl_price), belowTimeInForce="GTC",
+            )
+        else:
+            kwargs = dict(
+                symbol=pos.symbol, side=side, quantity=str(qty),
+                aboveType="STOP_LOSS_LIMIT", abovePrice=str(sl_limit),
+                aboveStopPrice=str(sl_price), aboveTimeInForce="GTC",
+                belowType="TAKE_PROFIT_LIMIT", belowPrice=str(tp_limit),
+                belowStopPrice=str(tp_price), belowTimeInForce="GTC",
+            )
+        result = await binance_client.place_oco_order(**kwargs)
 
     order_list_id = str(result.get("orderListId", ""))
     await _save_order(
