@@ -5,7 +5,7 @@
 Application de trading avec dashboard web permettant de :
 - Tracker en temps réel les positions ouvertes sur Binance (spot + margin cross/isolated)
 - Afficher PnL, prix d'entrée, prix actuel, durée de la position
-- Poser des ordres SL, TP, OCO, ou fermer immédiatement depuis le dashboard
+- Poser des ordres SL, TP, OCO, fermer ou annuler les ordres depuis le dashboard
 - Stocker l'historique des trades, balances, et prix des tokens
 - Tourner 24/7 sur un VPS accessible via Tailscale depuis n'importe quel appareil
 
@@ -18,7 +18,7 @@ Application de trading avec dashboard web permettant de :
 | **Backend** | Python 3.11+ / FastAPI | Async natif, WebSocket, léger |
 | **Binance API** | python-binance 1.0.35+ | Meilleur support spot+margin, WebSocket user data stream à jour (post-deprecation listenKey) |
 | **Base de données** | SQLite via SQLAlchemy + aiosqlite | Léger, pas de serveur DB, suffisant pour un utilisateur |
-| **Frontend** | HTML/CSS/JS vanilla + Tailwind CSS v3 (compilé) | Servi directement par FastAPI |
+| **Frontend** | HTML/CSS/JS vanilla + Tailwind CSS (CDN) | Servi directement par FastAPI, pas de build step |
 | **Temps réel** | WebSocket natif (backend↔frontend) + Binance WS streams | Mises à jour instantanées |
 | **Déploiement** | systemd + GitHub | Pas de Docker, simple `git pull` + restart |
 | **Accès distant** | Tailscale | VPN mesh, accès sécurisé depuis PC/iPhone |
@@ -29,7 +29,7 @@ Application de trading avec dashboard web permettant de :
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                        VPS (Docker)                      │
+│                        VPS (systemd)                     │
 │                                                          │
 │  ┌──────────────┐    WebSocket     ┌──────────────────┐  │
 │  │   Binance    │◄───────────────►│                    │  │
@@ -81,7 +81,7 @@ rootcoin/
 │   │
 │   ├── binance_client.py       # Wrapper python-binance (singleton)
 │   ├── position_tracker.py     # Détection et suivi des positions
-│   ├── order_manager.py        # Exécution SL/TP/OCO/Close
+│   ├── order_manager.py        # Exécution SL/TP/OCO/Close/Cancel
 │   ├── price_recorder.py       # Enregistrement périodique des prix
 │   ├── balance_tracker.py      # Snapshot des balances
 │   ├── ws_manager.py           # Gestion WebSocket Binance (user data + prix)
@@ -98,21 +98,18 @@ rootcoin/
 │   │
 │   └── utils/
 │       ├── __init__.py
-│       └── helpers.py          # Fonctions utilitaires
+│       └── symbol_filters.py   # Cache exchangeInfo, validation/arrondi ordres
 │
 ├── frontend/
 │   ├── index.html              # Dashboard principal (SPA)
 │   ├── css/
-│   │   ├── tailwind.css        # Source Tailwind (directives @tailwind)
-│   │   ├── output.css          # CSS compilé (généré, ne pas éditer)
-│   │   └── style.css           # Styles custom
+│   │   └── style.css           # Styles custom (Tailwind via CDN)
 │   └── js/
-│       ├── app.js              # Logique principale
+│       ├── app.js              # Bootstrap, tabs, toasts
 │       ├── websocket.js        # Connexion WebSocket au backend
-│       ├── positions.js        # Rendu des positions
-│       ├── orders.js           # Formulaires SL/TP/OCO
-│       ├── balances.js         # Affichage balances
-│       └── charts.js           # Graphiques prix/PnL (lightweight-charts)
+│       ├── positions.js        # Rendu positions + SL/TP/OCO/Close/Cancel
+│       ├── trades.js           # Historique trades
+│       └── balances.js         # Affichage balances
 │
 ├── data/
 │   └── rootcoin.db             # Base SQLite (créée automatiquement)
