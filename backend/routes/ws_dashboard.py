@@ -86,15 +86,23 @@ def _pos_to_ws(pos) -> dict:
         else:
             duration = f"{hours}h {minutes}m"
 
+    from decimal import Decimal
+    entry_fees = pos.entry_fees_usd or Decimal("0")
+    current = pos.current_price or Decimal("0")
+    qty = pos.quantity or Decimal("0")
+    exit_fees_est = qty * current * Decimal("0.001")
+
     return {
         "id": pos.id,
         "symbol": pos.symbol,
         "side": pos.side,
         "entry_price": str(pos.entry_price) if pos.entry_price else "0",
-        "current_price": str(pos.current_price) if pos.current_price else None,
-        "quantity": str(pos.quantity) if pos.quantity else "0",
+        "current_price": str(current),
+        "quantity": str(qty),
         "pnl_usd": str(pos.pnl_usd) if pos.pnl_usd else "0",
         "pnl_pct": str(pos.pnl_pct) if pos.pnl_pct else "0",
+        "entry_fees_usd": str(entry_fees),
+        "exit_fees_est": str(exit_fees_est),
         "market_type": pos.market_type,
         "sl_order_id": pos.sl_order_id,
         "tp_order_id": pos.tp_order_id,

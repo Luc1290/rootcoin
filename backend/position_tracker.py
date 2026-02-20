@@ -16,6 +16,7 @@ log = structlog.get_logger()
 DUST_THRESHOLD_USD = Decimal("5")
 MIN_MARGIN_LONG_USD = Decimal("50")
 SHORT_CLOSE_GRACE = 300
+ESTIMATED_EXIT_FEE_RATE = Decimal("0.001")  # 0.1% taker fee
 
 _positions: dict[int, Position] = {}
 _recent_short_closes: dict[str, float] = {}
@@ -69,12 +70,54 @@ def _compute_pnl(pos: Position, price: Decimal) -> tuple[Decimal, Decimal]:
     if pos.entry_price <= 0:
         return Decimal("0"), Decimal("0")
     if pos.side == "LONG":
-        pnl_usd = (price - pos.entry_price) * pos.quantity
-        pnl_pct = ((price / pos.entry_price) - 1) * 100
+        gross = (price - pos.entry_price) * pos.quantity
     else:
-        pnl_usd = (pos.entry_price - price) * pos.quantity
-        pnl_pct = ((pos.entry_price / price) - 1) * 100 if price > 0 else Decimal("0")
+        gross = (pos.entry_price - price) * pos.quantity
+
+    entry_fees = pos.entry_fees_usd or Decimal("0")
+    exit_fees_est = pos.quantity * price * ESTIMATED_EXIT_FEE_RATE
+    pnl_usd = gross - entry_fees - exit_fees_est
+
+    cost = pos.entry_price * pos.quantity
+    pnl_pct = (pnl_usd / cost * 100) if cost > 0 else Decimal("0")
     return pnl_usd, pnl_pct
+
+
+async def _commission_to_usd(commission: Decimal, commission_asset: str, fill_price: Decimal, symbol: str) -> Decimal:
+    if commission <= 0:
+        return Decimal("0")
+    stables = settings.stablecoins_set
+    if commission_asset in stables:
+        return commission
+    base = _extract_base_asset(symbol)
+    if commission_asset == base:
+        return commission * fill_price
+    # Other asset (BNB, etc.) — get real price from in-memory or API
+    asset_symbol = f"{commission_asset}USDC"
+    for pos in _positions.values():
+        if pos.symbol == asset_symbol and pos.current_price and pos.current_price > 0:
+            return commission * pos.current_price
+    # Fallback: fetch price from Binance REST API
+    try:
+        client = await binance_client.get_client()
+        ticker = await client.get_symbol_ticker(symbol=asset_symbol)
+        price = Decimal(ticker["price"])
+        if price > 0:
+            return commission * price
+    except Exception:
+        pass
+    # Last resort: try USDT pair
+    try:
+        asset_usdt = f"{commission_asset}USDT"
+        client = await binance_client.get_client()
+        ticker = await client.get_symbol_ticker(symbol=asset_usdt)
+        price = Decimal(ticker["price"])
+        if price > 0:
+            return commission * price
+    except Exception:
+        pass
+    log.warning("commission_conversion_failed", asset=commission_asset, amount=str(commission))
+    return Decimal("0")
 
 
 def _is_dust(quantity: Decimal, price: Decimal) -> bool:
@@ -101,17 +144,27 @@ async def _scan_existing_positions():
     found_keys: set[tuple[str, str]] = set()
     stables = settings.stablecoins_set
 
+    # Fetch all ticker prices for dust filtering
+    prices: dict[str, Decimal] = {}
+    try:
+        client = await binance_client.get_client()
+        for t in await client.get_all_tickers():
+            prices[t["symbol"]] = Decimal(t["price"])
+    except Exception:
+        log.warning("ticker_fetch_failed_for_scan", exc_info=True)
+
     # Spot
     try:
         for bal in await binance_client.get_spot_balances():
             asset = bal["asset"]
-            if asset in stables or asset == "BNB":
+            if asset in stables:
                 continue
             total = Decimal(bal["free"]) + Decimal(bal["locked"])
             if total <= 0:
                 continue
             symbol = _asset_to_symbol(asset)
-            if _is_dust(total, Decimal("0")):
+            price = prices.get(symbol)
+            if price and _is_dust(total, price):
                 continue
             found_keys.add((symbol, "SPOT"))
             await _upsert_scanned(symbol, "LONG", total, "SPOT", db_positions)
@@ -133,7 +186,8 @@ async def _scan_existing_positions():
                 await _upsert_scanned(symbol, "SHORT", borrowed, "CROSS_MARGIN", db_positions)
             elif free + locked > 0:
                 total = free + locked
-                if _is_dust(total, Decimal("0")):
+                price = prices.get(symbol)
+                if price and _is_dust(total, price):
                     continue
                 found_keys.add((symbol, "CROSS_MARGIN"))
                 await _upsert_scanned(symbol, "LONG", total, "CROSS_MARGIN", db_positions)
@@ -153,7 +207,8 @@ async def _scan_existing_positions():
                 await _upsert_scanned(symbol, "SHORT", base_borrowed, "ISOLATED_MARGIN", db_positions)
             elif base_free + base_locked > 0:
                 total = base_free + base_locked
-                if _is_dust(total, Decimal("0")):
+                price = prices.get(symbol)
+                if price and _is_dust(total, price):
                     continue
                 found_keys.add((symbol, "ISOLATED_MARGIN"))
                 await _upsert_scanned(symbol, "LONG", total, "ISOLATED_MARGIN", db_positions)
@@ -192,17 +247,24 @@ async def _upsert_scanned(
         existing.quantity = quantity
         existing.side = side
         existing.updated_at = _now()
+        if not existing.entry_fees_usd or existing.entry_fees_usd <= 0:
+            entry_price, fees = await _calculate_entry_price(symbol, side, quantity, market_type)
+            existing.entry_fees_usd = fees
+            if not existing.entry_price or existing.entry_price <= 0:
+                existing.entry_price = entry_price
         await _save_position(existing)
         _positions[existing.id] = existing
-        log.info("position_synced", symbol=symbol, side=side, qty=str(quantity))
+        log.info("position_synced", symbol=symbol, side=side, qty=str(quantity),
+                 fees_usd=str(existing.entry_fees_usd))
     else:
-        entry_price = await _calculate_entry_price(symbol, side, quantity, market_type)
+        entry_price, fees = await _calculate_entry_price(symbol, side, quantity, market_type)
         pos = Position(
             symbol=symbol,
             side=side,
             entry_price=entry_price,
             quantity=quantity,
             market_type=market_type,
+            entry_fees_usd=fees,
             opened_at=_now(),
             is_active=True,
         )
@@ -211,7 +273,8 @@ async def _upsert_scanned(
             await session.commit()
             await session.refresh(pos)
         _positions[pos.id] = pos
-        log.info("position_detected", symbol=symbol, side=side, entry=str(entry_price), qty=str(quantity))
+        log.info("position_detected", symbol=symbol, side=side, entry=str(entry_price),
+                 qty=str(quantity), fees_usd=str(fees))
 
 
 # --- Entry price calculation ---
@@ -219,7 +282,8 @@ async def _upsert_scanned(
 
 async def _calculate_entry_price(
     symbol: str, side: str, quantity: Decimal, market_type: str
-) -> Decimal:
+) -> tuple[Decimal, Decimal]:
+    """Returns (entry_price, total_fees_usd)."""
     try:
         if market_type == "SPOT":
             trades = await binance_client.get_my_trades(symbol)
@@ -229,10 +293,10 @@ async def _calculate_entry_price(
             )
     except Exception:
         log.warning("entry_price_fetch_failed", symbol=symbol)
-        return Decimal("0")
+        return Decimal("0"), Decimal("0")
 
     if not trades:
-        return Decimal("0")
+        return Decimal("0"), Decimal("0")
 
     trades.sort(key=lambda t: t["time"], reverse=True)
     target_buyer = side == "LONG"
@@ -240,13 +304,13 @@ async def _calculate_entry_price(
 
     accumulated = Decimal("0")
     weighted = Decimal("0")
+    total_fees = Decimal("0")
 
     for t in trades:
         if t["isBuyer"] != target_buyer:
             continue
         qty = Decimal(t["qty"])
         price = Decimal(t["price"])
-        # Adjust for fee in base asset (reduces actual received qty)
         comm = Decimal(t.get("commission", "0"))
         comm_asset = t.get("commissionAsset", "")
         if comm_asset == base_asset and target_buyer:
@@ -256,18 +320,17 @@ async def _calculate_entry_price(
         used = min(qty, remaining)
         weighted += used * price
         accumulated += used
+        total_fees += await _commission_to_usd(comm, comm_asset, price, symbol)
         if accumulated >= quantity:
             break
 
     if accumulated <= 0:
-        return Decimal("0")
-    return weighted / accumulated
+        return Decimal("0"), Decimal("0")
+    return weighted / accumulated, total_fees
 
 
 async def _verify_order_refs():
     for pos in list(_positions.values()):
-        if not (pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id):
-            continue
         try:
             if pos.market_type == "SPOT":
                 open_orders = await binance_client.get_open_orders(pos.symbol)
@@ -281,18 +344,56 @@ async def _verify_order_refs():
 
         open_ids = {str(o["orderId"]) for o in open_orders}
         open_list_ids = {str(o.get("orderListId", "")) for o in open_orders} - {"", "-1"}
+
+        log.info("verify_order_refs", symbol=pos.symbol,
+                 pos_sl=pos.sl_order_id, pos_tp=pos.tp_order_id,
+                 pos_oco=pos.oco_order_list_id,
+                 open_order_ids=list(open_ids), open_list_ids=list(open_list_ids))
+
         updates = {}
+
+        # Clear stale refs
         if pos.sl_order_id and pos.sl_order_id not in open_ids:
             updates["sl_order_id"] = None
         if pos.tp_order_id and pos.tp_order_id not in open_ids:
             updates["tp_order_id"] = None
         if pos.oco_order_list_id and pos.oco_order_list_id not in open_list_ids:
             updates["oco_order_list_id"] = None
+
+        # Effective values after stale clearing
+        eff_sl = updates.get("sl_order_id", pos.sl_order_id)
+        eff_tp = updates.get("tp_order_id", pos.tp_order_id)
+        eff_oco = updates.get("oco_order_list_id", pos.oco_order_list_id)
+
+        # Discover open orders not yet tracked
+        if open_list_ids and not eff_oco:
+            oco_id = next(iter(open_list_ids))
+            updates["oco_order_list_id"] = oco_id
+            updates["sl_order_id"] = None
+            updates["tp_order_id"] = None
+            log.info("oco_discovered", symbol=pos.symbol, order_list_id=oco_id)
+        elif not eff_oco:
+            close_side = "SELL" if pos.side == "LONG" else "BUY"
+            for o in open_orders:
+                oid = str(o["orderId"])
+                oside = o.get("side", "")
+                otype = o.get("type", "")
+                if oside != close_side:
+                    continue
+                if otype == "STOP_LOSS_LIMIT" and not eff_sl:
+                    updates["sl_order_id"] = oid
+                    eff_sl = oid
+                    log.info("sl_discovered", symbol=pos.symbol, order_id=oid)
+                elif otype in ("TAKE_PROFIT_LIMIT", "LIMIT_MAKER") and not eff_tp:
+                    updates["tp_order_id"] = oid
+                    eff_tp = oid
+                    log.info("tp_discovered", symbol=pos.symbol, order_id=oid)
+
         if updates:
             for k, v in updates.items():
                 setattr(pos, k, v)
             await _save_position(pos)
-            log.info("stale_order_refs_cleared", symbol=pos.symbol, cleared=list(updates.keys()))
+            log.info("order_refs_updated", symbol=pos.symbol, updates={k: v for k, v in updates.items()})
 
 
 async def _clean_order_ref(order_id: str):
@@ -379,22 +480,25 @@ async def _handle_execution_report(msg: dict):
     if commission_asset == base_asset and side == "BUY":
         effective_qty = fill_qty - commission
 
+    fee_usd = await _commission_to_usd(commission, commission_asset, fill_price, symbol)
+
     position = _find_position(symbol, market_type)
 
     if side == "BUY":
-        await _handle_buy(symbol, effective_qty, fill_price, market_type, position)
+        await _handle_buy(symbol, effective_qty, fill_price, market_type, position, fee_usd)
     else:
-        await _handle_sell(symbol, effective_qty, fill_price, market_type, position)
+        await _handle_sell(symbol, effective_qty, fill_price, market_type, position, fee_usd)
 
 
 async def _handle_buy(
-    symbol: str, qty: Decimal, price: Decimal, market_type: str, position: Position | None
+    symbol: str, qty: Decimal, price: Decimal, market_type: str,
+    position: Position | None, fee_usd: Decimal = Decimal("0"),
 ):
     if market_type == "SPOT":
         if position and position.side == "LONG":
-            await _dca(position, qty, price)
+            await _dca(position, qty, price, fee_usd)
         else:
-            await _open_position(symbol, "LONG", qty, price, market_type)
+            await _open_position(symbol, "LONG", qty, price, market_type, fee_usd)
         return
 
     # Margin BUY: close SHORT or open LONG?
@@ -410,16 +514,17 @@ async def _handle_buy(
             return
 
     if position and position.side == "LONG":
-        await _dca(position, qty, price)
+        await _dca(position, qty, price, fee_usd)
     else:
         if qty * price < MIN_MARGIN_LONG_USD:
             log.info("ignoring_small_margin_long", symbol=symbol, notional=str(qty * price))
             return
-        await _open_position(symbol, "LONG", qty, price, market_type)
+        await _open_position(symbol, "LONG", qty, price, market_type, fee_usd)
 
 
 async def _handle_sell(
-    symbol: str, qty: Decimal, price: Decimal, market_type: str, position: Position | None
+    symbol: str, qty: Decimal, price: Decimal, market_type: str,
+    position: Position | None, fee_usd: Decimal = Decimal("0"),
 ):
     if market_type == "SPOT":
         if position and position.side == "LONG":
@@ -432,16 +537,17 @@ async def _handle_sell(
     if position and position.side == "LONG":
         await _reduce_or_close(position, qty, price)
     elif position and position.side == "SHORT":
-        await _dca(position, qty, price)
+        await _dca(position, qty, price, fee_usd)
     else:
-        await _open_position(symbol, "SHORT", qty, price, market_type)
+        await _open_position(symbol, "SHORT", qty, price, market_type, fee_usd)
 
 
 # --- Position operations ---
 
 
 async def _open_position(
-    symbol: str, side: str, qty: Decimal, price: Decimal, market_type: str
+    symbol: str, side: str, qty: Decimal, price: Decimal, market_type: str,
+    fee_usd: Decimal = Decimal("0"),
 ):
     pos = Position(
         symbol=symbol,
@@ -452,6 +558,7 @@ async def _open_position(
         current_price=price,
         pnl_usd=Decimal("0"),
         pnl_pct=Decimal("0"),
+        entry_fees_usd=fee_usd,
         opened_at=_now(),
         is_active=True,
     )
@@ -465,11 +572,12 @@ async def _open_position(
              market_type=market_type)
 
 
-async def _dca(position: Position, qty: Decimal, price: Decimal):
+async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decimal = Decimal("0")):
     old_value = position.quantity * position.entry_price
     new_value = qty * price
     position.quantity = position.quantity + qty
     position.entry_price = (old_value + new_value) / position.quantity
+    position.entry_fees_usd = (position.entry_fees_usd or Decimal("0")) + fee_usd
     position.updated_at = _now()
     await _save_position(position)
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
