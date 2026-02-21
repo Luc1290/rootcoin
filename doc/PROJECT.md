@@ -93,7 +93,8 @@ rootcoin/
 │   │   ├── api_orders.py       # API REST ordres (SL/TP/OCO/Close)
 │   │   ├── api_balances.py     # API REST balances
 │   │   ├── api_trades.py       # API REST historique trades
-│   │   ├── api_prices.py       # API REST prix historiques
+│   │   ├── api_prices.py       # API REST prix historiques (hours, order params)
+│   │   ├── api_portfolio.py    # API REST historique portfolio (agrégation USD)
 │   │   └── ws_dashboard.py     # WebSocket endpoint pour le frontend
 │   │
 │   └── utils/
@@ -107,9 +108,11 @@ rootcoin/
 │   └── js/
 │       ├── app.js              # Bootstrap, tabs, toasts
 │       ├── websocket.js        # Connexion WebSocket au backend
-│       ├── positions.js        # Rendu positions + SL/TP/OCO/Close/Cancel
+│       ├── charts.js           # Mini charts positions + portfolio chart (Lightweight Charts)
+│       ├── position-cards.js   # Construction et mise à jour DOM des cartes position
+│       ├── positions.js        # Logique positions (DOM-diff, modals, ordres)
 │       ├── trades.js           # Historique trades
-│       └── balances.js         # Affichage balances
+│       └── balances.js         # Affichage balances + portfolio chart
 │
 ├── data/
 │   └── rootcoin.db             # Base SQLite (créée automatiquement)
@@ -490,10 +493,14 @@ GET /api/prices/BTCUSDC → [{"price": "67599.98", ...}, ...]
     - Mise à jour du DOM en temps réel
     - Reconnexion automatique avec backoff exponentiel
 
-16. **Graphiques** --- TODO
-    - Utiliser TradingView Lightweight Charts (open source)
-    - Mini chart de prix pour chaque position
-    - Chart d'évolution du portfolio dans la vue Balances
+16. **Graphiques** --- DONE
+    - TradingView Lightweight Charts v4 (CDN `unpkg.com/lightweight-charts@4.2.2`)
+    - Mini chart area (120px) par position : historique 24h + mise à jour temps réel (1 point/min)
+    - Chart d'évolution du portfolio dans la vue Balances (area 200px, sélecteur 24h/7d/30d)
+    - DOM-diff sur les cartes positions pour préserver les charts lors des re-renders toutes les 2s
+    - Backend : `GET /api/portfolio/history` (agrégation `usd_value` par snapshot), `GET /api/prices/{symbol}?hours=&order=asc`
+    - `balance_tracker` enrichi : calcul automatique de `usd_value` sur chaque snapshot
+    - Header responsive : 2 lignes sur mobile (logo+clock / tabs pleine largeur), 1 ligne sur desktop
 
 ### Phase 5 : Déploiement VPS --- DONE
 **Objectif** : Faire tourner le système 24/7 sur un VPS accessible de partout.

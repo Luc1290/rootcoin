@@ -14,6 +14,9 @@ log = structlog.get_logger()
 
 SL_PRICE_OFFSET = Decimal("0.001")
 TP_PRICE_OFFSET = Decimal("0.001")
+# Buffer added to SHORT close BUY qty so net received (after commission)
+# exceeds the debt.  Prevents Binance AUTO_REPAY 90 % fallback.
+SHORT_CLOSE_FEE_BUFFER = Decimal("0.0015")
 
 
 def _client_order_id(purpose: str, position_id: int) -> str:
@@ -37,6 +40,15 @@ def _is_margin(position: Position) -> bool:
 
 def _is_isolated(position: Position) -> bool:
     return position.market_type == "ISOLATED_MARGIN"
+
+
+def _close_qty(pos: Position) -> Decimal:
+    """Quantity for fully closing a position.  For SHORT margin, adds a small
+    buffer so the BUY commission doesn't make AUTO_REPAY fall back to 90 %."""
+    qty = pos.quantity
+    if pos.side == "SHORT" and _is_margin(pos):
+        qty = qty * (1 + SHORT_CLOSE_FEE_BUFFER)
+    return round_quantity(pos.symbol, qty)
 
 
 async def _save_order(
@@ -81,7 +93,7 @@ async def _update_position_order_ref(position: Position, **kwargs):
 async def place_stop_loss(position_id: int, stop_price: Decimal) -> dict:
     pos = _get_position(position_id)
     side = _close_side(pos)
-    qty = round_quantity(pos.symbol, pos.quantity)
+    qty = _close_qty(pos)
 
     if pos.side == "LONG":
         limit_price = round_price(pos.symbol, stop_price * (1 - SL_PRICE_OFFSET))
@@ -121,7 +133,7 @@ async def place_stop_loss(position_id: int, stop_price: Decimal) -> dict:
 async def place_take_profit(position_id: int, tp_price: Decimal) -> dict:
     pos = _get_position(position_id)
     side = _close_side(pos)
-    qty = round_quantity(pos.symbol, pos.quantity)
+    qty = _close_qty(pos)
 
     if pos.side == "LONG":
         limit_price = round_price(pos.symbol, tp_price * (1 + TP_PRICE_OFFSET))
@@ -161,7 +173,7 @@ async def place_take_profit(position_id: int, tp_price: Decimal) -> dict:
 async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> dict:
     pos = _get_position(position_id)
     side = _close_side(pos)
-    qty = round_quantity(pos.symbol, pos.quantity)
+    qty = _close_qty(pos)
     tp_price = round_price(pos.symbol, tp_price)
     sl_price = round_price(pos.symbol, sl_price)
 
@@ -242,7 +254,7 @@ async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> d
 async def close_position(position_id: int) -> dict:
     pos = _get_position(position_id)
     side = _close_side(pos)
-    qty = round_quantity(pos.symbol, pos.quantity)
+    qty = _close_qty(pos)
 
     kwargs = dict(
         symbol=pos.symbol, side=side, type="MARKET",

@@ -31,6 +31,7 @@ _recent_short_closes: dict[str, float] = {}
 
 async def start():
     await _scan_existing_positions()
+    await _backfill_all_trades()
     ws_manager.on(EVENT_EXECUTION_REPORT, _handle_execution_report)
     ws_manager.on(EVENT_LIST_STATUS, _handle_list_status)
     ws_manager.on(EVENT_PRICE_UPDATE, _handle_price_update)
@@ -141,6 +142,29 @@ def _find_position(symbol: str, market_type: str) -> Position | None:
 
 
 async def _scan_existing_positions():
+    # Fix closed positions missing closed_at or realized_pnl_pct (from earlier bug)
+    async with async_session() as session:
+        from sqlalchemy import or_
+        result = await session.execute(
+            select(Position).where(
+                Position.is_active == False,
+                Position.realized_pnl.isnot(None),
+                or_(Position.closed_at.is_(None), Position.realized_pnl_pct.is_(None)),
+            )
+        )
+        for pos in result.scalars().all():
+            if not pos.closed_at:
+                pos.closed_at = pos.updated_at or _now()
+            if pos.realized_pnl_pct is None:
+                entry_cost = (pos.entry_quantity or pos.quantity) * pos.entry_price
+                total_fees = (pos.entry_fees_usd or Decimal("0")) + (pos.exit_fees_usd or Decimal("0"))
+                net_pnl = pos.realized_pnl - total_fees
+                pos.realized_pnl_pct = (net_pnl / entry_cost * 100) if entry_cost > 0 else Decimal("0")
+            await session.merge(pos)
+            log.info("fixed_closed_position", symbol=pos.symbol, id=pos.id,
+                     pnl_pct=str(pos.realized_pnl_pct))
+        await session.commit()
+
     async with async_session() as session:
         result = await session.execute(select(Position).where(Position.is_active == True))
         db_positions = {p.id: p for p in result.scalars().all()}
@@ -224,6 +248,9 @@ async def _scan_existing_positions():
         for pos in db_positions.values():
             if pos.is_active and (pos.symbol, pos.market_type) not in found_keys:
                 pos.is_active = False
+                pos.quantity = Decimal("0")
+                if not pos.closed_at:
+                    pos.closed_at = _now()
                 pos.updated_at = _now()
                 await session.merge(pos)
                 log.info("position_closed_stale", symbol=pos.symbol, market_type=pos.market_type)
@@ -247,9 +274,14 @@ async def _upsert_scanned(
             existing = pos
             break
 
+    # Always backfill trades from Binance history
+    await _backfill_trades_for_symbol(symbol, market_type)
+
     if existing:
         existing.quantity = quantity
         existing.side = side
+        if not existing.entry_quantity:
+            existing.entry_quantity = quantity
         existing.updated_at = _now()
         if not existing.entry_fees_usd or existing.entry_fees_usd <= 0:
             entry_price, fees = await _calculate_entry_price(symbol, side, quantity, market_type)
@@ -267,6 +299,7 @@ async def _upsert_scanned(
             side=side,
             entry_price=entry_price,
             quantity=quantity,
+            entry_quantity=quantity,
             market_type=market_type,
             entry_fees_usd=fees,
             opened_at=_now(),
@@ -331,6 +364,72 @@ async def _calculate_entry_price(
     if accumulated <= 0:
         return Decimal("0"), Decimal("0")
     return weighted / accumulated, total_fees
+
+
+async def _backfill_trades_for_symbol(symbol: str, market_type: str):
+    try:
+        if market_type == "SPOT":
+            trades = await binance_client.get_my_trades(symbol)
+        else:
+            trades = await binance_client.get_margin_trades(
+                symbol, is_isolated=(market_type == "ISOLATED_MARGIN")
+            )
+    except Exception:
+        log.warning("backfill_trades_fetch_failed", symbol=symbol)
+        return
+    if not trades:
+        return
+    async with async_session() as session:
+        for t in trades:
+            trade_id = str(t.get("id", ""))
+            existing = await session.execute(
+                select(Trade).where(Trade.binance_trade_id == trade_id)
+            )
+            if existing.scalar_one_or_none():
+                continue
+            qty = Decimal(t["qty"])
+            price = Decimal(t["price"])
+            trade = Trade(
+                binance_trade_id=trade_id,
+                binance_order_id=str(t.get("orderId", "")),
+                symbol=symbol,
+                side="BUY" if t["isBuyer"] else "SELL",
+                price=price,
+                quantity=qty,
+                quote_qty=price * qty,
+                commission=Decimal(t.get("commission", "0")),
+                commission_asset=t.get("commissionAsset", ""),
+                market_type=market_type,
+                is_maker=t.get("isMaker", False),
+                executed_at=datetime.fromtimestamp(t["time"] / 1000, tz=timezone.utc),
+            )
+            session.add(trade)
+        await session.commit()
+    log.info("trades_backfilled", symbol=symbol, count=len(trades))
+
+
+async def _backfill_all_trades():
+    """Backfill trades for all known symbols (DB positions + watchlist)."""
+    async with async_session() as session:
+        from sqlalchemy import distinct
+        result = await session.execute(
+            select(distinct(Position.symbol), Position.market_type)
+        )
+        pairs = [(s, mt) for s, mt in result.all()]
+
+    # Also backfill watchlist symbols (covers trades before server existed)
+    known_symbols = {s for s, _ in pairs}
+    for symbol in settings.watchlist:
+        if symbol not in known_symbols:
+            pairs.append((symbol, "CROSS_MARGIN"))
+
+    already_done: set[str] = set()
+    for symbol, market_type in pairs:
+        if symbol in already_done:
+            continue
+        already_done.add(symbol)
+        await _backfill_trades_for_symbol(symbol, market_type)
+    log.info("backfill_all_trades_done", symbols=len(already_done))
 
 
 async def _verify_order_refs():
@@ -478,15 +577,19 @@ async def _handle_execution_report(msg: dict):
         is_maker=msg.get("m", False),
     )
 
-    # Adjust qty for fee in base asset
+    position = _find_position(symbol, market_type)
+
+    # Adjust qty for fee in base asset — only for LONG buys (commission
+    # reduces received qty).  For SHORT closes the full fill_qty covers the
+    # debt; commission is a separate cost tracked in fee_usd.
     base_asset = _extract_base_asset(symbol)
     effective_qty = fill_qty
     if commission_asset == base_asset and side == "BUY":
-        effective_qty = fill_qty - commission
+        closing_short = position and position.side == "SHORT"
+        if not closing_short:
+            effective_qty = fill_qty - commission
 
     fee_usd = await _commission_to_usd(commission, commission_asset, fill_price, symbol)
-
-    position = _find_position(symbol, market_type)
 
     if side == "BUY":
         await _handle_buy(symbol, effective_qty, fill_price, market_type, position, fee_usd)
@@ -507,7 +610,7 @@ async def _handle_buy(
 
     # Margin BUY: close SHORT or open LONG?
     if position and position.side == "SHORT":
-        await _reduce_or_close(position, qty, price)
+        await _reduce_or_close(position, qty, price, fee_usd)
         return
 
     # Check anti-false-LONG after SHORT close
@@ -532,14 +635,14 @@ async def _handle_sell(
 ):
     if market_type == "SPOT":
         if position and position.side == "LONG":
-            await _reduce_or_close(position, qty, price)
+            await _reduce_or_close(position, qty, price, fee_usd)
         else:
             log.warning("spot_sell_no_position", symbol=symbol)
         return
 
     # Margin SELL: close LONG or open SHORT?
     if position and position.side == "LONG":
-        await _reduce_or_close(position, qty, price)
+        await _reduce_or_close(position, qty, price, fee_usd)
     elif position and position.side == "SHORT":
         await _dca(position, qty, price, fee_usd)
     else:
@@ -558,6 +661,7 @@ async def _open_position(
         side=side,
         entry_price=price,
         quantity=qty,
+        entry_quantity=qty,
         market_type=market_type,
         current_price=price,
         pnl_usd=Decimal("0"),
@@ -582,21 +686,33 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
     position.quantity = position.quantity + qty
     position.entry_price = (old_value + new_value) / position.quantity
     position.entry_fees_usd = (position.entry_fees_usd or Decimal("0")) + fee_usd
+    position.entry_quantity = (position.entry_quantity or Decimal("0")) + qty
     position.updated_at = _now()
     await _save_position(position)
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
              qty=str(position.quantity))
 
 
-async def _reduce_or_close(position: Position, qty: Decimal, price: Decimal):
+async def _reduce_or_close(
+    position: Position, qty: Decimal, price: Decimal, fee_usd: Decimal = Decimal("0"),
+):
     if position.side == "LONG":
         realized = (price - position.entry_price) * qty
     else:
         realized = (position.entry_price - price) * qty
 
+    position.realized_pnl = (position.realized_pnl or Decimal("0")) + realized
+    position.exit_fees_usd = (position.exit_fees_usd or Decimal("0")) + fee_usd
+    position.exit_price = price
+
     new_qty = position.quantity - qty
 
     if _is_dust(new_qty, price):
+        entry_cost = (position.entry_quantity or position.quantity) * position.entry_price
+        total_fees = (position.entry_fees_usd or Decimal("0")) + position.exit_fees_usd
+        net_pnl = position.realized_pnl - total_fees
+        position.realized_pnl_pct = (net_pnl / entry_cost * 100) if entry_cost > 0 else Decimal("0")
+        position.closed_at = _now()
         position.is_active = False
         position.quantity = Decimal("0")
         position.updated_at = _now()
@@ -607,11 +723,11 @@ async def _reduce_or_close(position: Position, qty: Decimal, price: Decimal):
             _recent_short_closes[position.symbol] = _time.monotonic()
         if position.market_type != "SPOT":
             asyncio.create_task(
-                _sell_margin_residual(position.symbol, position.market_type)
+                _sell_margin_residual(position.symbol, position.market_type, position.side)
             )
 
         log.info("position_closed", symbol=position.symbol, side=position.side,
-                 pnl=str(realized))
+                 pnl=str(realized), net_pnl=str(net_pnl))
     else:
         position.quantity = new_qty
         position.updated_at = _now()
@@ -620,7 +736,7 @@ async def _reduce_or_close(position: Position, qty: Decimal, price: Decimal):
                  realized_pnl=str(realized))
 
 
-async def _sell_margin_residual(symbol: str, market_type: str):
+async def _sell_margin_residual(symbol: str, market_type: str, side: str = "LONG"):
     from backend.utils.symbol_filters import round_quantity
 
     base_asset = _extract_base_asset(symbol)
@@ -634,13 +750,28 @@ async def _sell_margin_residual(symbol: str, market_type: str):
                 if not bal:
                     return
                 free = Decimal(bal.get("free", "0"))
+                borrowed = Decimal(bal.get("borrowed", "0"))
             else:
                 pairs = await binance_client.get_isolated_margin_balances()
                 pair = next((p for p in pairs if p.get("symbol") == symbol), None)
                 if not pair:
                     return
-                free = Decimal(pair.get("baseAsset", {}).get("free", "0"))
+                base_info = pair.get("baseAsset", {})
+                free = Decimal(base_info.get("free", "0"))
+                borrowed = Decimal(base_info.get("borrowed", "0"))
 
+            # SHORT residual: remaining borrowed amount (from commission on close BUY)
+            if side == "SHORT" and borrowed > 0:
+                await binance_client.repay_margin_loan(
+                    asset=base_asset, amount=borrowed,
+                    is_isolated=(market_type == "ISOLATED_MARGIN"),
+                    symbol=symbol if market_type == "ISOLATED_MARGIN" else None,
+                )
+                log.info("margin_short_residual_repaid", symbol=symbol,
+                         asset=base_asset, amount=str(borrowed))
+                return
+
+            # LONG residual: remaining free base asset
             if free <= 0:
                 return
 
@@ -658,7 +789,10 @@ async def _sell_margin_residual(symbol: str, market_type: str):
             if qty <= 0:
                 return
 
-            kwargs = dict(symbol=symbol, side="SELL", type="MARKET", quantity=str(qty))
+            kwargs = dict(
+                symbol=symbol, side="SELL", type="MARKET", quantity=str(qty),
+                sideEffectType="AUTO_REPAY",
+            )
             if market_type == "ISOLATED_MARGIN":
                 kwargs["isIsolated"] = "TRUE"
 
@@ -668,10 +802,10 @@ async def _sell_margin_residual(symbol: str, market_type: str):
             return
 
         except Exception:
-            log.warning("margin_residual_sell_failed", symbol=symbol,
-                        attempt=attempt, exc_info=True)
+            log.warning("margin_residual_cleanup_failed", symbol=symbol,
+                        side=side, attempt=attempt, exc_info=True)
 
-    log.error("margin_residual_sell_exhausted", symbol=symbol)
+    log.error("margin_residual_cleanup_exhausted", symbol=symbol, side=side)
 
 
 async def _handle_list_status(msg: dict):
