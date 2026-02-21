@@ -53,14 +53,14 @@ const Balances = (() => {
             const usdClass = usdVal !== null && usdVal < 0 ? 'text-red-400' : '';
             const usdText = usdVal !== null ? formatUsd(usdVal) : '-';
             const totalCell = i === 0
-                ? `<td class="py-2 text-center font-bold text-base align-middle border-l border-gray-700 px-3" rowspan="${rows.length}">${formatUsd(total)}</td>`
+                ? `<td class="text-center font-bold text-base align-middle border-l border-gray-800/50 pl-5 pr-2" rowspan="${rows.length}">${formatUsd(total)}</td>`
                 : '';
 
             return `
-            <tr class="border-b border-gray-800">
-                <td class="py-2 font-medium">${a.asset} <span class="text-gray-600 text-xs">${walletLabel}</span></td>
-                <td class="py-2 text-center">${formatQty(a.net)}${borrowedHtml}</td>
-                <td class="py-2 text-center font-medium ${usdClass}">${usdText}</td>
+            <tr>
+                <td class="font-medium">${a.asset} <span class="text-gray-600 text-xs font-normal">${walletLabel}</span></td>
+                <td class="text-center tabular-nums">${formatQty(a.net)}${borrowedHtml}</td>
+                <td class="text-center font-medium tabular-nums ${usdClass}">${usdText}</td>
                 ${totalCell}
             </tr>`;
         }).join('');

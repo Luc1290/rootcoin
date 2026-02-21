@@ -17,13 +17,13 @@ const Trades = (() => {
             const dateStr = date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
                 + ' ' + date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
             return `
-            <tr class="border-b border-gray-800">
-                <td class="py-2 text-gray-400">${dateStr}</td>
-                <td class="py-2">${t.symbol}</td>
-                <td class="py-2 ${sideClass} font-semibold">${t.side}</td>
-                <td class="py-2 text-right">${price.toFixed(2)}</td>
-                <td class="py-2 text-right">${qty}</td>
-                <td class="py-2 text-right">$${total.toFixed(2)}</td>
+            <tr>
+                <td class="text-gray-400 tabular-nums">${dateStr}</td>
+                <td class="font-medium">${t.symbol}</td>
+                <td class="${sideClass} font-semibold">${t.side}</td>
+                <td class="text-right tabular-nums">${price.toFixed(2)}</td>
+                <td class="text-right tabular-nums">${qty}</td>
+                <td class="text-right tabular-nums font-medium">$${total.toFixed(2)}</td>
             </tr>`;
         }).join('');
     }
@@ -39,7 +39,6 @@ const Trades = (() => {
         }
     }
 
-    // Filter change
     document.addEventListener('DOMContentLoaded', () => {
         const f = filter();
         if (f) f.addEventListener('change', () => load(f.value));

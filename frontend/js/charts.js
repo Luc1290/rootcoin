@@ -6,7 +6,7 @@ const Charts = (() => {
 
     // --- Mini position charts ---
 
-    function createMiniChart(containerId, positionId, symbol) {
+    function createMiniChart(containerId, positionId, symbol, entryInfo) {
         const el = document.getElementById(containerId);
         if (!el || _posCharts[positionId]) return;
 
@@ -32,7 +32,19 @@ const Charts = (() => {
             crosshairMarkerVisible: false,
         });
 
-        _posCharts[positionId] = { chart, series, symbol, lastTs: 0 };
+        // Entry price horizontal line (color updated dynamically)
+        let priceLine = null;
+        if (entryInfo && entryInfo.entryPrice > 0) {
+            priceLine = series.createPriceLine({
+                price: entryInfo.entryPrice,
+                color: 'rgba(148, 163, 184, 0.4)',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: false,
+            });
+        }
+
+        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine };
         _loadPriceHistory(positionId, symbol);
 
         const ro = new ResizeObserver(entries => {
@@ -40,6 +52,36 @@ const Charts = (() => {
             if (w > 0) chart.applyOptions({ width: w });
         });
         ro.observe(el);
+    }
+
+    function _isWinning(entry, currentPrice) {
+        if (!entry.entryInfo || !entry.entryInfo.entryPrice) return null;
+        const ep = entry.entryInfo.entryPrice;
+        if (entry.entryInfo.side === 'LONG') return currentPrice >= ep;
+        return currentPrice <= ep;
+    }
+
+    function _pnlColor(winning, alpha) {
+        if (winning === null) return `rgba(148, 163, 184, ${alpha})`;
+        return winning
+            ? `rgba(52, 211, 153, ${alpha})`
+            : `rgba(248, 113, 113, ${alpha})`;
+    }
+
+    function _updateEntryVisuals(entry, currentPrice) {
+        const winning = _isWinning(entry, currentPrice);
+        if (entry.priceLine) {
+            entry.priceLine.applyOptions({ color: _pnlColor(winning, 0.5) });
+        }
+        if (entry._markerTime != null) {
+            entry.series.setMarkers([{
+                time: entry._markerTime,
+                position: 'belowBar',
+                color: _pnlColor(winning, 1),
+                shape: 'arrowUp',
+                text: 'Entry',
+            }]);
+        }
     }
 
     async function _loadPriceHistory(positionId, symbol) {
@@ -57,6 +99,21 @@ const Charts = (() => {
             if (entry) {
                 entry.series.setData(points);
                 entry.lastTs = points[points.length - 1].time;
+                const lastPrice = points[points.length - 1].value;
+
+                // Marker at entry point
+                if (entry.entryInfo && entry.entryInfo.openedAt) {
+                    const entryTs = Math.floor(new Date(entry.entryInfo.openedAt + 'Z').getTime() / 1000);
+                    let closest = points[0];
+                    for (const pt of points) {
+                        if (Math.abs(pt.time - entryTs) < Math.abs(closest.time - entryTs)) {
+                            closest = pt;
+                        }
+                    }
+                    entry._markerTime = closest.time;
+                }
+
+                _updateEntryVisuals(entry, lastPrice);
                 entry.chart.timeScale().fitContent();
             }
         } catch (e) {
@@ -72,15 +129,13 @@ const Charts = (() => {
 
         for (const entry of Object.values(_posCharts)) {
             if (entry.symbol === symbol) {
-                // Always update the latest value (in-place) for visual freshness
-                // but only create a NEW data point every APPEND_INTERVAL seconds
                 if (now - entry.lastTs >= APPEND_INTERVAL) {
                     entry.series.update({ time: now, value });
                     entry.lastTs = now;
                 } else if (entry.lastTs > 0) {
-                    // Update the current point in-place (no new timestamp)
                     entry.series.update({ time: entry.lastTs, value });
                 }
+                _updateEntryVisuals(entry, value);
             }
         }
     }

@@ -17,13 +17,13 @@
 <body class="min-h-screen flex flex-col">
 
     <!-- Header + Navigation -->
-    <header class="bg-gray-900 border-b border-gray-800 shrink-0 px-4 py-2 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1">
+    <header class="app-header shrink-0 px-4 py-2.5 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1">
         <img src="/static/logo.svg" alt="RootCoin" style="height:36px;width:auto" class="shrink-0 sm:order-1">
         <div class="flex items-center gap-3 text-sm text-gray-400 shrink-0 ml-auto sm:ml-0 sm:order-3">
-            <span id="clock"></span>
-            <span id="ws-status" class="w-2.5 h-2.5 rounded-full bg-red-500" title="Disconnected"></span>
+            <span id="clock" class="font-medium tabular-nums"></span>
+            <span id="ws-status" class="ws-dot w-2 h-2 rounded-full bg-red-500" title="Disconnected"></span>
         </div>
-        <nav class="flex gap-1 w-full sm:w-auto sm:flex-1 sm:justify-center sm:order-2">
+        <nav class="flex gap-1.5 w-full sm:w-auto sm:flex-1 sm:justify-center sm:order-2">
             <button class="tab-btn active px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="positions">Positions</button>
             <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="trades">Cycles</button>
             <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="fills">Trades</button>
@@ -35,59 +35,63 @@
     <main class="flex-1 overflow-y-auto">
         <!-- Positions view -->
         <div id="view-positions" class="view p-4">
-            <div id="positions-empty" class="text-center text-gray-500 py-12">
-                Aucune position ouverte
+            <div id="positions-empty" class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <div class="empty-state-text">Aucune position ouverte</div>
             </div>
             <div id="positions-list" class="space-y-3 hidden"></div>
         </div>
 
         <!-- Trades/Cycles view -->
         <div id="view-trades" class="view p-4 hidden">
-            <div class="flex items-center gap-2 mb-3">
-                <select id="cycles-filter" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm flex-1">
+            <div class="flex items-center gap-2 mb-4">
+                <select id="cycles-filter" class="px-3 py-2.5 text-sm flex-1">
                     <option value="">Tous les symboles</option>
                 </select>
-                <select id="cycles-status" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm">
+                <select id="cycles-status" class="px-3 py-2.5 text-sm">
                     <option value="">Tous</option>
                     <option value="closed">Fermés</option>
                     <option value="open">Ouverts</option>
                 </select>
             </div>
-            <div id="cycles-stats" class="grid grid-cols-3 gap-2 mb-3 text-center text-sm">
-                <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
-                    <div class="text-gray-500 text-xs">Win Rate</div>
-                    <div id="stat-winrate" class="font-semibold">--</div>
+            <div id="cycles-stats" class="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
+                <div class="stat-card">
+                    <div class="metric-label mb-1">Win Rate</div>
+                    <div id="stat-winrate" class="font-bold text-base">--</div>
                 </div>
-                <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
-                    <div class="text-gray-500 text-xs">Total PnL</div>
-                    <div id="stat-total-pnl" class="font-semibold">--</div>
+                <div class="stat-card">
+                    <div class="metric-label mb-1">Total PnL</div>
+                    <div id="stat-total-pnl" class="font-bold text-base">--</div>
                 </div>
-                <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
-                    <div class="text-gray-500 text-xs">Cycles</div>
-                    <div id="stat-total-cycles" class="font-semibold">--</div>
+                <div class="stat-card">
+                    <div class="metric-label mb-1">Cycles</div>
+                    <div id="stat-total-cycles" class="font-bold text-base">--</div>
                 </div>
             </div>
-            <div id="cycles-list" class="space-y-2"></div>
-            <div id="cycles-empty" class="text-center text-gray-500 py-12 hidden">Aucun cycle</div>
+            <div id="cycles-list" class="space-y-2.5"></div>
+            <div id="cycles-empty" class="empty-state hidden">
+                <div class="empty-state-icon">🔄</div>
+                <div class="empty-state-text">Aucun cycle</div>
+            </div>
         </div>
 
         <!-- Fills view -->
         <div id="view-fills" class="view p-4 hidden">
-            <div class="mb-3">
-                <select id="trades-filter" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm w-full">
+            <div class="mb-4">
+                <select id="trades-filter" class="px-3 py-2.5 text-sm w-full">
                     <option value="">Tous les symboles</option>
                 </select>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead class="text-gray-400 text-left">
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <th class="pb-2">Date</th>
-                            <th class="pb-2">Symbole</th>
-                            <th class="pb-2">Side</th>
-                            <th class="pb-2 text-right">Prix</th>
-                            <th class="pb-2 text-right">Qty</th>
-                            <th class="pb-2 text-right">Total</th>
+                            <th class="text-left">Date</th>
+                            <th class="text-left">Symbole</th>
+                            <th class="text-left">Side</th>
+                            <th class="text-right">Prix</th>
+                            <th class="text-right">Qty</th>
+                            <th class="text-right">Total</th>
                         </tr>
                     </thead>
                     <tbody id="trades-tbody"></tbody>
@@ -97,23 +101,26 @@
 
         <!-- Balances view -->
         <div id="view-balances" class="view p-4 hidden">
-            <div id="portfolio-total" class="text-2xl font-bold mb-2">--</div>
+            <div class="portfolio-hero mb-4 flex items-baseline justify-between">
+                <span class="text-xl text-gray-400 font-semibold">Valeur totale</span>
+                <span id="portfolio-total" class="portfolio-value text-xl font-bold tracking-tight">--</span>
+            </div>
             <div class="mb-4">
-                <div class="flex gap-2 mb-2">
-                    <button class="chart-range-btn active text-xs px-3 py-1.5 rounded bg-gray-800 text-gray-400" onclick="Balances.setChartRange(24)" data-hours="24">24h</button>
-                    <button class="chart-range-btn text-xs px-3 py-1.5 rounded bg-gray-800 text-gray-400" onclick="Balances.setChartRange(168)" data-hours="168">7d</button>
-                    <button class="chart-range-btn text-xs px-3 py-1.5 rounded bg-gray-800 text-gray-400" onclick="Balances.setChartRange(720)" data-hours="720">30d</button>
+                <div class="flex gap-2 mb-3">
+                    <button class="chart-range-btn active text-xs px-3 py-1.5 font-medium" onclick="Balances.setChartRange(24)" data-hours="24">24h</button>
+                    <button class="chart-range-btn text-xs px-3 py-1.5 font-medium text-gray-400" onclick="Balances.setChartRange(168)" data-hours="168">7d</button>
+                    <button class="chart-range-btn text-xs px-3 py-1.5 font-medium text-gray-400" onclick="Balances.setChartRange(720)" data-hours="720">30d</button>
                 </div>
                 <div id="portfolio-chart" style="height:200px; width:100%;"></div>
             </div>
             <div id="balances-list" class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead class="text-gray-400 text-center">
+                <table class="data-table">
+                    <thead>
                         <tr>
-                            <th class="pb-2 text-left">Asset</th>
-                            <th class="pb-2">Quantité</th>
-                            <th class="pb-2">USD</th>
-                            <th class="pb-2 w-16">Total</th>
+                            <th class="text-left">Asset</th>
+                            <th class="text-center">Quantité</th>
+                            <th class="text-center">USD</th>
+                            <th class="text-center border-l border-gray-800/50 pl-4 pr-2">Total</th>
                         </tr>
                     </thead>
                     <tbody id="balances-tbody"></tbody>
@@ -123,9 +130,9 @@
     </main>
 
     <!-- Modal -->
-    <div id="modal-overlay" class="fixed inset-0 bg-black/60 hidden z-50 flex items-end sm:items-center justify-center">
-        <div id="modal-content" class="bg-gray-900 border border-gray-700 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-6">
-            <h3 id="modal-title" class="text-lg font-semibold mb-4"></h3>
+    <div id="modal-overlay" class="fixed inset-0 hidden z-50 flex items-end sm:items-center justify-center">
+        <div id="modal-content" class="rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md p-6">
+            <h3 id="modal-title" class="text-lg font-bold mb-4"></h3>
             <div id="modal-body"></div>
         </div>
     </div>
