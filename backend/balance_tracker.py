@@ -3,11 +3,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
+from sqlalchemy import select
 
-from backend import binance_client, ws_manager
+from backend import binance_client, ws_manager, position_tracker
 from backend.config import settings
 from backend.database import async_session
-from backend.models import Balance
+from backend.models import Balance, Price
 from backend.ws_manager import EVENT_ACCOUNT_UPDATE
 
 log = structlog.get_logger()
@@ -118,11 +119,53 @@ async def _take_full_snapshot():
         log.error("snapshot_isolated_margin_failed", exc_info=True)
 
     if records:
+        await _fill_usd_values(records)
         async with async_session() as session:
             session.add_all(records)
             await session.commit()
 
     log.info("balance_snapshot_complete", count=len(records))
+
+
+# --- USD value computation ---
+
+
+async def _fill_usd_values(records: list[Balance]):
+    stables = settings.stablecoins_set
+    # Build price map from active positions (in-memory, free)
+    price_map: dict[str, Decimal] = {}
+    for pos in position_tracker.get_positions():
+        if pos.current_price and pos.current_price > 0:
+            # Extract base asset from symbol (e.g. "BTCUSDC" -> "BTC")
+            for stable in stables:
+                if pos.symbol.endswith(stable):
+                    base = pos.symbol[: -len(stable)]
+                    price_map[base] = pos.current_price
+                    break
+
+    # Assets without a price from positions: fallback to latest DB price
+    missing = {r.asset for r in records if r.asset not in stables and r.asset not in price_map}
+    if missing:
+        async with async_session() as session:
+            for asset in missing:
+                for stable in ("USDC", "USDT"):
+                    symbol = f"{asset}{stable}"
+                    result = await session.execute(
+                        select(Price.price)
+                        .where(Price.symbol == symbol)
+                        .order_by(Price.recorded_at.desc())
+                        .limit(1)
+                    )
+                    price = result.scalar_one_or_none()
+                    if price and price > 0:
+                        price_map[asset] = price
+                        break
+
+    for record in records:
+        if record.asset in stables:
+            record.usd_value = record.net
+        elif record.asset in price_map:
+            record.usd_value = record.net * price_map[record.asset]
 
 
 # --- Event-driven snapshot ---

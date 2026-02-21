@@ -1,0 +1,36 @@
+from datetime import datetime, timedelta, timezone
+
+from fastapi import APIRouter, Query
+from sqlalchemy import func, select
+
+from backend.database import async_session
+from backend.models import Balance
+
+router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
+
+
+@router.get("/history")
+async def get_portfolio_history(
+    hours: int = Query(24, le=720),
+    limit: int = Query(500, le=2000),
+):
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(
+                Balance.snapshot_at,
+                func.sum(Balance.usd_value).label("total_usd"),
+            )
+            .where(Balance.snapshot_at >= cutoff, Balance.usd_value.isnot(None))
+            .group_by(Balance.snapshot_at)
+            .order_by(Balance.snapshot_at.asc())
+            .limit(limit)
+        )
+        return [
+            {
+                "total_usd": str(row.total_usd),
+                "snapshot_at": row.snapshot_at.isoformat(),
+            }
+            for row in result.all()
+        ]

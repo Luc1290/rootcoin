@@ -11,81 +11,41 @@ const Positions = (() => {
         if (!positions.length) {
             list.classList.add('hidden');
             emptyEl.classList.remove('hidden');
+            Charts.cleanup([]);
             return;
         }
         list.classList.remove('hidden');
         emptyEl.classList.add('hidden');
 
-        list.innerHTML = positions.map(p => {
-            const pnl = parseFloat(p.pnl_usd) || 0;
-            const pnlPct = parseFloat(p.pnl_pct) || 0;
-            const fees = parseFloat(p.entry_fees_usd) || 0;
-            const exitFees = parseFloat(p.exit_fees_est) || 0;
-            const totalFees = fees + exitFees;
-            const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-            const sideClass = p.side === 'LONG' ? 'side-long' : 'side-short';
-            const entry = parseFloat(p.entry_price) || 0;
-            const current = parseFloat(p.current_price) || 0;
-            const qty = parseFloat(p.quantity) || 0;
-            const value = (current * qty).toFixed(2);
-            const grossPnl = p.side === 'LONG'
-                ? (current - entry) * qty
-                : (entry - current) * qty;
+        const activeIds = positions.map(p => p.id);
+        Charts.cleanup(activeIds);
 
-            const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
-            const orderBadges = [];
-            if (p.sl_order_id) orderBadges.push('<span class="text-xs bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded">SL</span>');
-            if (p.tp_order_id) orderBadges.push('<span class="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">TP</span>');
-            if (p.oco_order_list_id) orderBadges.push('<span class="text-xs bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded">OCO</span>');
-            if (hasOrders) orderBadges.push(`<button class="text-xs bg-orange-900/50 text-orange-400 px-1.5 py-0.5 rounded cursor-pointer hover:bg-orange-800/50" onclick="Positions.confirmCancelOrders(${p.id})">&#x2715;</button>`);
+        // Index existing cards by data-id
+        const existing = {};
+        list.querySelectorAll('.position-card').forEach(card => {
+            existing[card.dataset.id] = card;
+        });
 
-            return `
-            <div class="position-card" data-id="${p.id}">
-                <div class="flex items-center justify-between mb-2">
-                    <div class="flex items-center gap-2">
-                        <span class="font-semibold">${p.symbol}</span>
-                        <span class="text-xs font-bold ${sideClass}">${p.side}</span>
-                        <span class="text-xs text-gray-500">${p.market_type.replace('_', ' ')}</span>
-                    </div>
-                    <span class="text-xs text-gray-500">${p.duration || ''}</span>
-                </div>
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mb-3">
-                    <div>
-                        <div class="text-gray-500 text-xs">Entry</div>
-                        <div>${formatPrice(entry)}</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-500 text-xs">Current</div>
-                        <div>${formatPrice(current)}</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-500 text-xs">Value</div>
-                        <div>$${value}</div>
-                    </div>
-                    <div>
-                        <div class="text-gray-500 text-xs">PnL net</div>
-                        <div class="${pnlClass} font-semibold">
-                            ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
-                        </div>
-                        <div class="text-gray-600 text-xs">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    ${orderBadges.join('')}
-                    <div class="flex-1"></div>
-                    <button class="action-btn bg-yellow-600" onclick="Positions.showSL(${p.id})">SL</button>
-                    <button class="action-btn bg-green-600" onclick="Positions.showTP(${p.id})">TP</button>
-                    <button class="action-btn bg-blue-600" onclick="Positions.showOCO(${p.id})">OCO</button>
-                    <button class="action-btn bg-red-600" onclick="Positions.confirmClose(${p.id})">Close</button>
-                </div>
-            </div>`;
-        }).join('');
-    }
+        // Remove cards for closed positions
+        for (const id of Object.keys(existing)) {
+            if (!activeIds.includes(Number(id))) {
+                existing[id].remove();
+            }
+        }
 
-    function formatPrice(p) {
-        if (p >= 1000) return p.toFixed(2);
-        if (p >= 1) return p.toFixed(4);
-        return p.toFixed(6);
+        // Update or create cards
+        positions.forEach(p => {
+            const card = existing[p.id];
+            if (card) {
+                PositionCards.updateCardData(card, p);
+            } else {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = PositionCards.buildCardHtml(p);
+                const newCard = tmp.firstElementChild;
+                list.appendChild(newCard);
+                Charts.createMiniChart(`chart-pos-${p.id}`, p.id, p.symbol);
+            }
+        });
     }
 
     function showModal(title, body) {

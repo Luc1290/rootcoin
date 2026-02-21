@@ -17,17 +17,17 @@
 <body class="min-h-screen flex flex-col">
 
     <!-- Header + Navigation -->
-    <header class="bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center gap-4 shrink-0">
-        <img src="/static/logo.svg" alt="RootCoin" style="height:48px;width:auto" class="shrink-0">
-        <nav class="flex gap-1 overflow-x-auto flex-1 justify-center">
-            <button class="tab-btn active px-3 py-2 text-sm font-medium min-w-[70px]" data-tab="positions">Positions</button>
-            <button class="tab-btn px-3 py-2 text-sm font-medium min-w-[70px]" data-tab="trades">Trades</button>
-            <button class="tab-btn px-3 py-2 text-sm font-medium min-w-[70px]" data-tab="balances">Balances</button>
-        </nav>
-        <div class="flex items-center gap-3 text-sm text-gray-400 shrink-0">
+    <header class="bg-gray-900 border-b border-gray-800 shrink-0 px-4 py-2 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1">
+        <img src="/static/logo.svg" alt="RootCoin" style="height:36px;width:auto" class="shrink-0 sm:order-1">
+        <div class="flex items-center gap-3 text-sm text-gray-400 shrink-0 ml-auto sm:ml-0 sm:order-3">
             <span id="clock"></span>
             <span id="ws-status" class="w-2.5 h-2.5 rounded-full bg-red-500" title="Disconnected"></span>
         </div>
+        <nav class="flex gap-1 w-full sm:w-auto sm:flex-1 sm:justify-center sm:order-2">
+            <button class="tab-btn active px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="positions">Positions</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="trades">Trades</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="balances">Balances</button>
+        </nav>
     </header>
 
     <!-- Main content -->
@@ -66,7 +66,15 @@
 
         <!-- Balances view -->
         <div id="view-balances" class="view p-4 hidden">
-            <div id="portfolio-total" class="text-2xl font-bold mb-4">--</div>
+            <div id="portfolio-total" class="text-2xl font-bold mb-2">--</div>
+            <div class="mb-4">
+                <div class="flex gap-2 mb-2">
+                    <button class="chart-range-btn active text-xs px-3 py-1.5 rounded bg-gray-800 text-gray-400" onclick="Balances.setChartRange(24)" data-hours="24">24h</button>
+                    <button class="chart-range-btn text-xs px-3 py-1.5 rounded bg-gray-800 text-gray-400" onclick="Balances.setChartRange(168)" data-hours="168">7d</button>
+                    <button class="chart-range-btn text-xs px-3 py-1.5 rounded bg-gray-800 text-gray-400" onclick="Balances.setChartRange(720)" data-hours="720">30d</button>
+                </div>
+                <div id="portfolio-chart" style="height:200px; width:100%;"></div>
+            </div>
             <div id="balances-list" class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="text-gray-400 text-left">
@@ -95,7 +103,10 @@
     <!-- Toast notifications -->
     <div id="toast-container" class="fixed top-4 right-4 z-50 space-y-2"></div>
 
+    <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/charts.js"></script>
+    <script src="/static/js/position-cards.js"></script>
     <script src="/static/js/positions.js"></script>
     <script src="/static/js/trades.js"></script>
     <script src="/static/js/balances.js"></script>
