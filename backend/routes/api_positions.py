@@ -39,23 +39,47 @@ async def _fetch_order_prices(pos_ids: list[int]) -> dict:
 
 
 def _pos_to_dict(pos, order_prices=None) -> dict:
+    from datetime import datetime, timezone
+
+    duration = ""
+    if pos.opened_at:
+        opened = pos.opened_at
+        if opened.tzinfo is None:
+            opened = opened.replace(tzinfo=timezone.utc)
+        delta = datetime.now(timezone.utc) - opened
+        hours, rem = divmod(int(delta.total_seconds()), 3600)
+        minutes = rem // 60
+        if hours > 24:
+            days = hours // 24
+            duration = f"{days}d {hours % 24}h"
+        else:
+            duration = f"{hours}h {minutes}m"
+
+    current = pos.current_price or Decimal("0")
+    qty = pos.quantity or Decimal("0")
+    entry_fees = pos.entry_fees_usd or Decimal("0")
+    exit_fees_est = qty * current * Decimal("0.001")
     prices = (order_prices or {}).get(pos.id, {})
+
     return {
         "id": pos.id,
         "symbol": pos.symbol,
         "side": pos.side,
-        "entry_price": str(pos.entry_price),
-        "quantity": str(pos.quantity),
+        "entry_price": str(pos.entry_price) if pos.entry_price else "0",
+        "current_price": str(current),
+        "quantity": str(qty),
+        "pnl_usd": str(pos.pnl_usd) if pos.pnl_usd else "0",
+        "pnl_pct": str(pos.pnl_pct) if pos.pnl_pct else "0",
+        "entry_fees_usd": str(entry_fees),
+        "exit_fees_est": str(exit_fees_est),
         "market_type": pos.market_type,
-        "current_price": str(pos.current_price) if pos.current_price else None,
-        "pnl_usd": str(pos.pnl_usd) if pos.pnl_usd else None,
-        "pnl_pct": str(pos.pnl_pct) if pos.pnl_pct else None,
-        "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
         "sl_order_id": pos.sl_order_id,
         "tp_order_id": pos.tp_order_id,
         "oco_order_list_id": pos.oco_order_list_id,
         "sl_price": prices.get("sl_price"),
         "tp_price": prices.get("tp_price"),
+        "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
+        "duration": duration,
     }
 
 
