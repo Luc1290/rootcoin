@@ -316,6 +316,54 @@ select {
     box-shadow: 0 0 6px currentColor;
 }
 
+/* ===== Scrollbar hide (mobile tabs) ===== */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ===== Chart interval buttons ===== */
+.chart-interval-btn {
+    color: #6b7280;
+    border-radius: 0.375rem;
+    transition: all 0.15s ease;
+}
+.chart-interval-btn:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.06);
+    color: #d1d5db;
+}
+.chart-interval-btn.active {
+    background: rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+/* ===== Indicator toggles ===== */
+.indicator-toggle {
+    color: #6b7280;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.375rem;
+    transition: all 0.15s ease;
+    cursor: pointer;
+}
+.indicator-toggle:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.04);
+    color: #d1d5db;
+}
+.indicator-toggle.active {
+    color: #60a5fa;
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* ===== Sub-chart labels ===== */
+.subchart-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0 4px 4px;
+}
+
 /* ===== Mode toggle ($/%) ===== */
 .mode-btn {
     background: rgba(255, 255, 255, 0.04);
