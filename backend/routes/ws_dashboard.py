@@ -3,8 +3,11 @@ import json
 
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
 from backend import position_tracker, ws_manager
+from backend.database import async_session
+from backend.models import Order
 from backend.ws_manager import (
     EVENT_ACCOUNT_UPDATE,
     EVENT_EXECUTION_REPORT,
@@ -70,7 +73,27 @@ async def _on_account_update(msg: dict):
     })
 
 
-def _pos_to_ws(pos) -> dict:
+async def _fetch_order_prices(positions) -> dict:
+    pos_ids = [p.id for p in positions if p.sl_order_id or p.tp_order_id or p.oco_order_list_id]
+    if not pos_ids:
+        return {}
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(Order.position_id, Order.purpose, Order.stop_price)
+            .where(Order.position_id.in_(pos_ids), Order.status == "NEW",
+                   Order.purpose.in_(["SL", "TP"]))
+        )).all()
+    result = {}
+    for pid, purpose, stop_price in rows:
+        entry = result.setdefault(pid, {})
+        if purpose == "SL":
+            entry["sl_price"] = str(stop_price) if stop_price else None
+        elif purpose == "TP":
+            entry["tp_price"] = str(stop_price) if stop_price else None
+    return result
+
+
+def _pos_to_ws(pos, order_prices=None) -> dict:
     duration = ""
     if pos.opened_at:
         from datetime import datetime, timezone
@@ -92,6 +115,8 @@ def _pos_to_ws(pos) -> dict:
     qty = pos.quantity or Decimal("0")
     exit_fees_est = qty * current * Decimal("0.001")
 
+    prices = (order_prices or {}).get(pos.id, {})
+
     return {
         "id": pos.id,
         "symbol": pos.symbol,
@@ -107,6 +132,8 @@ def _pos_to_ws(pos) -> dict:
         "sl_order_id": pos.sl_order_id,
         "tp_order_id": pos.tp_order_id,
         "oco_order_list_id": pos.oco_order_list_id,
+        "sl_price": prices.get("sl_price"),
+        "tp_price": prices.get("tp_price"),
         "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
         "duration": duration,
     }
@@ -119,9 +146,10 @@ async def _broadcast_positions():
             if not _clients:
                 continue
             positions = position_tracker.get_positions()
+            order_prices = await _fetch_order_prices(positions)
             await _broadcast({
                 "type": "positions_snapshot",
-                "data": [_pos_to_ws(p) for p in positions],
+                "data": [_pos_to_ws(p, order_prices) for p in positions],
             })
         except asyncio.CancelledError:
             break

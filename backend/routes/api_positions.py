@@ -3,8 +3,11 @@ from decimal import Decimal
 from binance.exceptions import BinanceAPIException
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 
 from backend import order_manager, position_tracker
+from backend.database import async_session
+from backend.models import Order
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
 
@@ -18,7 +21,25 @@ class OcoBody(BaseModel):
     sl_price: str
 
 
-def _pos_to_dict(pos) -> dict:
+async def _fetch_order_prices(pos_ids: list[int]) -> dict:
+    if not pos_ids:
+        return {}
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(Order.position_id, Order.purpose, Order.stop_price)
+            .where(Order.position_id.in_(pos_ids), Order.status == "NEW",
+                   Order.purpose.in_(["SL", "TP"]))
+        )).all()
+    result = {}
+    for pid, purpose, stop_price in rows:
+        entry = result.setdefault(pid, {})
+        key = "sl_price" if purpose == "SL" else "tp_price"
+        entry[key] = str(stop_price) if stop_price else None
+    return result
+
+
+def _pos_to_dict(pos, order_prices=None) -> dict:
+    prices = (order_prices or {}).get(pos.id, {})
     return {
         "id": pos.id,
         "symbol": pos.symbol,
@@ -33,19 +54,25 @@ def _pos_to_dict(pos) -> dict:
         "sl_order_id": pos.sl_order_id,
         "tp_order_id": pos.tp_order_id,
         "oco_order_list_id": pos.oco_order_list_id,
+        "sl_price": prices.get("sl_price"),
+        "tp_price": prices.get("tp_price"),
     }
 
 
 @router.get("")
 async def list_positions():
-    return [_pos_to_dict(p) for p in position_tracker.get_positions()]
+    positions = position_tracker.get_positions()
+    pos_ids = [p.id for p in positions if p.sl_order_id or p.tp_order_id or p.oco_order_list_id]
+    order_prices = await _fetch_order_prices(pos_ids)
+    return [_pos_to_dict(p, order_prices) for p in positions]
 
 
 @router.get("/{position_id}")
 async def get_position(position_id: int):
     for p in position_tracker.get_positions():
         if p.id == position_id:
-            return _pos_to_dict(p)
+            order_prices = await _fetch_order_prices([p.id])
+            return _pos_to_dict(p, order_prices)
     raise HTTPException(404, "Position not found")
 
 
