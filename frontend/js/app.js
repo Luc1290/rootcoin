@@ -32,6 +32,7 @@ const App = (() => {
         if (tab === 'trades') Cycles.load();
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
+        if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }
     }
 
     function updateClock() {

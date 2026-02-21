@@ -34,12 +34,13 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 4. `ws_manager.start()` — lance 3 tasks async : user data stream, price stream, token refresh
 5. `position_tracker.start()` — scan Binance pour reconstruire les positions, puis ecoute les events WS
 6. `price_recorder.start()` / `balance_tracker.start()` — s'abonnent aux events WS
+7. `kline_manager.start()` — cleanup periodique des vieilles klines
 
 L'arret se fait en ordre inverse. Chaque module expose `start()`/`stop()`.
 
 ### Pattern event-driven
 
-`ws_manager` est un dispatcher central. Les modules s'abonnent aux events via `ws_manager.on(EVENT_TYPE, callback)`. Les types d'events : `execution_report`, `account_update`, `balance_update`, `list_status`, `price_update`.
+`ws_manager` est un dispatcher central. Les modules s'abonnent aux events via `ws_manager.on(EVENT_TYPE, callback)`. Les types d'events : `execution_report`, `account_update`, `balance_update`, `list_status`, `price_update`, `kline_update`.
 
 ### Position tracking
 
@@ -53,7 +54,7 @@ Les positions n'existent pas nativement sur Binance spot/margin — elles sont r
 
 - REST API : `routes/api_*.py` — CRUD positions, ordres, balances, trades, prix
 - WebSocket : `routes/ws_dashboard.py` — broadcast `positions_snapshot` toutes les 2s + events prix/ordres/balances
-- Frontend JS : modules IIFE (`WS`, `App`, `Positions`, `Trades`, `Balances`) communiquent via `WS.on(type, callback)`
+- Frontend JS : modules IIFE (`WS`, `App`, `Positions`, `Trades`, `Balances`, `KlineChart`) communiquent via `WS.on(type, callback)`
 
 ## Conventions
 
@@ -65,7 +66,7 @@ Les positions n'existent pas nativement sur Binance spot/margin — elles sont r
 
 ## Regles strictes
 
-- **1 fichier = 1 responsabilite**, max ~500-1000 lignes. Decouper en sous-modules si ca grossit
+- **1 fichier = 1 responsabilite**, max ~1000 lignes. Au-dela de 800 lignes, se poser la question du decoupage. Verifier `wc -l` avant de grossir un fichier deja consequent
 - **Decimal partout** : `from decimal import Decimal` pour tous les prix, quantites, PnL. Jamais de `float` pour de l'argent. Strings Binance → Decimal directement
 - **Filtres Binance** : avant chaque ordre, valider via `symbol_filters.validate_order()` et arrondir avec `round_quantity()`/`round_price()`
 - **UTC partout en DB** : conversion en local uniquement cote frontend JS
@@ -94,3 +95,95 @@ Les positions n'existent pas nativement sur Binance spot/margin — elles sont r
 ## Logging
 
 - `structlog` avec JSON renderer. Niveaux : ERROR (erreurs Binance/reseau), WARNING (reconnexions), INFO (trades/ordres), DEBUG (prix)
+
+## Indicateurs techniques — `kline_manager.compute_indicators()`
+
+Tous les indicateurs sont calcules a la volee depuis les klines stockees en DB. Ils ne sont PAS stockes — le calcul sur 1000 bougies prend ~5-10ms. Ne pas dupliquer ces fonctions.
+
+Appel : `GET /api/klines/{symbol}?indicators=ma,rsi,bb,...` — seuls les indicateurs demandes sont calcules.
+
+| Cle API | Fonction | Description | Affiche sur chart |
+|---------|----------|-------------|-------------------|
+| `ma` | `_sma()` | Moving Average (SMA 7, 25, 99) | Oui (overlay main) |
+| `ema` | `_ema()` | Exponential MA (EMA 7, 21, 50) | Non |
+| `rsi` | `_rsi()` | Relative Strength Index (14, Wilder) | Oui (sub-chart) |
+| `bb` | `_bollinger()` | Bollinger Bands (SMA 20 ± 2*std) | Oui (overlay main) |
+| `obv` | `_obv()` | On-Balance Volume | Oui (sub-chart) |
+| `macd` | `_macd()` | MACD (12, 26, 9) → line, signal, histogram | Oui (sub-chart) |
+| `buy_sell` | `_buy_sell_pressure()` | Taker buy % - 50 (pression achat/vente) | Oui (sub-chart) |
+| `stoch_rsi` | `_stoch_rsi()` | Stochastic RSI (14, 3, 3) → K, D | Non |
+| `atr` | `_atr()` | Average True Range (14) | Non |
+| `vwap` | `_vwap()` | Volume Weighted Average Price | Non |
+| `adx` | `_adx()` | Average Directional Index (14) | Non |
+| `mfi` | `_mfi()` | Money Flow Index (14) | Non |
+
+Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'analyse technique / detection de signaux.
+
+## File Map — Index complet du codebase
+
+> **But** : eviter de re-scanner le projet a chaque conversation. Aller directement au bon fichier.
+> **Regle** : lors de toute creation, suppression ou renommage de fichier, mettre a jour cette section automatiquement (sans que l'utilisateur ait a le demander).
+
+### Backend core (`backend/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
+| `main.py` | Entry point FastAPI, lifespan (init/shutdown ordre) | `app` |
+| `config.py` | Settings Pydantic depuis `.env` | `settings` (singleton) |
+| `database.py` | SQLAlchemy async engine, session, migrations | `engine`, `async_session`, `init_db()` |
+| `models.py` | ORM : Position, Trade, Order, Balance, Price, Kline, Setting | 7 modeles declaratifs |
+| `binance_client.py` | Wrapper AsyncClient Binance (spot+margin+OCO) | `_client` singleton, `place_order()`, `place_margin_order()`, `place_oco_order()`, `get_spot_balances()`, `get_cross/isolated_margin_balances()` |
+| `ws_manager.py` | 3 streams WS (user data, prix, token refresh) + dispatcher events + kline stream | `_manager` singleton, `on()`, `subscribe_symbol()`, `unsubscribe_symbol()`, `subscribe_kline()`, `unsubscribe_kline()` |
+| `position_tracker.py` | State machine positions : scan startup, handle fills, open/DCA/reduce/close | `_positions` dict, `start()`, `stop()`, `get_positions()` |
+| `order_manager.py` | Placement SL/TP/OCO, close position, cancel orders | `place_stop_loss()`, `place_take_profit()`, `place_oco()`, `close_position()` |
+| `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
+| `balance_tracker.py` | Snapshots balances spot/cross/isolated + conversion USD | `start()`, `stop()` |
+| `kline_manager.py` | Fetch klines Binance, stockage DB, calcul indicateurs, cleanup | `start()`, `stop()`, `fetch_and_store()`, `get_klines()`, `compute_indicators()` |
+
+### Utilitaires (`backend/utils/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
+| `symbol_filters.py` | Cache LOT_SIZE/PRICE_FILTER/NOTIONAL, arrondi, validation | `init_filters()`, `round_quantity()`, `round_price()`, `validate_order()` |
+
+### Routes API (`backend/routes/`)
+
+| Fichier | Endpoints | Responsabilite |
+|---------|-----------|---------------|
+| `dashboard.py` | `GET /` | Sert `index.html` |
+| `ws_dashboard.py` | `WS /ws` | Broadcast positions (2s) + events temps reel |
+| `api_positions.py` | `GET/POST/DELETE /api/positions/*` | CRUD positions, SL/TP/OCO/close |
+| `api_orders.py` | `DELETE /api/orders/{id}` | Annuler un ordre |
+| `api_balances.py` | `GET /api/balances`, `GET /api/balances/history` | Balances courantes + historique |
+| `api_trades.py` | `GET /api/trades` | Historique trades (filtre symbol) |
+| `api_prices.py` | `GET /api/prices/history`, `GET /api/prices/current` | Prix OHLC + prix courant |
+| `api_portfolio.py` | `GET /api/portfolio/history` | Valeur portfolio agregeee dans le temps |
+| `api_cycles.py` | `GET /api/cycles`, `GET /api/cycles/stats` | Cycles fermes/ouverts + stats (win rate, PnL) |
+| `api_klines.py` | `GET /api/klines/symbols`, `GET /api/klines/{symbol}`, `GET /api/klines/{symbol}/trades`, `POST /api/klines/{symbol}/subscribe`, `POST /api/klines/{symbol}/unsubscribe` | Klines OHLCV + indicateurs + subscribe WS |
+
+### Frontend (`frontend/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
+| `index.html` | SPA : 5 tabs (positions/cycles/trades/balances/chart), modals SL/TP/OCO | — |
+| `css/style.css` | Styles custom : couleurs PnL, cards, responsive, modals, chart indicators | Classes : `.pnl-positive/negative`, `.position-card`, `.cycle-card`, `.chart-interval-btn`, `.indicator-toggle`, `.subchart-label` |
+| `css/tailwind.css` | Source Tailwind (input pour compilation) | — |
+| `css/output.css` | Tailwind compile (ne pas editer a la main) | — |
+| `js/websocket.js` | Client WS avec reconnexion auto + dispatch par type | `WS.on(type, fn)` |
+| `js/app.js` | Orchestrateur : tabs, horloge, toasts, chargement initial | `App.toast()`, `App.switchTab()` |
+| `js/positions.js` | Rendu cartes positions actives, tri, modals SL/TP/OCO/close | `Positions.load()`, `Positions.render()`, `Positions.showSL/TP/OCO()` |
+| `js/position-cards.js` | Construction HTML d'une carte position | `PositionCards.buildCardHtml()` |
+| `js/trades.js` | Table historique trades | `Trades.load()`, `Trades.render()` |
+| `js/cycles.js` | Cartes cycles fermes, PnL realise, pagination, filtres | `Cycles.load()`, `Cycles.render()` |
+| `js/balances.js` | Table balances agregees par asset, total USD, chart portfolio | `Balances.load()`, `Balances.render()` |
+| `js/charts.js` | Mini-charts prix (LightweightCharts), ligne entry price, chart portfolio | `Charts.createMiniChart()`, `Charts.updateData()`, `Charts.createPortfolioChart()` |
+| `js/kline-chart.js` | Chart candlestick : klines, 7 indicateurs (MA/BB overlay + Vol/B-S/RSI/MACD/OBV sub-charts), markers fills, cycles overlay, crosshair sync, live WS | `KlineChart.init()`, `KlineChart.loadChart()` |
+
+### Autres
+
+| Fichier | Responsabilite |
+|---------|---------------|
+| `logo.svg` | Logo de l'app |
+| `manifest.json` | PWA metadata (nom, icones, theme) |
+| `requirements.txt` | Dependencies Python |
+| `doc/PROJECT.md` | Documentation projet + reference API Binance |

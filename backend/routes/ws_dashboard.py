@@ -11,6 +11,7 @@ from backend.models import Order
 from backend.ws_manager import (
     EVENT_ACCOUNT_UPDATE,
     EVENT_EXECUTION_REPORT,
+    EVENT_KLINE_UPDATE,
     EVENT_PRICE_UPDATE,
 )
 
@@ -60,6 +61,10 @@ async def _on_execution_report(msg: dict):
             "filled_qty": msg.get("l", "0"),
         },
     })
+
+
+async def _on_kline_update(msg: dict):
+    await _broadcast({"type": "kline_update", "data": msg})
 
 
 async def _on_account_update(msg: dict):
@@ -166,6 +171,7 @@ def _ensure_callbacks():
         ws_manager.on(EVENT_PRICE_UPDATE, _on_price_update)
         ws_manager.on(EVENT_EXECUTION_REPORT, _on_execution_report)
         ws_manager.on(EVENT_ACCOUNT_UPDATE, _on_account_update)
+        ws_manager.on(EVENT_KLINE_UPDATE, _on_kline_update)
         _broadcast_task = asyncio.create_task(_broadcast_positions())
 
 

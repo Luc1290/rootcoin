@@ -103,6 +103,28 @@ class Price(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class Kline(Base):
+    __tablename__ = "klines"
+    __table_args__ = (
+        Index("uq_klines_sym_intv_time", "symbol", "interval", "open_time", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    interval: Mapped[str] = mapped_column(String, nullable=False)
+    open_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    open: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    high: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    low: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    close: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    volume: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    close_time: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    quote_volume: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    trade_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    taker_buy_base_vol: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    taker_buy_quote_vol: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+
+
 class Setting(Base):
     __tablename__ = "settings"
 

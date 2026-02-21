@@ -22,6 +22,7 @@ EVENT_ACCOUNT_UPDATE = "account_update"
 EVENT_BALANCE_UPDATE = "balance_update"
 EVENT_LIST_STATUS = "list_status"
 EVENT_PRICE_UPDATE = "price_update"
+EVENT_KLINE_UPDATE = "kline_update"
 
 BINANCE_WS_URL = "wss://stream.binance.com:9443"
 BINANCE_WS_API_URL = "wss://ws-api.binance.com:443/ws-api/v3"
@@ -36,6 +37,7 @@ class WSManager:
     def __init__(self):
         self._callbacks: dict[str, list[Callback]] = defaultdict(list)
         self._subscribed_symbols: set[str] = set()
+        self._subscribed_klines: set[str] = set()
         self._tasks: list[asyncio.Task] = []
         self._running = False
         self._listen_token: str | None = None
@@ -103,6 +105,38 @@ class WSManager:
                 log.info("price_stream_unsubscribed", symbol=symbol)
             except Exception:
                 log.warning("price_stream_unsubscribe_failed", symbol=symbol)
+
+    # --- Dynamic kline subscription ---
+
+    async def subscribe_kline(self, symbol: str, interval: str):
+        stream = f"{symbol.lower()}@kline_{interval}"
+        if stream in self._subscribed_klines:
+            return
+        self._subscribed_klines.add(stream)
+        if self._price_ws:
+            try:
+                await self._price_ws.send(json.dumps({
+                    "method": "SUBSCRIBE",
+                    "params": [stream],
+                    "id": self._next_id(),
+                }))
+                log.info("kline_stream_subscribed", symbol=symbol, interval=interval)
+            except Exception:
+                log.warning("kline_stream_subscribe_failed", symbol=symbol, interval=interval)
+
+    async def unsubscribe_kline(self, symbol: str, interval: str):
+        stream = f"{symbol.lower()}@kline_{interval}"
+        self._subscribed_klines.discard(stream)
+        if self._price_ws:
+            try:
+                await self._price_ws.send(json.dumps({
+                    "method": "UNSUBSCRIBE",
+                    "params": [stream],
+                    "id": self._next_id(),
+                }))
+                log.info("kline_stream_unsubscribed", symbol=symbol, interval=interval)
+            except Exception:
+                log.warning("kline_stream_unsubscribe_failed", symbol=symbol, interval=interval)
 
     # --- Listen Token ---
 
@@ -257,6 +291,19 @@ class WSManager:
                         data = msg.get("data", {})
                         if data.get("e") == "24hrTicker":
                             await self._dispatch(EVENT_PRICE_UPDATE, data)
+                        elif data.get("e") == "kline":
+                            k = data.get("k", {})
+                            await self._dispatch(EVENT_KLINE_UPDATE, {
+                                "symbol": data.get("s"),
+                                "interval": k.get("i"),
+                                "open_time": k.get("t"),
+                                "open": k.get("o"),
+                                "high": k.get("h"),
+                                "low": k.get("l"),
+                                "close": k.get("c"),
+                                "volume": k.get("v"),
+                                "is_closed": k.get("x"),
+                            })
 
                         if connected_at and (time.monotonic() - connected_at) > STABLE_CONNECTION_RESET:
                             backoff = 1
@@ -280,6 +327,8 @@ _manager = WSManager()
 on = _manager.on
 subscribe_symbol = _manager.subscribe_symbol
 unsubscribe_symbol = _manager.unsubscribe_symbol
+subscribe_kline = _manager.subscribe_kline
+unsubscribe_kline = _manager.unsubscribe_kline
 
 
 async def start():
