@@ -118,29 +118,21 @@ class WSManager:
 
     async def _obtain_listen_token(self) -> str:
         headers = {"X-MBX-APIKEY": settings.binance_api_key}
+        params = {"timestamp": str(int(time.time() * 1000))}
+        params = self._sign_params(params)
         async with httpx.AsyncClient() as http:
-            # Try legacy endpoint first (simpler, token goes in URL path)
             resp = await http.post(
-                f"{BINANCE_API_URL}/api/v3/userDataStream",
+                f"{BINANCE_API_URL}/sapi/v1/userListenToken",
                 headers=headers,
+                params=params,
             )
-            if resp.status_code in (404, 410, 403):
-                # Legacy retired, try new endpoint
-                log.info("listen_token_legacy_unavailable", status=resp.status_code)
-                params = {"timestamp": str(int(time.time() * 1000))}
-                params = self._sign_params(params)
-                resp = await http.post(
-                    f"{BINANCE_API_URL}/sapi/v1/userListenToken",
-                    headers=headers,
-                    params=params,
-                )
             resp.raise_for_status()
             data = resp.json()
             token = data.get("listenKey") or data.get("token") or data.get("listenToken")
             if not token:
                 log.error("listen_token_unexpected_response", response=data)
                 raise ValueError(f"No token in response: {data}")
-            log.info("listen_token_obtained", source="legacy" if "listenKey" in data else "new")
+            log.info("listen_token_obtained")
             return token
 
     # --- User Data Stream ---
@@ -213,17 +205,15 @@ class WSManager:
         if not self._listen_token:
             return
         headers = {"X-MBX-APIKEY": settings.binance_api_key}
+        params = {"timestamp": str(int(time.time() * 1000))}
+        params = self._sign_params(params)
         async with httpx.AsyncClient() as http:
             resp = await http.put(
-                f"{BINANCE_API_URL}/api/v3/userDataStream",
+                f"{BINANCE_API_URL}/sapi/v1/userListenToken",
                 headers=headers,
-                params={"listenKey": self._listen_token},
+                params=params,
             )
-            if resp.status_code in (404, 410, 403):
-                # Legacy retired, re-obtain token
-                self._listen_token = await self._obtain_listen_token()
-            else:
-                resp.raise_for_status()
+            resp.raise_for_status()
 
     async def _run_token_refresh(self):
         while self._running:

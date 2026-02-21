@@ -315,3 +315,17 @@ select {
 .ws-dot {
     box-shadow: 0 0 6px currentColor;
 }
+
+/* ===== Mode toggle ($/%) ===== */
+.mode-btn {
+    background: rgba(255, 255, 255, 0.04);
+    color: #6b7280;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: all 0.15s ease;
+    cursor: pointer;
+}
+.mode-btn.active {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.3);
+}
