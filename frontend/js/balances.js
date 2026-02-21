@@ -1,6 +1,7 @@
 const Balances = (() => {
     const tbody = () => document.getElementById('balances-tbody');
     const totalEl = () => document.getElementById('portfolio-total');
+    let chartInitialized = false;
 
     function render(balances) {
         const tb = tbody();
@@ -31,6 +32,19 @@ const Balances = (() => {
         }).join('');
 
         totalEl().textContent = `$${total.toFixed(2)}`;
+
+        if (!chartInitialized) {
+            chartInitialized = true;
+            Charts.createPortfolioChart('portfolio-chart');
+        }
+    }
+
+    function setChartRange(hours) {
+        // Update active button
+        document.querySelectorAll('.chart-range-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.hours === String(hours));
+        });
+        Charts.loadPortfolioData(hours);
     }
 
     function formatNum(n) {
@@ -52,5 +66,5 @@ const Balances = (() => {
     // Real-time balance updates trigger a reload
     WS.on('balance_update', () => load());
 
-    return { load, render };
+    return { load, render, setChartRange };
 })();
