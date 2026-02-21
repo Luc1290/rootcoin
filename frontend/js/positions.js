@@ -28,8 +28,23 @@ const Positions = (() => {
         return sorted;
     }
 
+    function _updateHeaderPnl(positions) {
+        const el = document.getElementById('header-pnl');
+        if (!el) return;
+        if (!positions.length) {
+            el.textContent = '--';
+            el.className = 'font-bold tabular-nums text-gray-500';
+            return;
+        }
+        const total = positions.reduce((sum, p) => sum + (parseFloat(p.pnl_usd) || 0), 0);
+        const sign = total >= 0 ? '+' : '';
+        el.textContent = `${sign}$${total.toFixed(2)}`;
+        el.className = `font-bold tabular-nums ${total >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+    }
+
     function render(positions) {
         currentPositions = positions;
+        _updateHeaderPnl(positions);
         const list = container();
         const emptyEl = empty();
         const tb = toolbar();
