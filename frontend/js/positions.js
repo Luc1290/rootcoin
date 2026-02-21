@@ -43,7 +43,11 @@ const Positions = (() => {
                 tmp.innerHTML = PositionCards.buildCardHtml(p);
                 const newCard = tmp.firstElementChild;
                 list.appendChild(newCard);
-                Charts.createMiniChart(`chart-pos-${p.id}`, p.id, p.symbol);
+                Charts.createMiniChart(`chart-pos-${p.id}`, p.id, p.symbol, {
+                    entryPrice: parseFloat(p.entry_price) || 0,
+                    openedAt: p.opened_at,
+                    side: p.side,
+                });
             }
         });
     }

@@ -14,6 +14,7 @@ const PositionCards = (() => {
         const totalFees = fees + exitFees;
         const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
         const sideClass = p.side === 'LONG' ? 'side-long' : 'side-short';
+        const sideBg = p.side === 'LONG' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400';
         const entry = parseFloat(p.entry_price) || 0;
         const current = parseFloat(p.current_price) || 0;
         const qty = parseFloat(p.quantity) || 0;
@@ -24,41 +25,41 @@ const PositionCards = (() => {
 
         return `
         <div class="position-card" data-id="${p.id}">
-            <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-2">
-                    <span class="font-semibold">${p.symbol}</span>
-                    <span class="text-xs font-bold ${sideClass}">${p.side}</span>
-                    <span class="text-xs text-gray-500">${p.market_type.replace('_', ' ')}</span>
+                    <span class="font-bold text-base">${p.symbol}</span>
+                    <span class="badge ${sideBg}">${p.side}</span>
+                    <span class="text-xs text-gray-500 font-medium">${p.market_type.replace('_', ' ')}</span>
                 </div>
-                <span class="text-xs text-gray-500" data-field="duration">${p.duration || ''}</span>
+                <span class="text-xs text-gray-500 tabular-nums" data-field="duration">${p.duration || ''}</span>
             </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mb-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
                 <div>
-                    <div class="text-gray-500 text-xs">Entry</div>
-                    <div data-field="entry">${formatPrice(entry)}</div>
+                    <div class="metric-label mb-0.5">Entry</div>
+                    <div class="font-medium tabular-nums" data-field="entry">${formatPrice(entry)}</div>
                 </div>
                 <div>
-                    <div class="text-gray-500 text-xs">Current</div>
-                    <div data-field="current">${formatPrice(current)}</div>
+                    <div class="metric-label mb-0.5">Current</div>
+                    <div class="font-medium tabular-nums" data-field="current">${formatPrice(current)}</div>
                 </div>
                 <div>
-                    <div class="text-gray-500 text-xs">Value</div>
-                    <div data-field="value">$${value}</div>
+                    <div class="metric-label mb-0.5">Value</div>
+                    <div class="font-medium tabular-nums" data-field="value">$${value}</div>
                 </div>
                 <div>
-                    <div class="text-gray-500 text-xs">PnL net</div>
-                    <div class="${pnlClass} font-semibold" data-field="pnl">
+                    <div class="metric-label mb-0.5">PnL net</div>
+                    <div class="${pnlClass} font-bold tabular-nums" data-field="pnl">
                         ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
                     </div>
-                    <div class="text-gray-600 text-xs" data-field="pnl-detail">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
+                    <div class="text-gray-600 text-xs tabular-nums" data-field="pnl-detail">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
                 </div>
             </div>
             <div class="mini-chart-container" id="chart-pos-${p.id}" style="height:120px"></div>
-            <div class="flex items-center gap-2 flex-wrap mt-2" data-field="actions">
+            <div class="flex items-center gap-2 flex-wrap mt-3" data-field="actions">
                 ${_buildBadgesHtml(p)}
                 <div class="flex-1"></div>
                 <button class="action-btn bg-yellow-600" onclick="Positions.showSL(${p.id})">SL</button>
-                <button class="action-btn bg-green-600" onclick="Positions.showTP(${p.id})">TP</button>
+                <button class="action-btn bg-emerald-600" onclick="Positions.showTP(${p.id})">TP</button>
                 <button class="action-btn bg-blue-600" onclick="Positions.showOCO(${p.id})">OCO</button>
                 <button class="action-btn bg-red-600" onclick="Positions.confirmClose(${p.id})">Close</button>
             </div>
@@ -68,10 +69,10 @@ const PositionCards = (() => {
     function _buildBadgesHtml(p) {
         const badges = [];
         const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
-        if (p.sl_order_id) badges.push('<span class="text-xs bg-red-900/50 text-red-400 px-1.5 py-0.5 rounded">SL</span>');
-        if (p.tp_order_id) badges.push('<span class="text-xs bg-green-900/50 text-green-400 px-1.5 py-0.5 rounded">TP</span>');
-        if (p.oco_order_list_id) badges.push('<span class="text-xs bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded">OCO</span>');
-        if (hasOrders) badges.push(`<button class="text-xs bg-orange-900/50 text-orange-400 px-1.5 py-0.5 rounded cursor-pointer hover:bg-orange-800/50" onclick="Positions.confirmCancelOrders(${p.id})">&#x2715;</button>`);
+        if (p.sl_order_id) badges.push('<span class="badge bg-red-900/40 text-red-400">SL</span>');
+        if (p.tp_order_id) badges.push('<span class="badge bg-emerald-900/40 text-emerald-400">TP</span>');
+        if (p.oco_order_list_id) badges.push('<span class="badge bg-blue-900/40 text-blue-400">OCO</span>');
+        if (hasOrders) badges.push(`<button class="badge bg-orange-900/40 text-orange-400 cursor-pointer hover:bg-orange-800/50 transition-colors" onclick="Positions.confirmCancelOrders(${p.id})">&#x2715;</button>`);
         return badges.join('');
     }
 
@@ -105,7 +106,7 @@ const PositionCards = (() => {
 
         const pnlEl = f('pnl');
         if (pnlEl) {
-            pnlEl.className = `${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'} font-semibold`;
+            pnlEl.className = `${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'} font-bold tabular-nums`;
             pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)`;
         }
 
@@ -114,14 +115,13 @@ const PositionCards = (() => {
             detailEl.textContent = `brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}`;
         }
 
-        // Update order badges + action buttons
         const actionsEl = f('actions');
         if (actionsEl) {
             actionsEl.innerHTML = `
                 ${_buildBadgesHtml(p)}
                 <div class="flex-1"></div>
                 <button class="action-btn bg-yellow-600" onclick="Positions.showSL(${p.id})">SL</button>
-                <button class="action-btn bg-green-600" onclick="Positions.showTP(${p.id})">TP</button>
+                <button class="action-btn bg-emerald-600" onclick="Positions.showTP(${p.id})">TP</button>
                 <button class="action-btn bg-blue-600" onclick="Positions.showOCO(${p.id})">OCO</button>
                 <button class="action-btn bg-red-600" onclick="Positions.confirmClose(${p.id})">Close</button>
             `;
