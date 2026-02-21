@@ -25,7 +25,8 @@
         </div>
         <nav class="flex gap-1 w-full sm:w-auto sm:flex-1 sm:justify-center sm:order-2">
             <button class="tab-btn active px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="positions">Positions</button>
-            <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="trades">Trades</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="trades">Cycles</button>
+            <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="fills">Trades</button>
             <button class="tab-btn px-4 py-2 text-sm font-medium flex-1 sm:flex-none sm:min-w-[70px]" data-tab="balances">Balances</button>
         </nav>
     </header>
@@ -40,14 +41,44 @@
             <div id="positions-list" class="space-y-3 hidden"></div>
         </div>
 
-        <!-- Trades view -->
+        <!-- Trades/Cycles view -->
         <div id="view-trades" class="view p-4 hidden">
+            <div class="flex items-center gap-2 mb-3">
+                <select id="cycles-filter" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm flex-1">
+                    <option value="">Tous les symboles</option>
+                </select>
+                <select id="cycles-status" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm">
+                    <option value="">Tous</option>
+                    <option value="closed">Fermés</option>
+                    <option value="open">Ouverts</option>
+                </select>
+            </div>
+            <div id="cycles-stats" class="grid grid-cols-3 gap-2 mb-3 text-center text-sm">
+                <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
+                    <div class="text-gray-500 text-xs">Win Rate</div>
+                    <div id="stat-winrate" class="font-semibold">--</div>
+                </div>
+                <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
+                    <div class="text-gray-500 text-xs">Total PnL</div>
+                    <div id="stat-total-pnl" class="font-semibold">--</div>
+                </div>
+                <div class="bg-gray-900 border border-gray-800 rounded-lg p-2">
+                    <div class="text-gray-500 text-xs">Cycles</div>
+                    <div id="stat-total-cycles" class="font-semibold">--</div>
+                </div>
+            </div>
+            <div id="cycles-list" class="space-y-2"></div>
+            <div id="cycles-empty" class="text-center text-gray-500 py-12 hidden">Aucun cycle</div>
+        </div>
+
+        <!-- Fills view -->
+        <div id="view-fills" class="view p-4 hidden">
             <div class="mb-3">
                 <select id="trades-filter" class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm w-full">
                     <option value="">Tous les symboles</option>
                 </select>
             </div>
-            <div id="trades-list" class="overflow-x-auto">
+            <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="text-gray-400 text-left">
                         <tr>
@@ -77,13 +108,12 @@
             </div>
             <div id="balances-list" class="overflow-x-auto">
                 <table class="w-full text-sm">
-                    <thead class="text-gray-400 text-left">
+                    <thead class="text-gray-400 text-center">
                         <tr>
-                            <th class="pb-2">Asset</th>
-                            <th class="pb-2">Wallet</th>
-                            <th class="pb-2 text-right">Free</th>
-                            <th class="pb-2 text-right">Locked</th>
-                            <th class="pb-2 text-right">Net</th>
+                            <th class="pb-2 text-left">Asset</th>
+                            <th class="pb-2">Quantité</th>
+                            <th class="pb-2">USD</th>
+                            <th class="pb-2 w-16">Total</th>
                         </tr>
                     </thead>
                     <tbody id="balances-tbody"></tbody>
@@ -108,6 +138,7 @@
     <script src="/static/js/charts.js"></script>
     <script src="/static/js/position-cards.js"></script>
     <script src="/static/js/positions.js"></script>
+    <script src="/static/js/cycles.js"></script>
     <script src="/static/js/trades.js"></script>
     <script src="/static/js/balances.js"></script>
     <script src="/static/js/app.js"></script>

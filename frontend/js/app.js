@@ -29,7 +29,8 @@ const App = (() => {
         document.getElementById(`view-${tab}`).classList.remove('hidden');
 
         // Load data on tab switch
-        if (tab === 'trades') Trades.load();
+        if (tab === 'trades') Cycles.load();
+        if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
     }
 

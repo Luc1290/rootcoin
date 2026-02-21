@@ -54,6 +54,7 @@ from backend.routes.api_positions import router as positions_router
 from backend.routes.api_orders import router as orders_router
 from backend.routes.api_balances import router as balances_router
 from backend.routes.api_trades import router as trades_router
+from backend.routes.api_cycles import router as cycles_router
 from backend.routes.api_prices import router as prices_router
 from backend.routes.api_portfolio import router as portfolio_router
 from backend.routes.ws_dashboard import router as ws_router
@@ -63,6 +64,7 @@ app.include_router(positions_router)
 app.include_router(orders_router)
 app.include_router(balances_router)
 app.include_router(trades_router)
+app.include_router(cycles_router)
 app.include_router(prices_router)
 app.include_router(portfolio_router)
 app.include_router(ws_router)

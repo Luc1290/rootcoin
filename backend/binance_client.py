@@ -182,6 +182,25 @@ async def cancel_margin_order(symbol: str, order_id: str, is_isolated: bool = Fa
         raise
 
 
+async def repay_margin_loan(
+    asset: str, amount, is_isolated: bool = False, symbol: str | None = None,
+) -> dict:
+    client = await get_client()
+    try:
+        kwargs = {"asset": asset, "amount": str(amount)}
+        if is_isolated and symbol:
+            kwargs["isIsolated"] = "TRUE"
+            kwargs["symbol"] = symbol
+        result = await client.repay_margin_loan(**kwargs)
+        log.info("margin_loan_repaid", asset=asset, amount=str(amount),
+                 is_isolated=is_isolated)
+        return result
+    except BinanceAPIException as e:
+        log.error("margin_repay_failed", asset=asset, amount=str(amount),
+                  code=e.code, msg=e.message)
+        raise
+
+
 async def get_exchange_info() -> dict:
     client = await get_client()
     try:
