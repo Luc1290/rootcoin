@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    # Market analysis
+    analysis_refresh_interval: int = 300
+    macro_refresh_interval: int = 300
+    whale_min_quote_qty: int = 100000
+    whale_poll_interval: int = 120
+    heatmap_top_n: int = 50
+    heatmap_refresh_interval: int = 300
+    news_refresh_interval: int = 600
+    news_max_items: int = 30
+
     @property
     def stablecoins_set(self) -> set[str]:
         return {s.strip() for s in self.stablecoins.split(",")}

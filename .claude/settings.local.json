@@ -7,7 +7,12 @@
       "Bash(npm install:*)",
       "Bash(sqlite3:*)",
       "WebFetch(domain:dev.binance.vision)",
-      "WebFetch(domain:www.binance.com)"
+      "WebFetch(domain:www.binance.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:news.google.com)",
+      "WebFetch(domain:www.coindesk.com)",
+      "WebFetch(domain:www.reuters.com)",
+      "WebFetch(domain:cointelegraph.com)"
     ]
   }
 }

@@ -4,7 +4,7 @@ import json
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend import position_tracker, ws_manager
+from backend import market_analyzer, news_tracker, position_tracker, ws_manager
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 from backend.ws_manager import (
     EVENT_ACCOUNT_UPDATE,
@@ -95,17 +95,56 @@ async def _broadcast_positions():
             log.error("position_broadcast_failed", exc_info=True)
 
 
+ANALYSIS_BROADCAST_INTERVAL = 30
+
 _broadcast_task: asyncio.Task | None = None
+_analysis_task: asyncio.Task | None = None
+_news_task: asyncio.Task | None = None
+
+
+async def _broadcast_analysis():
+    while True:
+        try:
+            await asyncio.sleep(ANALYSIS_BROADCAST_INTERVAL)
+            if not _clients:
+                continue
+            data = market_analyzer.get_all_analyses()
+            if data:
+                await _broadcast({"type": "analysis_update", "data": data})
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.error("analysis_broadcast_failed", exc_info=True)
+
+
+NEWS_BROADCAST_INTERVAL = 120
+
+
+async def _broadcast_news():
+    while True:
+        try:
+            await asyncio.sleep(NEWS_BROADCAST_INTERVAL)
+            if not _clients:
+                continue
+            data = news_tracker.get_news()
+            if data and data.get("items"):
+                await _broadcast({"type": "news_update", "data": data})
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.error("news_broadcast_failed", exc_info=True)
 
 
 def _ensure_callbacks():
-    global _broadcast_task
+    global _broadcast_task, _analysis_task, _news_task
     if _broadcast_task is None:
         ws_manager.on(EVENT_PRICE_UPDATE, _on_price_update)
         ws_manager.on(EVENT_EXECUTION_REPORT, _on_execution_report)
         ws_manager.on(EVENT_ACCOUNT_UPDATE, _on_account_update)
         ws_manager.on(EVENT_KLINE_UPDATE, _on_kline_update)
         _broadcast_task = asyncio.create_task(_broadcast_positions())
+        _analysis_task = asyncio.create_task(_broadcast_analysis())
+        _news_task = asyncio.create_task(_broadcast_news())
 
 
 @router.websocket("/ws")

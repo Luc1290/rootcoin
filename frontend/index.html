@@ -30,6 +30,8 @@
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=fills" data-tab="fills">Trades</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=balances" data-tab="balances">Balances</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=chart" data-tab="chart">Chart</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=analysis" data-tab="analysis">Analyse</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
         </nav>
     </header>
 
@@ -187,6 +189,38 @@
                 <div id="kline-chart-obv" class="rounded-lg overflow-hidden" style="height:120px;width:100%"></div>
             </div>
         </div>
+
+        <!-- Analysis view -->
+        <div id="view-analysis" class="view p-4 hidden">
+            <div class="flex items-center gap-2 mb-4">
+                <select id="analysis-symbol" class="px-3 py-2.5 text-sm flex-1"></select>
+                <span id="analysis-freshness" class="text-xs text-gray-500"></span>
+            </div>
+            <div id="analysis-bias" class="mb-4"></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <div id="analysis-levels"></div>
+                <div id="analysis-macro"></div>
+            </div>
+            <div id="analysis-alerts"></div>
+            <div id="analysis-news" class="mt-4"></div>
+            <div id="analysis-empty" class="empty-state hidden">
+                <div class="empty-state-icon">📈</div>
+                <div class="empty-state-text">Analyse en cours de calcul...</div>
+            </div>
+        </div>
+
+        <!-- Heatmap view -->
+        <div id="view-heatmap" class="view p-4 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">Crypto Heatmap <span class="text-sm font-normal text-gray-500">4h</span></h2>
+                <span id="heatmap-freshness" class="text-xs text-gray-500"></span>
+            </div>
+            <div id="heatmap-grid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-1.5"></div>
+            <div id="heatmap-empty" class="empty-state hidden">
+                <div class="empty-state-icon">🗺</div>
+                <div class="empty-state-text">Chargement de la heatmap...</div>
+            </div>
+        </div>
     </main>
 
     <!-- Modal -->
@@ -209,6 +243,8 @@
     <script src="/static/js/cycles.js"></script>
     <script src="/static/js/trades.js"></script>
     <script src="/static/js/balances.js"></script>
+    <script src="/static/js/analysis.js"></script>
+    <script src="/static/js/heatmap.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

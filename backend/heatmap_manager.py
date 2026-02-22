@@ -1,0 +1,128 @@
+import asyncio
+from datetime import datetime, timezone
+from decimal import Decimal
+
+import aiohttp
+import structlog
+
+from backend import binance_client
+from backend.config import settings
+
+log = structlog.get_logger()
+
+STALE_THRESHOLD = 900
+EXCLUDED_SUFFIXES = ("UP", "DOWN", "BEAR", "BULL")
+BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker"
+
+_heatmap_cache: dict = {}
+_refresh_task: asyncio.Task | None = None
+
+
+async def start():
+    global _refresh_task
+    _refresh_task = asyncio.create_task(_run_refresh())
+    log.info("heatmap_manager_started")
+
+
+async def stop():
+    if _refresh_task:
+        _refresh_task.cancel()
+        try:
+            await _refresh_task
+        except asyncio.CancelledError:
+            pass
+    log.info("heatmap_manager_stopped")
+
+
+def get_heatmap_data(limit: int | None = None) -> dict:
+    top_n = limit or settings.heatmap_top_n
+    assets = _heatmap_cache.get("assets", [])[:top_n]
+    fetched = _heatmap_cache.get("fetched_at")
+    is_stale = True
+    if fetched:
+        age = (datetime.now(timezone.utc) - fetched).total_seconds()
+        is_stale = age > STALE_THRESHOLD
+    return {
+        "assets": assets,
+        "updated_at": fetched.isoformat() if fetched else None,
+        "is_stale": is_stale,
+    }
+
+
+async def _run_refresh():
+    while True:
+        try:
+            await _fetch_tickers()
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.error("heatmap_fetch_failed", exc_info=True)
+        await asyncio.sleep(settings.heatmap_refresh_interval)
+
+
+async def _fetch_tickers():
+    # Step 1: get 24h tickers to identify top symbols by volume
+    client = await binance_client.get_client()
+    tickers_24h = await client.get_ticker()
+    stables = settings.stablecoins_set
+
+    candidates = []
+    for t in tickers_24h:
+        symbol = t["symbol"]
+        if not symbol.endswith("USDC"):
+            continue
+        base = symbol[:-4]
+        if base in stables:
+            continue
+        if any(base.endswith(s) for s in EXCLUDED_SUFFIXES):
+            continue
+        try:
+            volume = Decimal(t["quoteVolume"])
+        except Exception:
+            continue
+        candidates.append({"symbol": symbol, "base_asset": base, "volume": volume})
+
+    # Sort by volume, keep top N
+    candidates.sort(key=lambda a: a["volume"], reverse=True)
+    top = candidates[:settings.heatmap_top_n]
+    if not top:
+        return
+
+    # Step 2: fetch 4h rolling window for these symbols
+    symbols_list = [a["symbol"] for a in top]
+    # Binance requires symbols as raw JSON array in the URL (not percent-encoded by aiohttp)
+    symbols_param = "[" + ",".join(f'"{s}"' for s in symbols_list) + "]"
+    url = f"{BINANCE_TICKER_URL}?windowSize=4h&symbols={symbols_param}"
+
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                log.warning("heatmap_4h_api_error", status=resp.status)
+                return
+            tickers_4h = await resp.json()
+
+    # Index 4h data by symbol
+    change_map = {}
+    for t in tickers_4h:
+        change_map[t["symbol"]] = {
+            "change": str(round(Decimal(t["priceChangePercent"]), 2)),
+            "price": t["lastPrice"],
+        }
+
+    # Build final list
+    assets = []
+    for a in top:
+        data_4h = change_map.get(a["symbol"])
+        if not data_4h:
+            continue
+        assets.append({
+            "symbol": a["symbol"],
+            "base_asset": a["base_asset"],
+            "price": data_4h["price"],
+            "change_24h": data_4h["change"],
+            "volume_24h": str(round(a["volume"], 0)),
+        })
+
+    _heatmap_cache["assets"] = assets
+    _heatmap_cache["fetched_at"] = datetime.now(timezone.utc)
+    log.info("heatmap_refreshed", count=len(assets))
