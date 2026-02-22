@@ -129,16 +129,27 @@ const KlineChart = (() => {
             upColor: C.upCandle, downColor: C.downCandle,
             borderVisible: false,
             wickUpColor: C.upCandle, wickDownColor: C.downCandle,
-            priceFormat: {
-                type: 'custom',
-                formatter: (price) => {
-                    const p = price >= 100 ? price.toFixed(2) : price >= 1 ? price.toFixed(3) : price.toFixed(6);
-                    if (!_currentPrice) return p;
-                    const pct = ((price - _currentPrice) / _currentPrice * 100);
-                    const sign = pct >= 0 ? '+' : '';
-                    return `${p}  ${sign}${pct.toFixed(2)}%`;
-                },
-            },
+        });
+
+        // Floating % label next to crosshair
+        const pctLabel = document.createElement('div');
+        pctLabel.style.cssText = 'position:absolute;right:0;padding:1px 4px;font-size:10px;pointer-events:none;z-index:10;display:none;white-space:nowrap;';
+        el.style.position = 'relative';
+        el.appendChild(pctLabel);
+
+        _mainChart.subscribeCrosshairMove(param => {
+            if (!param.point || !_currentPrice) { pctLabel.style.display = 'none'; return; }
+            const price = param.seriesData?.get(_candleSeries);
+            if (!price) { pctLabel.style.display = 'none'; return; }
+            const close = price.close ?? price.value;
+            if (close == null) { pctLabel.style.display = 'none'; return; }
+            const pct = ((close - _currentPrice) / _currentPrice * 100);
+            const sign = pct >= 0 ? '+' : '';
+            const color = pct >= 0 ? C.upCandle : C.downCandle;
+            pctLabel.textContent = `${sign}${pct.toFixed(2)}%`;
+            pctLabel.style.color = color;
+            pctLabel.style.top = (param.point.y + 12) + 'px';
+            pctLabel.style.display = 'block';
         });
 
         _maSeries = {};
