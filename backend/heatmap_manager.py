@@ -36,12 +36,27 @@ async def stop():
     log.info("heatmap_manager_stopped")
 
 
-def get_heatmap_data(limit: int | None = None, window: str = "4h") -> dict:
+async def ensure_window_data(window: str):
     global _active_window
     if window not in VALID_WINDOWS:
         window = "4h"
     _active_window = window
+    cache = _heatmap_cache.get(window, {})
+    fetched = cache.get("fetched_at")
+    needs_fetch = not fetched
+    if fetched:
+        age = (datetime.now(timezone.utc) - fetched).total_seconds()
+        needs_fetch = age > STALE_THRESHOLD
+    if needs_fetch:
+        try:
+            await _fetch_tickers(window)
+        except Exception:
+            log.error("heatmap_ensure_fetch_failed", window=window, exc_info=True)
 
+
+def get_heatmap_data(limit: int | None = None, window: str = "4h") -> dict:
+    if window not in VALID_WINDOWS:
+        window = "4h"
     top_n = limit or settings.heatmap_top_n
     cache = _heatmap_cache.get(window, {})
     assets = cache.get("assets", [])[:top_n]

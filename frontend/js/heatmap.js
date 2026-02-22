@@ -2,6 +2,8 @@ const Heatmap = (() => {
     let _data = null;
     let _currentWindow = '4h';
     let _initialized = false;
+    let _pollInterval = null;
+    const POLL_DELAY = 60_000;
 
     function init() {
         if (_initialized) return;
@@ -128,5 +130,17 @@ const Heatmap = (() => {
         return 'il y a ' + Math.floor(diffS / 86400) + 'j';
     }
 
-    return { init, load };
+    function startPolling() {
+        stopPolling();
+        _pollInterval = setInterval(load, POLL_DELAY);
+    }
+
+    function stopPolling() {
+        if (_pollInterval) {
+            clearInterval(_pollInterval);
+            _pollInterval = null;
+        }
+    }
+
+    return { init, load, startPolling, stopPolling };
 })();
