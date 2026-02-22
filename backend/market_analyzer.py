@@ -519,11 +519,11 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     r2 = pivot + (high - low)
 
     levels = [
-        {"price": str(round(r2, 2)), "type": "R2", "label": "Résistance 2"},
-        {"price": str(round(r1, 2)), "type": "R1", "label": "Résistance 1"},
-        {"price": str(round(pivot, 2)), "type": "PP", "label": "Pivot"},
-        {"price": str(round(s1, 2)), "type": "S1", "label": "Support 1"},
-        {"price": str(round(s2, 2)), "type": "S2", "label": "Support 2"},
+        {"price": str(round(r2, 2)), "type": "R2", "label": "Forte resistance"},
+        {"price": str(round(r1, 2)), "type": "R1", "label": "Resistance"},
+        {"price": str(round(pivot, 2)), "type": "PP", "label": "Pivot du jour"},
+        {"price": str(round(s1, 2)), "type": "S1", "label": "Support"},
+        {"price": str(round(s2, 2)), "type": "S2", "label": "Fort support"},
     ]
 
     # Swing highs/lows from 4h candles (~5 days)
@@ -560,10 +560,10 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
         price = Decimal(lvl["price"])
         if price >= close:
             res_idx += 1
-            lvl["label"] = f"Resistance {res_idx}" if res_idx == 1 else f"Resistance {res_idx}"
+            lvl["label"] = f"Plafond recent {res_idx}"
         else:
             sup_idx += 1
-            lvl["label"] = f"Support {sup_idx}" if sup_idx == 1 else f"Support {sup_idx}"
+            lvl["label"] = f"Plancher recent {sup_idx}"
 
     # Attach current price for reference
     levels.insert(0, {"current_price": close, "type": "current"})
