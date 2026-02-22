@@ -132,10 +132,10 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `config.py` | Settings Pydantic depuis `.env` | `settings` (singleton) |
 | `database.py` | SQLAlchemy async engine, session, migrations | `engine`, `async_session`, `init_db()` |
 | `models.py` | ORM : Position, Trade, Order, Balance, Price, Kline, Setting | 7 modeles declaratifs |
-| `binance_client.py` | Wrapper AsyncClient Binance (spot+margin+OCO) | `_client` singleton, `place_order()`, `place_margin_order()`, `place_oco_order()`, `get_spot_balances()`, `get_cross/isolated_margin_balances()` |
+| `binance_client.py` | Wrapper AsyncClient Binance (spot+margin+OCO) | `_client` singleton, `place_order()`, `place_margin_order()`, `place_oco_order()`, `cancel_order()`, `cancel_margin_order()`, `cancel_oco_order()`, `cancel_margin_oco_order()`, `get_spot_balances()`, `get_cross/isolated_margin_balances()` |
 | `ws_manager.py` | 3 streams WS (user data, prix, token refresh) + dispatcher events + kline stream | `_manager` singleton, `on()`, `subscribe_symbol()`, `unsubscribe_symbol()`, `subscribe_kline()`, `unsubscribe_kline()` |
-| `position_tracker.py` | State machine positions : scan startup, handle fills, open/DCA/reduce/close | `_positions` dict, `start()`, `stop()`, `get_positions()` |
-| `order_manager.py` | Placement SL/TP/OCO, close position, cancel orders | `place_stop_loss()`, `place_take_profit()`, `place_oco()`, `close_position()` |
+| `position_tracker.py` | State machine positions : scan startup, handle fills, open/DCA/reduce/close. Delegue les ops Order DB a `order_manager` (mark_order_status, mark_oco_done, ensure_order_record, cleanup_stale_orders) | `_positions` dict, `start()`, `stop()`, `get_positions()` |
+| `order_manager.py` | Placement SL/TP/OCO, close position, cancel orders (individuels + OCO), cleanup stale orders, ensure order records | `place_stop_loss()`, `place_take_profit()`, `place_oco()`, `close_position()`, `cancel_position_orders()`, `cleanup_stale_orders()`, `ensure_oco_order_record()`, `ensure_order_record()`, `mark_order_status()`, `mark_oco_done()` |
 | `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
 | `balance_tracker.py` | Snapshots balances spot/cross/isolated + conversion USD | `start()`, `stop()` |
 | `kline_manager.py` | Fetch klines Binance, stockage DB, calcul indicateurs, cleanup | `start()`, `stop()`, `fetch_and_store()`, `get_klines()`, `compute_indicators()` |
@@ -150,9 +150,10 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 
 | Fichier | Endpoints | Responsabilite |
 |---------|-----------|---------------|
+| `position_helpers.py` | — | Helpers partages : `fetch_order_prices()` (query OCO+SL+TP, fallback stop_price→price), `pos_to_dict()` (serialisation position + order prices) |
 | `dashboard.py` | `GET /` | Sert `index.html` |
-| `ws_dashboard.py` | `WS /ws` | Broadcast positions (2s) + events temps reel |
-| `api_positions.py` | `GET/POST/DELETE /api/positions/*` | CRUD positions, SL/TP/OCO/close |
+| `ws_dashboard.py` | `WS /ws` | Broadcast positions (2s) + events temps reel. Utilise `position_helpers` pour serialisation |
+| `api_positions.py` | `GET/POST/DELETE /api/positions/*` | CRUD positions, SL/TP/OCO/close. Utilise `position_helpers` pour serialisation |
 | `api_orders.py` | `DELETE /api/orders/{id}` | Annuler un ordre |
 | `api_balances.py` | `GET /api/balances`, `GET /api/balances/history` | Balances courantes + historique |
 | `api_trades.py` | `GET /api/trades` | Historique trades (filtre symbol) |
@@ -171,12 +172,12 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `css/output.css` | Tailwind compile (ne pas editer a la main) | — |
 | `js/websocket.js` | Client WS avec reconnexion auto + dispatch par type | `WS.on(type, fn)` |
 | `js/app.js` | Orchestrateur : tabs, horloge, toasts, chargement initial | `App.toast()`, `App.switchTab()` |
-| `js/positions.js` | Rendu cartes positions actives, tri, modals SL/TP/OCO/close | `Positions.load()`, `Positions.render()`, `Positions.showSL/TP/OCO()` |
+| `js/positions.js` | Rendu cartes positions actives, tri, modals SL/TP/OCO/close, cancel orders avec toast contextuel | `Positions.load()`, `Positions.render()`, `Positions.showSL/TP/OCO()`, `Positions.confirmCancelOrders()` |
 | `js/position-cards.js` | Construction HTML d'une carte position | `PositionCards.buildCardHtml()` |
 | `js/trades.js` | Table historique trades | `Trades.load()`, `Trades.render()` |
 | `js/cycles.js` | Cartes cycles fermes, PnL realise, pagination, filtres | `Cycles.load()`, `Cycles.render()` |
 | `js/balances.js` | Table balances agregees par asset, total USD, chart portfolio | `Balances.load()`, `Balances.render()` |
-| `js/charts.js` | Mini-charts prix (LightweightCharts), ligne entry price, chart portfolio | `Charts.createMiniChart()`, `Charts.updateData()`, `Charts.createPortfolioChart()` |
+| `js/charts.js` | Mini-charts prix (LightweightCharts), ligne entry price, chart portfolio. Filtre timestamps dupliques + valeurs invalides pour LightweightCharts | `Charts.createMiniChart()`, `Charts.appendPrice()`, `Charts.cleanup()`, `Charts.createPortfolioChart()`, `Charts.loadPortfolioData()` |
 | `js/kline-chart.js` | Chart candlestick : klines, 7 indicateurs (MA/BB overlay + Vol/B-S/RSI/MACD/OBV sub-charts), markers fills, cycles overlay, crosshair sync, live WS | `KlineChart.init()`, `KlineChart.loadChart()` |
 
 ### Autres

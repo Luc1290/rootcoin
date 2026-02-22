@@ -182,6 +182,39 @@ async def cancel_margin_order(symbol: str, order_id: str, is_isolated: bool = Fa
         raise
 
 
+async def cancel_oco_order(symbol: str, order_list_id: str) -> dict:
+    client = await get_client()
+    try:
+        result = await client._delete("orderList", True, data={
+            "symbol": symbol, "orderListId": order_list_id,
+        })
+        log.info("oco_cancelled", symbol=symbol, order_list_id=order_list_id)
+        return result
+    except BinanceAPIException as e:
+        log.error("cancel_oco_failed", symbol=symbol, order_list_id=order_list_id,
+                  code=e.code, msg=e.message)
+        raise
+
+
+async def cancel_margin_oco_order(
+    symbol: str, order_list_id: str, is_isolated: bool = False,
+) -> dict:
+    client = await get_client()
+    try:
+        kwargs = {"symbol": symbol, "orderListId": order_list_id}
+        if is_isolated:
+            kwargs["isIsolated"] = "TRUE"
+        result = await client._request_margin_api(
+            "delete", "margin/orderList", True, data=kwargs,
+        )
+        log.info("margin_oco_cancelled", symbol=symbol, order_list_id=order_list_id)
+        return result
+    except BinanceAPIException as e:
+        log.error("cancel_margin_oco_failed", symbol=symbol, order_list_id=order_list_id,
+                  code=e.code, msg=e.message)
+        raise
+
+
 async def repay_margin_loan(
     asset: str, amount, is_isolated: bool = False, symbol: str | None = None,
 ) -> dict:

@@ -487,10 +487,34 @@ async def _verify_order_refs():
                     updates["sl_order_id"] = oid
                     eff_sl = oid
                     log.info("sl_discovered", symbol=pos.symbol, order_id=oid)
+                    from backend import order_manager as om
+                    await om.ensure_order_record(pos, o, "SL")
                 elif otype in ("TAKE_PROFIT_LIMIT", "LIMIT_MAKER") and not eff_tp:
                     updates["tp_order_id"] = oid
                     eff_tp = oid
                     log.info("tp_discovered", symbol=pos.symbol, order_id=oid)
+                    from backend import order_manager as om
+                    await om.ensure_order_record(pos, o, "TP")
+
+        # Ensure OCO order record exists in DB (covers crash recovery)
+        final_oco = updates.get("oco_order_list_id", pos.oco_order_list_id)
+        if final_oco and final_oco in open_list_ids:
+            from backend import order_manager as om
+            await om.ensure_oco_order_record(pos, final_oco, open_orders)
+
+        # Ensure Order records exist for all tracked orders (covers crash recovery)
+        from backend import order_manager as om
+        final_sl = updates.get("sl_order_id", pos.sl_order_id)
+        final_tp = updates.get("tp_order_id", pos.tp_order_id)
+        for o in open_orders:
+            oid = str(o["orderId"])
+            if oid == final_sl:
+                await om.ensure_order_record(pos, o, "SL")
+            elif oid == final_tp:
+                await om.ensure_order_record(pos, o, "TP")
+
+        # Clean stale Order records (cancelled on Binance but still NEW in DB)
+        await om.cleanup_stale_orders(pos.id, open_ids)
 
         if updates:
             for k, v in updates.items():
@@ -543,11 +567,13 @@ async def _determine_market_type(symbol: str) -> str:
 async def _handle_execution_report(msg: dict):
     status = msg.get("X", "")
 
-    # Handle order cancellation/expiration — clean position refs
+    # Handle order cancellation/expiration — clean position refs + update DB
     if status in ("CANCELED", "EXPIRED", "REJECTED"):
         order_id = str(msg.get("i", ""))
         if order_id:
             await _clean_order_ref(order_id)
+            from backend import order_manager
+            await order_manager.mark_order_status(order_id, status)
         return
 
     if status not in ("PARTIALLY_FILLED", "FILLED"):
@@ -818,6 +844,8 @@ async def _handle_list_status(msg: dict):
                 await _save_position(pos)
                 log.info("oco_ref_cleaned", symbol=pos.symbol, order_list_id=order_list_id)
                 break
+        from backend import order_manager
+        await order_manager.mark_oco_done(order_list_id)
 
 
 # --- Price updates ---

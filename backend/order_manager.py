@@ -136,9 +136,9 @@ async def place_take_profit(position_id: int, tp_price: Decimal) -> dict:
     qty = _close_qty(pos)
 
     if pos.side == "LONG":
-        limit_price = round_price(pos.symbol, tp_price * (1 + TP_PRICE_OFFSET))
-    else:
         limit_price = round_price(pos.symbol, tp_price * (1 - TP_PRICE_OFFSET))
+    else:
+        limit_price = round_price(pos.symbol, tp_price * (1 + TP_PRICE_OFFSET))
     tp_price = round_price(pos.symbol, tp_price)
 
     validate_order(pos.symbol, qty, tp_price)
@@ -196,12 +196,29 @@ async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> d
 
     if pos.side == "LONG":
         sl_limit = round_price(pos.symbol, sl_price * (1 - SL_PRICE_OFFSET))
-        tp_limit = round_price(pos.symbol, tp_price * (1 + TP_PRICE_OFFSET))
+        tp_limit = round_price(pos.symbol, tp_price * (1 - TP_PRICE_OFFSET))
     else:
         sl_limit = round_price(pos.symbol, sl_price * (1 + SL_PRICE_OFFSET))
-        tp_limit = round_price(pos.symbol, tp_price * (1 - TP_PRICE_OFFSET))
+        tp_limit = round_price(pos.symbol, tp_price * (1 + TP_PRICE_OFFSET))
 
     validate_order(pos.symbol, qty, sl_price)
+
+    # Validate price relationship: for BUY OCO tp_limit < currentPrice < sl_price
+    # for SELL OCO sl_price < currentPrice < tp_limit
+    current = pos.current_price
+    if current and current > 0:
+        if pos.side == "LONG":
+            if not (sl_price < current < tp_limit):
+                raise ValueError(
+                    f"Prix invalide : SL ({sl_price}) < prix actuel ({current}) < TP ({tp_limit}) requis. "
+                    f"Le prix actuel est hors de la fourchette SL/TP."
+                )
+        else:
+            if not (tp_limit < current < sl_price):
+                raise ValueError(
+                    f"Prix invalide : TP ({tp_limit}) < prix actuel ({current}) < SL ({sl_price}) requis. "
+                    f"Le prix actuel est hors de la fourchette SL/TP."
+                )
 
     if _is_margin(pos):
         # Margin OCO uses old format: price (LIMIT_MAKER/TP) + stopPrice/stopLimitPrice (SL)
@@ -238,7 +255,7 @@ async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> d
 
     order_list_id = str(result.get("orderListId", ""))
     await _save_order(
-        binance_order_id="", symbol=pos.symbol, side=side,
+        binance_order_id=None, symbol=pos.symbol, side=side,
         order_type="OCO", status="NEW", quantity=qty,
         market_type=pos.market_type, purpose="OCO", position_id=pos.id,
         price=tp_price, stop_price=sl_price, order_list_id=order_list_id,
@@ -317,35 +334,182 @@ async def cancel_position_orders(position_id: int) -> dict:
     cancelled = 0
     updates = {}
 
-    if pos.sl_order_id:
-        try:
-            await cancel_order_by_binance_id(pos.symbol, pos.sl_order_id, pos.market_type)
-            cancelled += 1
-        except Exception:
-            pass
-        updates["sl_order_id"] = None
-
-    if pos.tp_order_id:
-        try:
-            await cancel_order_by_binance_id(pos.symbol, pos.tp_order_id, pos.market_type)
-            cancelled += 1
-        except Exception:
-            pass
-        updates["tp_order_id"] = None
-
     if pos.oco_order_list_id:
         try:
             await _cancel_oco(pos.symbol, pos.oco_order_list_id, pos.market_type)
             cancelled += 1
         except Exception:
-            pass
+            log.warning("oco_cancel_failed_direct", symbol=pos.symbol,
+                        order_list_id=pos.oco_order_list_id, exc_info=True)
+            # Fallback: query open orders to find the real OCO list ID
+            try:
+                real_oco_id = await _find_oco_list_id_by_symbol(
+                    pos.symbol, pos.market_type)
+                if real_oco_id:
+                    await _cancel_oco(pos.symbol, real_oco_id, pos.market_type)
+                    cancelled += 1
+            except Exception:
+                log.error("oco_cancel_fallback_failed", symbol=pos.symbol, exc_info=True)
         updates["oco_order_list_id"] = None
+        updates["sl_order_id"] = None
+        updates["tp_order_id"] = None
+    else:
+        oco_cancelled = False
+        for order_id in [pos.sl_order_id, pos.tp_order_id]:
+            if not order_id:
+                continue
+            try:
+                await cancel_order_by_binance_id(pos.symbol, order_id, pos.market_type)
+                cancelled += 1
+            except Exception:
+                if not oco_cancelled:
+                    oco_id = await _find_oco_list_id(pos.symbol, order_id, pos.market_type)
+                    if oco_id:
+                        try:
+                            await _cancel_oco(pos.symbol, oco_id, pos.market_type)
+                            oco_cancelled = True
+                            cancelled += 1
+                        except Exception:
+                            log.error("oco_cancel_by_order_failed", symbol=pos.symbol,
+                                      order_id=order_id, oco_id=oco_id, exc_info=True)
+        if pos.sl_order_id:
+            updates["sl_order_id"] = None
+        if pos.tp_order_id:
+            updates["tp_order_id"] = None
 
     if updates:
         await _update_position_order_ref(pos, **updates)
 
     log.info("position_orders_cancelled", symbol=pos.symbol, position_id=position_id, cancelled=cancelled)
     return {"cancelled": cancelled}
+
+
+async def cleanup_stale_orders(position_id: int, open_order_ids: set[str]):
+    async with async_session() as session:
+        rows = (await session.execute(
+            select(Order).where(
+                Order.position_id == position_id,
+                Order.status == "NEW",
+                Order.binance_order_id.isnot(None),
+            )
+        )).scalars().all()
+        changed = 0
+        for order in rows:
+            if order.binance_order_id not in open_order_ids:
+                order.status = "CANCELED"
+                order.updated_at = datetime.now(timezone.utc)
+                changed += 1
+        if changed:
+            await session.commit()
+            log.info("stale_orders_cleaned", position_id=position_id, count=changed)
+
+
+async def mark_order_status(binance_order_id: str, status: str):
+    async with async_session() as session:
+        order = (await session.execute(
+            select(Order).where(Order.binance_order_id == binance_order_id)
+        )).scalar_one_or_none()
+        if order and order.status == "NEW":
+            order.status = status
+            order.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+
+
+async def mark_oco_done(order_list_id: str):
+    async with async_session() as session:
+        order = (await session.execute(
+            select(Order).where(
+                Order.binance_order_list_id == order_list_id,
+                Order.purpose == "OCO",
+                Order.status == "NEW",
+            )
+        )).scalar_one_or_none()
+        if order:
+            order.status = "CANCELED"
+            order.updated_at = datetime.now(timezone.utc)
+            await session.commit()
+
+
+async def ensure_oco_order_record(pos: Position, oco_list_id: str, open_orders: list):
+    async with async_session() as session:
+        existing = (await session.execute(
+            select(Order).where(
+                Order.binance_order_list_id == oco_list_id,
+                Order.purpose == "OCO",
+            )
+        )).scalar_one_or_none()
+        if existing:
+            return
+
+    close_side = "SELL" if pos.side == "LONG" else "BUY"
+    tp_price = sl_price = None
+    for o in open_orders:
+        if str(o.get("orderListId", "")) != oco_list_id:
+            continue
+        otype = o.get("type", "")
+        if otype == "LIMIT_MAKER":
+            tp_price = Decimal(str(o.get("price", "0")))
+        elif otype == "STOP_LOSS_LIMIT":
+            sl_price = Decimal(str(o.get("stopPrice", "0")))
+
+    if tp_price and sl_price:
+        order = Order(
+            binance_order_id=None,
+            binance_order_list_id=oco_list_id,
+            symbol=pos.symbol,
+            side=close_side,
+            order_type="OCO",
+            status="NEW",
+            price=tp_price,
+            stop_price=sl_price,
+            quantity=pos.quantity,
+            market_type=pos.market_type,
+            purpose="OCO",
+            position_id=pos.id,
+        )
+        async with async_session() as session:
+            session.add(order)
+            await session.commit()
+        log.info("oco_order_record_created", symbol=pos.symbol, order_list_id=oco_list_id,
+                 tp=str(tp_price), sl=str(sl_price))
+
+
+async def ensure_order_record(pos: Position, binance_order: dict, purpose: str):
+    oid = str(binance_order.get("orderId", ""))
+    if not oid:
+        return
+    async with async_session() as session:
+        existing = (await session.execute(
+            select(Order).where(Order.binance_order_id == oid)
+        )).scalar_one_or_none()
+        if existing:
+            return
+    otype = binance_order.get("type", "")
+    stop_price = Decimal(str(binance_order.get("stopPrice", "0"))) or None
+    price = Decimal(str(binance_order.get("price", "0"))) or None
+    qty = Decimal(str(binance_order.get("origQty", "0")))
+    side = binance_order.get("side", "")
+    order_list_id = str(binance_order.get("orderListId", ""))
+    if order_list_id in ("", "-1"):
+        order_list_id = None
+    order = Order(
+        binance_order_id=oid,
+        binance_order_list_id=order_list_id,
+        symbol=pos.symbol,
+        side=side,
+        order_type=otype,
+        status="NEW",
+        price=price,
+        stop_price=stop_price,
+        quantity=qty,
+        market_type=pos.market_type,
+        purpose=purpose,
+        position_id=pos.id,
+    )
+    async with async_session() as session:
+        session.add(order)
+        await session.commit()
+    log.info("order_record_created", symbol=pos.symbol, order_id=oid, purpose=purpose)
 
 
 async def cancel_order_by_binance_id(symbol: str, order_id: str, market_type: str) -> dict:
@@ -357,12 +521,45 @@ async def cancel_order_by_binance_id(symbol: str, order_id: str, market_type: st
         )
 
 
-async def _cancel_oco(symbol: str, order_list_id: str, market_type: str):
-    client = await binance_client.get_client()
+async def _find_oco_list_id(symbol: str, order_id: str, market_type: str) -> str | None:
+    try:
+        open_orders = await _get_open_orders(symbol, market_type)
+        for o in open_orders:
+            if str(o.get("orderId", "")) == order_id:
+                list_id = str(o.get("orderListId", ""))
+                if list_id not in ("", "-1"):
+                    return list_id
+    except Exception:
+        pass
+    return None
+
+
+async def _find_oco_list_id_by_symbol(symbol: str, market_type: str) -> str | None:
+    try:
+        open_orders = await _get_open_orders(symbol, market_type)
+        for o in open_orders:
+            list_id = str(o.get("orderListId", ""))
+            if list_id not in ("", "-1"):
+                return list_id
+    except Exception:
+        pass
+    return None
+
+
+async def _get_open_orders(symbol: str, market_type: str) -> list:
     if market_type == "SPOT":
-        await client.cancel_order_list(symbol=symbol, orderListId=order_list_id)
+        return await binance_client.get_open_orders(symbol)
+    return await binance_client.get_margin_open_orders(
+        symbol, is_isolated=(market_type == "ISOLATED_MARGIN"),
+    )
+
+
+async def _cancel_oco(symbol: str, order_list_id: str, market_type: str):
+    if market_type == "SPOT":
+        await binance_client.cancel_oco_order(symbol, order_list_id)
     else:
-        kwargs = {"symbol": symbol, "orderListId": order_list_id}
-        if market_type == "ISOLATED_MARGIN":
-            kwargs["isIsolated"] = "TRUE"
-        await client.cancel_margin_order_list(**kwargs)
+        await binance_client.cancel_margin_oco_order(
+            symbol, order_list_id,
+            is_isolated=(market_type == "ISOLATED_MARGIN"),
+        )
+    await mark_oco_done(order_list_id)

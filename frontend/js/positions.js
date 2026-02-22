@@ -311,7 +311,7 @@ const Positions = (() => {
         `);
     }
 
-    async function apiPost(url, body) {
+    async function apiPost(url, body, successMsg = 'Ordre place') {
         try {
             const resp = await fetch(url, {
                 method: 'POST',
@@ -320,7 +320,7 @@ const Positions = (() => {
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.detail || 'Error');
-            App.toast('success', 'Ordre place');
+            App.toast('success', successMsg);
             hideModal();
         } catch (e) {
             App.toast('error', e.message);
@@ -382,7 +382,7 @@ const Positions = (() => {
     }
 
     async function submitCancelOrders(id) {
-        await apiPost(`/api/positions/${id}/cancel-orders`, {});
+        await apiPost(`/api/positions/${id}/cancel-orders`, {}, 'Ordres annules');
     }
 
     // Real-time updates
