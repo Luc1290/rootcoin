@@ -10,7 +10,6 @@ Application de trading Binance avec dashboard web (spot + margin cross/isolated)
 
 - **Dev local** : `uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload`
 - **Installer les deps Python** : `pip install -r requirements.txt`
-- **Rebuild Tailwind** (apres modif de classes dans HTML/JS) : `npx tailwindcss -i frontend/css/tailwind.css -o frontend/css/output.css --minify`
 - **VPS deploy** : `git pull && sudo systemctl restart rootcoin`
 - **Logs VPS** : `journalctl -u rootcoin -f`
 
@@ -38,7 +37,7 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 8. `macro_tracker.start()` — fetch macro (DXY, VIX, SPX, Gold) via yfinance, refresh 5 min
 9. `whale_tracker.start()` — poll Binance aggTrades pour gros mouvements
 10. `orderbook_tracker.start()` — poll Binance depth, calcul imbalance/walls/spread
-11. `heatmap_manager.start()` — fetch 24h tickers Binance, cache top 50
+11. `heatmap_manager.start()` — fetch top 50 USDC par volume 24h, variation sur fenetre 4h glissante
 12. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
 13. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
 
@@ -91,7 +90,7 @@ Les positions n'existent pas nativement sur Binance spot/margin — elles sont r
 ## Frontend
 
 - **Mobile-first** : iPhone = usage principal. Touch-friendly (boutons min 44px), Tailwind breakpoints sm → md → lg
-- **Tailwind CSS v3 compile** : source `frontend/css/tailwind.css` → output `frontend/css/output.css`. Recompiler apres toute modif de classes
+- **Tailwind CSS v3** : source `frontend/css/tailwind.css` → output `frontend/css/output.css`
 
 ## Git
 
@@ -148,7 +147,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `macro_tracker.py` | Fetch DXY, VIX, Nasdaq, Gold, US10Y, US5Y, Oil, USD/JPY via yfinance + spread 10Y-5Y calcule, cache memoire 5 min | `start()`, `stop()`, `get_macro_data()` |
 | `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
 | `orderbook_tracker.py` | Poll Binance depth, calcul imbalance bid/ask, detection murs, spread, cache memoire | `start()`, `stop()`, `get_orderbook_data()`, `get_imbalance()` |
-| `heatmap_manager.py` | Fetch Binance 24h tickers, filtre top 50 USDC par volume, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
+| `heatmap_manager.py` | Top 50 USDC par volume 24h, variation prix sur fenetre 4h glissante, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
 | `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF + macro, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
 
@@ -174,7 +173,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_cycles.py` | `GET /api/cycles`, `GET /api/cycles/stats` | Cycles fermes/ouverts + stats (win rate, PnL) |
 | `api_klines.py` | `GET /api/klines/symbols`, `GET /api/klines/{symbol}`, `GET /api/klines/{symbol}/trades`, `POST /api/klines/{symbol}/subscribe`, `POST /api/klines/{symbol}/unsubscribe` | Klines OHLCV + indicateurs + subscribe WS |
 | `api_analysis.py` | `GET /api/analysis`, `GET /api/analysis/{symbol}` | Analyse du jour : biais, niveaux, macro, alertes |
-| `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto 24h par volume |
+| `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto top 50 par volume, variation 4h |
 | `api_orderbook.py` | `GET /api/orderbook`, `GET /api/orderbook/{symbol}` | Depth data : imbalance, murs, spread |
 | `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
 
@@ -196,7 +195,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `js/charts.js` | Mini-charts prix (LightweightCharts), ligne entry price, chart portfolio. Filtre timestamps dupliques + valeurs invalides pour LightweightCharts | `Charts.createMiniChart()`, `Charts.appendPrice()`, `Charts.cleanup()`, `Charts.createPortfolioChart()`, `Charts.loadPortfolioData()` |
 | `js/kline-chart.js` | Chart candlestick : klines, 7 indicateurs (MA/BB overlay + Vol/B-S/RSI/MACD/OBV sub-charts), markers fills, cycles overlay, crosshair sync, live WS | `KlineChart.init()`, `KlineChart.loadChart()` |
 | `js/analysis.js` | Page analyse du jour : biais, niveaux cles, macro, alertes. Ecoute WS `analysis_update` | `Analysis.load()` |
-| `js/heatmap.js` | Heatmap crypto : grille coloree de tiles par performance 24h | `Heatmap.load()` |
+| `js/heatmap.js` | Heatmap crypto : grille coloree de tiles par performance 4h | `Heatmap.load()` |
 
 ### Autres
 
