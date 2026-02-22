@@ -26,6 +26,7 @@ const KlineChart = (() => {
     let _crosshairSyncing = false;
     let _chartRegistry = [];
     let _seriesDataMap = {};
+    let _currentPrice = null;
 
     const C = {
         bg: 'transparent',
@@ -128,6 +129,16 @@ const KlineChart = (() => {
             upColor: C.upCandle, downColor: C.downCandle,
             borderVisible: false,
             wickUpColor: C.upCandle, wickDownColor: C.downCandle,
+            priceFormat: {
+                type: 'custom',
+                formatter: (price) => {
+                    const p = price >= 100 ? price.toFixed(2) : price >= 1 ? price.toFixed(3) : price.toFixed(6);
+                    if (!_currentPrice) return p;
+                    const pct = ((price - _currentPrice) / _currentPrice * 100);
+                    const sign = pct >= 0 ? '+' : '';
+                    return `${p}  ${sign}${pct.toFixed(2)}%`;
+                },
+            },
         });
 
         _maSeries = {};
@@ -379,6 +390,7 @@ const KlineChart = (() => {
                 close: parseFloat(k.close),
             }));
             _candleSeries.setData(candles);
+            _currentPrice = candles[candles.length - 1].close;
 
             // Build crosshair sync data maps
             _seriesDataMap.candle = new Map(candles.map(c => [c.time, c.close]));
@@ -570,7 +582,7 @@ const KlineChart = (() => {
                 const allHighs = candles.map(cd => cd.high);
                 const allLows = candles.map(cd => cd.low);
                 const range = Math.max(...allHighs) - Math.min(...allLows);
-                const offset = range * 0.08;
+                const offset = range * 0.20; 
 
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,
@@ -623,12 +635,13 @@ const KlineChart = (() => {
     // Live candle update from WS
     function _onKlineUpdate(data) {
         if (!_candleSeries || data.symbol !== _symbol || data.interval !== _interval) return;
+        _currentPrice = parseFloat(data.close);
         _candleSeries.update({
             time: Math.floor(data.open_time / 1000),
             open: parseFloat(data.open),
             high: parseFloat(data.high),
             low: parseFloat(data.low),
-            close: parseFloat(data.close),
+            close: _currentPrice,
         });
         if (_volSeries && _activeIndicators.has('volume')) {
             _volSeries.update({
