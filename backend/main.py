@@ -7,8 +7,8 @@ from fastapi.staticfiles import StaticFiles
 
 from backend import (
     balance_tracker, heatmap_manager, kline_manager, macro_tracker,
-    market_analyzer, news_tracker, position_tracker, price_recorder,
-    whale_tracker, ws_manager,
+    market_analyzer, news_tracker, orderbook_tracker, position_tracker,
+    price_recorder, whale_tracker, ws_manager,
 )
 from backend.binance_client import close_client, init_client
 from backend.database import close_db, init_db
@@ -41,6 +41,7 @@ async def lifespan(app: FastAPI):
     await kline_manager.start()
     await macro_tracker.start()
     await whale_tracker.start()
+    await orderbook_tracker.start()
     await heatmap_manager.start()
     await market_analyzer.start()
     await news_tracker.start()
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
     await news_tracker.stop()
     await market_analyzer.stop()
     await heatmap_manager.stop()
+    await orderbook_tracker.stop()
     await whale_tracker.stop()
     await macro_tracker.stop()
     await kline_manager.stop()
@@ -77,6 +79,7 @@ from backend.routes.api_klines import router as klines_router
 from backend.routes.api_analysis import router as analysis_router
 from backend.routes.api_heatmap import router as heatmap_router
 from backend.routes.api_news import router as news_router
+from backend.routes.api_orderbook import router as orderbook_router
 from backend.routes.ws_dashboard import router as ws_router
 
 app.include_router(dashboard_router)
@@ -91,6 +94,7 @@ app.include_router(klines_router)
 app.include_router(analysis_router)
 app.include_router(heatmap_router)
 app.include_router(news_router)
+app.include_router(orderbook_router)
 app.include_router(ws_router)
 
 if FRONTEND_DIR.exists():

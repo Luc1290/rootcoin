@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import structlog
 
-from backend import kline_manager, macro_tracker, whale_tracker, position_tracker
+from backend import kline_manager, macro_tracker, orderbook_tracker, whale_tracker, position_tracker
 from backend.config import settings
 
 log = structlog.get_logger()
@@ -21,6 +21,7 @@ WEIGHTS = {
     "stoch_rsi": 0.8,
     "buy_sell": 0.8,
     "obv": 0.5,
+    "orderbook": 0.6,
 }
 
 MACRO_WEIGHT = 0.3
@@ -57,6 +58,7 @@ def get_analysis(symbol: str) -> dict | None:
 def get_all_analyses() -> dict:
     macro = macro_tracker.get_macro_data()
     whales = whale_tracker.get_whale_alerts()
+    orderbook = orderbook_tracker.get_orderbook_data()
     is_stale = True
     if _cache_time:
         age = (datetime.now(timezone.utc) - _cache_time).total_seconds()
@@ -65,6 +67,7 @@ def get_all_analyses() -> dict:
         "analyses": list(_analysis_cache.values()),
         "macro": macro,
         "whale_alerts": whales,
+        "orderbook": orderbook,
         "computed_at": _cache_time.isoformat() if _cache_time else None,
         "is_stale": is_stale,
     }
@@ -140,7 +143,7 @@ async def _analyze_symbol(symbol: str) -> dict:
     # Conflict detection
     ta_direction = "LONG" if ta_score > BIAS_THRESHOLD else ("SHORT" if ta_score < -BIAS_THRESHOLD else "NEUTRAL")
     macro_direction = "LONG" if macro_score > BIAS_THRESHOLD else ("SHORT" if macro_score < -BIAS_THRESHOLD else "NEUTRAL")
-    alerts = _build_alerts(ta_direction, macro_direction, ta_signals, macro_signals)
+    alerts = _build_alerts(ta_direction, macro_direction, ta_signals, macro_signals, symbol)
 
     # Justification
     justification = _build_justification(ta_signals, macro_signals, direction)
@@ -167,6 +170,7 @@ async def _analyze_symbol(symbol: str) -> dict:
             "macro": [_signal_to_dict(s) for s in macro_signals],
         },
         "key_levels": [l for l in key_levels if l.get("type") != "current"],
+        "alerts": alerts,
         "current_price": str(current_price) if current_price else None,
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -263,7 +267,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
             else:
                 score = 0
             signals.append({"name": f"BB({interval})", "value": round(position_in_band, 2),
-                            "score": score, "weight": WEIGHTS["bollinger"]})
+                            "score": score * adx_mult, "weight": WEIGHTS["bollinger"]})
 
     # MFI
     mfi = _last_valid(indicators.get("mfi", []))
@@ -296,7 +300,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"StochRSI({interval})", "value": round(stoch_k, 1),
-                        "score": score, "weight": WEIGHTS["stoch_rsi"]})
+                        "score": score * adx_mult, "weight": WEIGHTS["stoch_rsi"]})
 
     # Buy/Sell pressure
     bs = _last_valid(indicators.get("buy_sell", []))
@@ -329,6 +333,18 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
             signals.append({"name": f"OBV({interval})", "value": None,
                             "score": score, "weight": WEIGHTS["obv"]})
 
+    # Orderbook imbalance (only on 1h to avoid tripling the weight)
+    if interval == "1h":
+        ob_imbalance = orderbook_tracker.get_imbalance(symbol)
+        if ob_imbalance is not None and abs(ob_imbalance) > 0.15:
+            if abs(ob_imbalance) > 0.3:
+                sign = 1.0 if ob_imbalance > 0 else -1.0
+                score = sign * min(abs(ob_imbalance) / 0.6 * 0.75, 1.0)
+            else:
+                score = ob_imbalance * 1.5
+            signals.append({"name": "OB_Imbalance", "value": round(ob_imbalance, 3),
+                            "score": round(score, 2), "weight": WEIGHTS["orderbook"]})
+
     return signals
 
 
@@ -357,15 +373,20 @@ def _score_macro(macro_data: dict) -> list[dict]:
                         "score": round(score, 2), "weight": 1.0, "trend": trend})
 
     # VIX: high = bearish (risk-off)
+    # Ranges: <12 extreme greed, 12-15 low fear, 15-20 normal, 20-30 elevated, 30-50 panic, 50+ crash
     vix = indicators.get("vix")
     if vix:
         val = float(vix.get("value", 0))
-        if val > 30:
+        if val > 50:
             score = -1.0
+        elif val > 30:
+            score = -0.9
         elif val > 25:
             score = -0.7
         elif val > 20:
             score = -0.3
+        elif val < 12:
+            score = 1.0
         elif val < 15:
             score = 0.7
         elif val < 18:
@@ -510,7 +531,7 @@ def _deduplicate_levels(levels: list[dict]) -> list[dict]:
 
 # ── Alerts ────────────────────────────────────────────────────
 
-def _build_alerts(ta_dir: str, macro_dir: str, ta_signals: list, macro_signals: list) -> list[dict]:
+def _build_alerts(ta_dir: str, macro_dir: str, ta_signals: list, macro_signals: list, symbol: str = "") -> list[dict]:
     alerts = []
 
     if ta_dir != "NEUTRAL" and macro_dir != "NEUTRAL" and ta_dir != macro_dir:
@@ -526,25 +547,30 @@ def _build_alerts(ta_dir: str, macro_dir: str, ta_signals: list, macro_signals: 
             "message": f"AT et macro alignes : {ta_dir}",
         })
 
-    # Check for extreme signals
-    for s in ta_signals:
-        if abs(s["score"]) >= 0.9 and s["weight"] >= 1.0:
-            direction = "haussier" if s["score"] > 0 else "baissier"
-            alerts.append({
-                "type": "signal",
-                "severity": "info",
-                "message": f"{s['name']} signal fort {direction}",
-            })
+    # Whale alerts (filtered to current symbol)
+    if symbol:
+        whales = whale_tracker.get_whale_alerts()
+        for w in whales[:20]:
+            if w["symbol"] == symbol:
+                alerts.append({
+                    "type": "whale",
+                    "severity": "info",
+                    "message": f"{_format_qty(w['quote_qty'])} USDC {w['side'].lower()}",
+                    "timestamp": w["timestamp"],
+                })
 
-    # Whale alerts
-    whales = whale_tracker.get_whale_alerts()
-    for w in whales[:5]:  # Last 5 whales
-        alerts.append({
-            "type": "whale",
-            "severity": "info",
-            "message": f"{w['symbol']}: {_format_qty(w['quote_qty'])} USDC {w['side'].lower()}",
-            "timestamp": w["timestamp"],
-        })
+    # Orderbook wall alerts
+    if symbol:
+        ob = orderbook_tracker.get_orderbook_data(symbol)
+        for w in ob.get("walls", []):
+            dist = abs(w.get("distance_pct", 99))
+            if 0.3 < dist < 2.0:
+                side_label = "support" if w["side"] == "BID" else "resistance"
+                alerts.append({
+                    "type": "wall",
+                    "severity": "info",
+                    "message": f"Mur {side_label} a {w['price']} ({w['pct_of_total']}% du volume visible)",
+                })
 
     return alerts
 
@@ -614,6 +640,7 @@ def _build_justification(ta_signals: list, macro_signals: list, direction: str) 
         "StochRSI": lambda v, sc: "StochRSI croisement haussier en survente" if sc > 0.5 else "StochRSI en survente" if sc > 0 else "StochRSI croisement baissier en surachat" if sc < -0.5 else "StochRSI en surachat" if sc < 0 else "StochRSI neutre",
         "B/S": lambda v, sc: f"pression acheteuse ({v:+.0f}%)" if sc > 0 else f"pression vendeuse ({v:+.0f}%)" if sc < 0 else "pression neutre",
         "OBV": lambda v, sc: "OBV divergence haussiere" if sc > 0.5 else "OBV confirme la hausse" if sc > 0 else "OBV divergence baissiere" if sc < -0.5 else "OBV confirme la baisse" if sc < 0 else "OBV neutre",
+        "OB_Imbalance": lambda v, sc: f"carnet d'ordres desequilibre {'acheteur' if sc > 0 else 'vendeur'} ({v:+.1%})" if abs(sc) > 0.1 else "carnet d'ordres equilibre",
     }
 
     sections = []
@@ -649,6 +676,17 @@ def _build_justification(ta_signals: list, macro_signals: list, direction: str) 
             sections.append(f"{tf} : {', '.join(parts)} — tendance haussiere.")
         else:
             sections.append(f"{tf} : {', '.join(parts)} — tendance baissiere.")
+
+    # Non-timeframe signals (orderbook, etc.)
+    other_signals = tf_groups.get("other", [])
+    other_parts = []
+    for s in other_signals:
+        if abs(s["score"]) > 0.1:
+            desc_fn = SIGNAL_DESCRIPTIONS.get(s["name"])
+            if desc_fn:
+                other_parts.append(desc_fn(s.get("value") or 0, s["score"]))
+    if other_parts:
+        sections.append(f"Liquidite : {', '.join(other_parts)}.")
 
     # Macro section
     MACRO_DESC = {
