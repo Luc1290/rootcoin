@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     heatmap_refresh_interval: int = 300
     news_refresh_interval: int = 600
     news_max_items: int = 30
+    orderbook_poll_interval: int = 10
+    orderbook_depth_limit: int = 50
+    orderbook_wall_threshold: float = 0.15
 
     @property
     def stablecoins_set(self) -> set[str]:

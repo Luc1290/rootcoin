@@ -12,7 +12,8 @@
       "WebFetch(domain:news.google.com)",
       "WebFetch(domain:www.coindesk.com)",
       "WebFetch(domain:www.reuters.com)",
-      "WebFetch(domain:cointelegraph.com)"
+      "WebFetch(domain:cointelegraph.com)",
+      "Bash(head:*)"
     ]
   }
 }

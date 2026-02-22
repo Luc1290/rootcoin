@@ -37,9 +37,10 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 7. `kline_manager.start()` — cleanup periodique des vieilles klines
 8. `macro_tracker.start()` — fetch macro (DXY, VIX, SPX, Gold) via yfinance, refresh 5 min
 9. `whale_tracker.start()` — poll Binance aggTrades pour gros mouvements
-10. `heatmap_manager.start()` — fetch 24h tickers Binance, cache top 50
-11. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
-12. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
+10. `orderbook_tracker.start()` — poll Binance depth, calcul imbalance/walls/spread
+11. `heatmap_manager.start()` — fetch 24h tickers Binance, cache top 50
+12. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
+13. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
 
 L'arret se fait en ordre inverse. Chaque module expose `start()`/`stop()`.
 
@@ -146,6 +147,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `kline_manager.py` | Fetch klines Binance, stockage DB, calcul indicateurs, cleanup | `start()`, `stop()`, `fetch_and_store()`, `get_klines()`, `compute_indicators()` |
 | `macro_tracker.py` | Fetch DXY, VIX, SPX, Gold via yfinance (async executor), cache memoire 5 min | `start()`, `stop()`, `get_macro_data()` |
 | `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
+| `orderbook_tracker.py` | Poll Binance depth, calcul imbalance bid/ask, detection murs, spread, cache memoire | `start()`, `stop()`, `get_orderbook_data()`, `get_imbalance()` |
 | `heatmap_manager.py` | Fetch Binance 24h tickers, filtre top 50 USDC par volume, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
 | `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF + macro, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
@@ -173,6 +175,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_klines.py` | `GET /api/klines/symbols`, `GET /api/klines/{symbol}`, `GET /api/klines/{symbol}/trades`, `POST /api/klines/{symbol}/subscribe`, `POST /api/klines/{symbol}/unsubscribe` | Klines OHLCV + indicateurs + subscribe WS |
 | `api_analysis.py` | `GET /api/analysis`, `GET /api/analysis/{symbol}` | Analyse du jour : biais, niveaux, macro, alertes |
 | `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto 24h par volume |
+| `api_orderbook.py` | `GET /api/orderbook`, `GET /api/orderbook/{symbol}` | Depth data : imbalance, murs, spread |
 | `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
 
 ### Frontend (`frontend/`)

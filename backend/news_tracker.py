@@ -15,6 +15,11 @@ FEEDS = {
         "lang": "en",
         "category": "crypto",
     },
+    "cointelegraph": {
+        "url": "https://cointelegraph.com/rss",
+        "lang": "en",
+        "category": "crypto",
+    },
     "google_crypto": {
         "url": "https://news.google.com/rss/search?q=crypto+bitcoin+ethereum&hl=fr&gl=FR&ceid=FR:fr",
         "lang": "fr",

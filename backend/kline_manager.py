@@ -482,10 +482,18 @@ def _mfi(highs: list[float], lows: list[float], closes: list[float], volumes: li
 
 
 def _buy_sell_pressure(volumes: list[float], taker_buy: list[float]) -> list[float | None]:
+    vol_sma_period = 20
     result: list[float | None] = []
-    for v, tb in zip(volumes, taker_buy):
+    for i, (v, tb) in enumerate(zip(volumes, taker_buy)):
         if v > 0:
-            result.append(round((tb / v) * 100 - 50, 2))
+            raw = (tb / v) * 100 - 50
+            # Weight by relative volume: dampen signal when volume is below average
+            if i >= vol_sma_period:
+                avg_vol = sum(volumes[i - vol_sma_period:i]) / vol_sma_period
+                vol_weight = min(v / avg_vol, 1.5) if avg_vol > 0 else 1.0
+            else:
+                vol_weight = 1.0
+            result.append(round(raw * vol_weight, 2))
         else:
             result.append(0)
     return result
