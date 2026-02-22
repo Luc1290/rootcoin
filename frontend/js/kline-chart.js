@@ -593,8 +593,8 @@ const KlineChart = (() => {
                 area.setData(areaData);
                 _cycleSeries.push(area);
 
-                // Entry price line
-                if (c.entry_price) {
+                // Entry price line (active cycles only)
+                if (c.entry_price && c.is_active) {
                     const entryPrice = parseFloat(c.entry_price);
                     const pnlTxt = c.is_active
                         ? (c.pnl_pct ? parseFloat(c.pnl_pct).toFixed(1) + '%' : c.side)
