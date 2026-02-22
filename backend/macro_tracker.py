@@ -14,9 +14,16 @@ TREND_THRESHOLD = Decimal("0.3")  # % change to qualify as up/down
 TICKERS = {
     "dxy": "DX-Y.NYB",
     "vix": "^VIX",
-    "spx": "^GSPC",
+    "nasdaq": "^NDX",
     "gold": "GC=F",
+    "us10y": "^TNX",
+    "us05y": "^FVX",
+    "oil": "CL=F",
+    "usdjpy": "USDJPY=X",
 }
+
+# Yahoo yield indices report yield * 10 (e.g. 42.5 = 4.25%)
+YIELD_TICKERS = {"us10y", "us05y"}
 
 _macro_cache: dict = {}
 _refresh_task: asyncio.Task | None = None
@@ -93,6 +100,11 @@ def _sync_fetch() -> dict:
             current = Decimal(str(round(hist["Close"].iloc[-1], 2)))
             prev_close = Decimal(str(round(hist["Close"].iloc[-2], 2))) if len(hist) >= 2 else current
 
+            # Yield tickers: convert from yield*10 to actual %
+            if key in YIELD_TICKERS:
+                current = current / 10
+                prev_close = prev_close / 10
+
             try:
                 change_pct = ((current - prev_close) / prev_close * 100) if prev_close else Decimal("0")
             except (InvalidOperation, ZeroDivisionError):
@@ -116,4 +128,35 @@ def _sync_fetch() -> dict:
             prev = _macro_cache.get("indicators", {}).get(key)
             if prev:
                 result[key] = prev
+
+    # Compute yield curve spread (10Y - 5Y)
+    us10y = result.get("us10y")
+    us05y = result.get("us05y")
+    if us10y and us05y:
+        try:
+            spread_val = Decimal(us10y["value"]) - Decimal(us05y["value"])
+            prev_spread = Decimal(us10y["prev_close"]) - Decimal(us05y["prev_close"])
+            try:
+                spread_change = ((spread_val - prev_spread) / abs(prev_spread) * 100) if prev_spread else Decimal("0")
+            except (InvalidOperation, ZeroDivisionError):
+                spread_change = Decimal("0")
+
+            if spread_val < 0:
+                trend = "inverted"
+            elif spread_change > TREND_THRESHOLD:
+                trend = "up"
+            elif spread_change < -TREND_THRESHOLD:
+                trend = "down"
+            else:
+                trend = "flat"
+
+            result["spread"] = {
+                "value": str(round(spread_val, 3)),
+                "prev_close": str(round(prev_spread, 3)),
+                "change_pct": str(round(spread_change, 2)),
+                "trend": trend,
+            }
+        except Exception:
+            log.warning("spread_computation_failed", exc_info=True)
+
     return result

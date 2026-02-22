@@ -202,33 +202,48 @@ const Analysis = (() => {
             return;
         }
 
-        const names = { dxy: 'DXY', vix: 'VIX', spx: 'S&P 500', gold: 'Gold' };
-        const cryptoImpact = { dxy: 'inverse', vix: 'inverse', spx: 'direct', gold: 'mixed' };
+        const displayOrder = ['dxy', 'vix', 'nasdaq', 'gold', 'us10y', 'spread', 'oil', 'usdjpy'];
+        const names = {
+            dxy: 'DXY', vix: 'VIX', nasdaq: 'Nasdaq', gold: 'Gold',
+            us10y: 'US 10Y', spread: 'Spread 10-5Y',
+            oil: 'Petrole', usdjpy: 'USD/JPY',
+        };
+        const cryptoImpact = {
+            dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'mixed',
+            us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
+        };
 
         let cards = '';
-        for (const [key, label] of Object.entries(names)) {
+        for (const key of displayOrder) {
             const ind = macro.indicators[key];
             if (!ind) continue;
+            const label = names[key] || key;
 
             const trend = ind.trend;
-            const trendClass = `macro-trend-${trend}`;
-            const arrow = trend === 'up' ? '\u25B2' : trend === 'down' ? '\u25BC' : '\u2014';
+            const isInverted = trend === 'inverted';
+            const trendClass = isInverted ? 'macro-trend-down' : `macro-trend-${trend}`;
+            const arrow = isInverted ? '\u25BC' : trend === 'up' ? '\u25B2' : trend === 'down' ? '\u25BC' : '\u2014';
             const change = parseFloat(ind.change_pct || 0);
             const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
 
-            // Color based on crypto impact, not raw direction
+            // Color based on crypto impact
             const impact = cryptoImpact[key];
             let impactColor = 'text-gray-400';
-            if (impact === 'inverse') {
+            if (impact === 'spread') {
+                const spreadVal = parseFloat(ind.value || 0);
+                impactColor = spreadVal < 0 ? 'pnl-negative' : spreadVal > 0.5 ? 'pnl-positive' : 'text-yellow-400';
+            } else if (impact === 'inverse') {
                 impactColor = trend === 'down' ? 'pnl-positive' : trend === 'up' ? 'pnl-negative' : 'text-gray-400';
             } else if (impact === 'direct') {
                 impactColor = trend === 'up' ? 'pnl-positive' : trend === 'down' ? 'pnl-negative' : 'text-gray-400';
             }
 
+            const displayValue = _fmtMacroValue(key, ind.value);
+
             cards += `
             <div class="macro-card">
                 <div class="text-xs text-gray-500 font-semibold mb-1">${label}</div>
-                <div class="text-lg font-bold tabular-nums">${_fmtPrice(ind.value)}</div>
+                <div class="text-lg font-bold tabular-nums">${displayValue}</div>
                 <div class="${trendClass} text-sm font-semibold">
                     ${arrow} <span class="tabular-nums">${changeStr}</span>
                 </div>
@@ -241,7 +256,7 @@ const Analysis = (() => {
         el.innerHTML = `
         <div class="card">
             <div class="metric-label mb-2">Macro${staleHtml}</div>
-            <div class="grid grid-cols-2 gap-2">${cards}</div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">${cards}</div>
         </div>`;
     }
 
@@ -360,6 +375,15 @@ const Analysis = (() => {
         if (n >= 1000) return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         if (n >= 1) return n.toFixed(4);
         return n.toFixed(6);
+    }
+
+    function _fmtMacroValue(key, val) {
+        const n = parseFloat(val);
+        if (isNaN(n)) return val;
+        if (key === 'us10y') return n.toFixed(2) + '%';
+        if (key === 'spread') return (n >= 0 ? '+' : '') + n.toFixed(3) + '%';
+        if (n >= 1000) return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return n.toFixed(2);
     }
 
     function _timeAgo(isoStr) {
