@@ -133,17 +133,15 @@ const KlineChart = (() => {
 
         // Floating % label next to crosshair
         const pctLabel = document.createElement('div');
-        pctLabel.style.cssText = 'position:absolute;right:0;padding:1px 4px;font-size:10px;pointer-events:none;z-index:10;display:none;white-space:nowrap;';
+        pctLabel.style.cssText = 'position:absolute;right:0;padding:2px 6px;font-size:12px;font-weight:600;pointer-events:none;z-index:10;display:none;white-space:nowrap;background:rgba(0,0,0,0.75);border-radius:3px;';
         el.style.position = 'relative';
         el.appendChild(pctLabel);
 
         _mainChart.subscribeCrosshairMove(param => {
             if (!param.point || !_currentPrice) { pctLabel.style.display = 'none'; return; }
-            const price = param.seriesData?.get(_candleSeries);
-            if (!price) { pctLabel.style.display = 'none'; return; }
-            const close = price.close ?? price.value;
-            if (close == null) { pctLabel.style.display = 'none'; return; }
-            const pct = ((close - _currentPrice) / _currentPrice * 100);
+            const price = _candleSeries.coordinateToPrice(param.point.y);
+            if (price == null) { pctLabel.style.display = 'none'; return; }
+            const pct = ((price - _currentPrice) / _currentPrice * 100);
             const sign = pct >= 0 ? '+' : '';
             const color = pct >= 0 ? C.upCandle : C.downCandle;
             pctLabel.textContent = `${sign}${pct.toFixed(2)}%`;
