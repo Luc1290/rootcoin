@@ -90,11 +90,18 @@ const Charts = (() => {
             const data = await resp.json();
             if (!data.length) return;
 
-            const points = data.map(p => ({
+            const raw = data.map(p => ({
                 time: Math.floor(new Date(p.recorded_at + 'Z').getTime() / 1000),
                 value: parseFloat(p.price),
-            }));
-
+            })).filter(p => isFinite(p.time) && isFinite(p.value) && p.value > 0);
+            // LightweightCharts requires strictly increasing timestamps
+            const points = [];
+            for (const p of raw) {
+                if (!points.length || p.time > points[points.length - 1].time) {
+                    points.push(p);
+                }
+            }
+            if (!points.length) return;
             const entry = _posCharts[positionId];
             if (entry) {
                 entry.series.setData(points);
@@ -126,17 +133,19 @@ const Charts = (() => {
     function appendPrice(symbol, priceStr) {
         const now = Math.floor(Date.now() / 1000);
         const value = parseFloat(priceStr);
+        if (!value || !isFinite(value)) return;
 
         for (const entry of Object.values(_posCharts)) {
-            if (entry.symbol === symbol) {
+            if (entry.symbol !== symbol || !entry.lastTs) continue;
+            try {
                 if (now - entry.lastTs >= APPEND_INTERVAL) {
                     entry.series.update({ time: now, value });
                     entry.lastTs = now;
-                } else if (entry.lastTs > 0) {
+                } else {
                     entry.series.update({ time: entry.lastTs, value });
                 }
                 _updateEntryVisuals(entry, value);
-            }
+            } catch (_) { /* chart not ready */ }
         }
     }
 
