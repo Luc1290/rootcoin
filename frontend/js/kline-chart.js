@@ -121,7 +121,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-main');
         if (!el || _mainChart) return;
 
-        _mainChart = LightweightCharts.createChart(el, _chartOptions(350, true));
+        _mainChart = LightweightCharts.createChart(el, _chartOptions(500, true));
         _mainChart.applyOptions({ width: el.clientWidth });
 
         _candleSeries = _mainChart.addCandlestickSeries({
