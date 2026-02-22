@@ -13,6 +13,8 @@ html {
     border-radius: 0.5rem;
     transition: all 0.2s ease;
     position: relative;
+    text-decoration: none;
+    cursor: pointer;
 }
 .tab-btn:hover {
     color: #d1d5db;
