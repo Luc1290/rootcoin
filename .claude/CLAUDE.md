@@ -35,6 +35,11 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 5. `position_tracker.start()` — scan Binance pour reconstruire les positions, puis ecoute les events WS
 6. `price_recorder.start()` / `balance_tracker.start()` — s'abonnent aux events WS
 7. `kline_manager.start()` — cleanup periodique des vieilles klines
+8. `macro_tracker.start()` — fetch macro (DXY, VIX, SPX, Gold) via yfinance, refresh 5 min
+9. `whale_tracker.start()` — poll Binance aggTrades pour gros mouvements
+10. `heatmap_manager.start()` — fetch 24h tickers Binance, cache top 50
+11. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
+12. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
 
 L'arret se fait en ordre inverse. Chaque module expose `start()`/`stop()`.
 
@@ -139,6 +144,11 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
 | `balance_tracker.py` | Snapshots balances spot/cross/isolated + conversion USD | `start()`, `stop()` |
 | `kline_manager.py` | Fetch klines Binance, stockage DB, calcul indicateurs, cleanup | `start()`, `stop()`, `fetch_and_store()`, `get_klines()`, `compute_indicators()` |
+| `macro_tracker.py` | Fetch DXY, VIX, SPX, Gold via yfinance (async executor), cache memoire 5 min | `start()`, `stop()`, `get_macro_data()` |
+| `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
+| `heatmap_manager.py` | Fetch Binance 24h tickers, filtre top 50 USDC par volume, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
+| `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF + macro, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
+| `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
 
 ### Utilitaires (`backend/utils/`)
 
@@ -161,13 +171,16 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_portfolio.py` | `GET /api/portfolio/history` | Valeur portfolio agregeee dans le temps |
 | `api_cycles.py` | `GET /api/cycles`, `GET /api/cycles/stats` | Cycles fermes/ouverts + stats (win rate, PnL) |
 | `api_klines.py` | `GET /api/klines/symbols`, `GET /api/klines/{symbol}`, `GET /api/klines/{symbol}/trades`, `POST /api/klines/{symbol}/subscribe`, `POST /api/klines/{symbol}/unsubscribe` | Klines OHLCV + indicateurs + subscribe WS |
+| `api_analysis.py` | `GET /api/analysis`, `GET /api/analysis/{symbol}` | Analyse du jour : biais, niveaux, macro, alertes |
+| `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto 24h par volume |
+| `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
 
 ### Frontend (`frontend/`)
 
 | Fichier | Responsabilite | Exports cles |
 |---------|---------------|--------------|
-| `index.html` | SPA : 5 tabs (positions/cycles/trades/balances/chart), modals SL/TP/OCO | — |
-| `css/style.css` | Styles custom : couleurs PnL, cards, responsive, modals, chart indicators | Classes : `.pnl-positive/negative`, `.position-card`, `.cycle-card`, `.chart-interval-btn`, `.indicator-toggle`, `.subchart-label` |
+| `index.html` | SPA : 7 tabs (positions/cycles/trades/balances/chart/analyse/heatmap), modals SL/TP/OCO | — |
+| `css/style.css` | Styles custom : couleurs PnL, cards, responsive, modals, chart indicators, heatmap tiles, analyse | Classes : `.pnl-positive/negative`, `.position-card`, `.cycle-card`, `.chart-interval-btn`, `.indicator-toggle`, `.subchart-label`, `.heatmap-tile`, `.bias-direction`, `.alert-card`, `.macro-card` |
 | `css/tailwind.css` | Source Tailwind (input pour compilation) | — |
 | `css/output.css` | Tailwind compile (ne pas editer a la main) | — |
 | `js/websocket.js` | Client WS avec reconnexion auto + dispatch par type | `WS.on(type, fn)` |
@@ -179,6 +192,8 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `js/balances.js` | Table balances agregees par asset, total USD, chart portfolio | `Balances.load()`, `Balances.render()` |
 | `js/charts.js` | Mini-charts prix (LightweightCharts), ligne entry price, chart portfolio. Filtre timestamps dupliques + valeurs invalides pour LightweightCharts | `Charts.createMiniChart()`, `Charts.appendPrice()`, `Charts.cleanup()`, `Charts.createPortfolioChart()`, `Charts.loadPortfolioData()` |
 | `js/kline-chart.js` | Chart candlestick : klines, 7 indicateurs (MA/BB overlay + Vol/B-S/RSI/MACD/OBV sub-charts), markers fills, cycles overlay, crosshair sync, live WS | `KlineChart.init()`, `KlineChart.loadChart()` |
+| `js/analysis.js` | Page analyse du jour : biais, niveaux cles, macro, alertes. Ecoute WS `analysis_update` | `Analysis.load()` |
+| `js/heatmap.js` | Heatmap crypto : grille coloree de tiles par performance 24h | `Heatmap.load()` |
 
 ### Autres
 

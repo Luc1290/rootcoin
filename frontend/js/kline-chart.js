@@ -591,7 +591,7 @@ const KlineChart = (() => {
                 const allHighs = candles.map(cd => cd.high);
                 const allLows = candles.map(cd => cd.low);
                 const range = Math.max(...allHighs) - Math.min(...allLows);
-                const offset = range * 0.20; 
+                const offset = range * 0.15; 
 
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,

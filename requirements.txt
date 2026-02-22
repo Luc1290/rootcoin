@@ -8,3 +8,6 @@ pydantic==2.*
 pydantic-settings==2.*
 httpx==0.28.*
 structlog==25.*
+yfinance==0.2.*
+deep-translator==1.11.*
+aiohttp==3.11.*

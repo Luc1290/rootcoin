@@ -1,6 +1,6 @@
 const App = (() => {
     let activeTab = 'positions';
-    const validTabs = ['positions', 'trades', 'fills', 'balances', 'chart'];
+    const validTabs = ['positions', 'trades', 'fills', 'balances', 'chart', 'analysis', 'heatmap'];
 
     function init() {
         // Tab navigation — links allow middle-click / long-press "Open in new tab"
@@ -52,6 +52,8 @@ const App = (() => {
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
         if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }
+        if (tab === 'analysis') Analysis.load();
+        if (tab === 'heatmap') Heatmap.load();
     }
 
     function updateClock() {
