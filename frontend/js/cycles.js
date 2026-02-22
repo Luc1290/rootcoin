@@ -1,6 +1,8 @@
 const Cycles = (() => {
     let currentOffset = 0;
     const PAGE_SIZE = 50;
+    let _pollInterval = null;
+    const POLL_DELAY = 30_000;
 
     function formatPrice(p) {
         if (p >= 1000) return p.toFixed(2);
@@ -153,5 +155,17 @@ const Cycles = (() => {
         if (s) s.addEventListener('change', () => load());
     });
 
-    return { load };
+    function startPolling() {
+        stopPolling();
+        _pollInterval = setInterval(load, POLL_DELAY);
+    }
+
+    function stopPolling() {
+        if (_pollInterval) {
+            clearInterval(_pollInterval);
+            _pollInterval = null;
+        }
+    }
+
+    return { load, startPolling, stopPolling };
 })();

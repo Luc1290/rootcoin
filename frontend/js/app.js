@@ -48,7 +48,7 @@ const App = (() => {
         history.replaceState(null, '', url);
 
         // Load data on tab switch
-        if (tab === 'trades') Cycles.load();
+        if (tab === 'trades') { Cycles.load(); Cycles.startPolling(); } else { Cycles.stopPolling(); }
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
         if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }

@@ -31,6 +31,7 @@ BIAS_THRESHOLD = 0.15
 TIMEFRAMES = ["1h", "4h", "1d"]
 
 _analysis_cache: dict[str, dict] = {}
+_prev_direction: dict[str, str] = {}
 _cache_time: datetime | None = None
 _refresh_task: asyncio.Task | None = None
 
@@ -138,7 +139,14 @@ async def _analyze_symbol(symbol: str) -> dict:
     # |0.05| -> 22%, |0.15| -> 39%, |0.30| -> 55%, |0.50| -> 71%, |1.0| -> 100%
     confidence = round(min(abs(final_score) ** 0.5 * 100, 100))
 
-    direction = "LONG" if final_score >= 0 else "SHORT"
+    prev = _prev_direction.get(symbol)
+    if prev == "LONG" and final_score >= -BIAS_THRESHOLD:
+        direction = "LONG"
+    elif prev == "SHORT" and final_score <= BIAS_THRESHOLD:
+        direction = "SHORT"
+    else:
+        direction = "LONG" if final_score >= 0 else "SHORT"
+    _prev_direction[symbol] = direction
 
     # Conflict detection
     ta_direction = "LONG" if ta_score > BIAS_THRESHOLD else ("SHORT" if ta_score < -BIAS_THRESHOLD else "NEUTRAL")
