@@ -145,7 +145,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
 | `balance_tracker.py` | Snapshots balances spot/cross/isolated + conversion USD | `start()`, `stop()` |
 | `kline_manager.py` | Fetch klines Binance, stockage DB, calcul indicateurs, cleanup | `start()`, `stop()`, `fetch_and_store()`, `get_klines()`, `compute_indicators()` |
-| `macro_tracker.py` | Fetch DXY, VIX, SPX, Gold via yfinance (async executor), cache memoire 5 min | `start()`, `stop()`, `get_macro_data()` |
+| `macro_tracker.py` | Fetch DXY, VIX, Nasdaq, Gold, US10Y, US5Y, Oil, USD/JPY via yfinance + spread 10Y-5Y calcule, cache memoire 5 min | `start()`, `stop()`, `get_macro_data()` |
 | `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
 | `orderbook_tracker.py` | Poll Binance depth, calcul imbalance bid/ask, detection murs, spread, cache memoire | `start()`, `stop()`, `get_orderbook_data()`, `get_imbalance()` |
 | `heatmap_manager.py` | Fetch Binance 24h tickers, filtre top 50 USDC par volume, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |

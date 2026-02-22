@@ -396,17 +396,17 @@ def _score_macro(macro_data: dict) -> list[dict]:
         signals.append({"name": "VIX", "value": vix.get("value"),
                         "score": score, "weight": 1.2, "trend": vix["trend"]})
 
-    # SPX: up = mildly bullish
-    spx = indicators.get("spx")
-    if spx:
-        trend = spx["trend"]
+    # Nasdaq: up = bullish (risk-on, high correlation with crypto)
+    nasdaq = indicators.get("nasdaq")
+    if nasdaq:
+        trend = nasdaq["trend"]
         if trend == "up":
             score = 0.5
         elif trend == "down":
             score = -0.5
         else:
             score = 0
-        signals.append({"name": "SPX", "value": spx.get("value"),
+        signals.append({"name": "Nasdaq", "value": nasdaq.get("value"),
                         "score": score, "weight": 0.8, "trend": trend})
 
     # Gold: context-dependent
@@ -424,6 +424,68 @@ def _score_macro(macro_data: dict) -> list[dict]:
             score = 0
         signals.append({"name": "Gold", "value": gold.get("value"),
                         "score": score, "weight": 0.6, "trend": gold_trend})
+
+    # US10Y: rising yields = bearish (liquidity drain from risk assets)
+    us10y = indicators.get("us10y")
+    if us10y:
+        trend = us10y["trend"]
+        change = abs(float(us10y.get("change_pct", 0)))
+        magnitude = min(change / 2.0, 1.0)
+        if trend == "up":
+            score = -magnitude
+        elif trend == "down":
+            score = magnitude
+        else:
+            score = 0
+        signals.append({"name": "US10Y", "value": us10y.get("value"),
+                        "score": round(score, 2), "weight": 1.0, "trend": trend})
+
+    # Spread (10Y-5Y): inverted curve = recession signal = bearish
+    spread = indicators.get("spread")
+    if spread:
+        val = float(spread.get("value", 0))
+        if val < -0.5:
+            score = -1.0
+        elif val < 0:
+            score = -0.7
+        elif val < 0.2:
+            score = -0.3
+        elif val > 1.0:
+            score = 0.3
+        else:
+            score = 0.1
+        signals.append({"name": "Spread", "value": spread.get("value"),
+                        "score": score, "weight": 0.8, "trend": spread.get("trend")})
+
+    # Oil: rising = inflation = hawkish Fed = bearish crypto
+    oil = indicators.get("oil")
+    if oil:
+        trend = oil["trend"]
+        change = abs(float(oil.get("change_pct", 0)))
+        magnitude = min(change / 2.0, 1.0)
+        if trend == "up":
+            score = -magnitude * 0.5
+        elif trend == "down":
+            score = magnitude * 0.3
+        else:
+            score = 0
+        signals.append({"name": "Oil", "value": oil.get("value"),
+                        "score": round(score, 2), "weight": 0.6, "trend": trend})
+
+    # USDJPY: falling = yen strengthening = carry trade unwind = bearish
+    usdjpy = indicators.get("usdjpy")
+    if usdjpy:
+        trend = usdjpy["trend"]
+        change = abs(float(usdjpy.get("change_pct", 0)))
+        magnitude = min(change / 1.0, 1.0)
+        if trend == "down":
+            score = -magnitude
+        elif trend == "up":
+            score = magnitude * 0.3
+        else:
+            score = 0
+        signals.append({"name": "USD/JPY", "value": usdjpy.get("value"),
+                        "score": round(score, 2), "weight": 0.7, "trend": trend})
 
     return signals
 
@@ -685,8 +747,12 @@ def _build_justification(ta_signals: list, macro_signals: list, direction: str) 
     MACRO_DESC = {
         "DXY": lambda s: f"DXY en {'hausse (bearish crypto)' if s['score'] < 0 else 'baisse (bullish crypto)' if s['score'] > 0 else 'neutre'}",
         "VIX": lambda s: f"VIX a {float(s.get('value', 0)):.0f}" + (" (risk-off, prudence)" if s["score"] < -0.3 else " (risk-on, favorable)" if s["score"] > 0.3 else " (neutre)"),
-        "SPX": lambda s: f"S&P 500 en {'hausse' if s['score'] > 0 else 'baisse' if s['score'] < 0 else 'neutre'}",
+        "Nasdaq": lambda s: f"Nasdaq en {'hausse (risk-on)' if s['score'] > 0 else 'baisse (risk-off)' if s['score'] < 0 else 'neutre'}",
         "Gold": lambda s: f"Or en {'hausse' if s.get('trend') == 'up' else 'baisse' if s.get('trend') == 'down' else 'neutre'}" + (" (fuite vers valeur refuge)" if s["score"] < -0.3 else ""),
+        "US10Y": lambda s: f"taux 10Y en {'hausse (pression liquidite)' if s['score'] < 0 else 'baisse (assouplissement)' if s['score'] > 0 else 'neutre'}",
+        "Spread": lambda s: "courbe des taux inversee (signal recession)" if float(s.get("value", 0)) < 0 else "courbe des taux normale",
+        "Oil": lambda s: f"petrole en {'hausse (pression inflation)' if s['score'] < 0 else 'baisse (desinflation)' if s['score'] > 0 else 'neutre'}",
+        "USD/JPY": lambda s: f"yen en {'hausse (carry trade unwind, risk-off)' if s['score'] < 0 else 'baisse (risk-on)' if s['score'] > 0 else 'neutre'}",
     }
     macro_parts = []
     for s in macro_signals:
