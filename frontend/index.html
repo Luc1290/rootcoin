@@ -212,7 +212,14 @@
         <!-- Heatmap view -->
         <div id="view-heatmap" class="view p-4 hidden">
             <div class="flex items-center justify-between mb-4">
-                <h2 class="text-lg font-bold">Crypto Heatmap <span class="text-sm font-normal text-gray-500">4h</span></h2>
+                <div class="flex items-center gap-3">
+                    <h2 class="text-lg font-bold">Crypto Heatmap</h2>
+                    <div class="flex gap-1" id="heatmap-windows">
+                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-window="15m">15m</button>
+                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-window="1h">1h</button>
+                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium active" data-window="4h">4h</button>
+                    </div>
+                </div>
                 <span id="heatmap-freshness" class="text-xs text-gray-500"></span>
             </div>
             <div id="heatmap-grid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-1.5"></div>
