@@ -53,7 +53,7 @@ const App = (() => {
         if (tab === 'balances') Balances.load();
         if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }
         if (tab === 'analysis') Analysis.load();
-        if (tab === 'heatmap') Heatmap.load();
+        if (tab === 'heatmap') { Heatmap.init(); Heatmap.load(); }
     }
 
     function updateClock() {

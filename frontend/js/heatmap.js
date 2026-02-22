@@ -1,9 +1,24 @@
 const Heatmap = (() => {
     let _data = null;
+    let _currentWindow = '4h';
+    let _initialized = false;
+
+    function init() {
+        if (_initialized) return;
+        _initialized = true;
+        document.querySelectorAll('#heatmap-windows .chart-interval-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#heatmap-windows .chart-interval-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                _currentWindow = btn.dataset.window;
+                load();
+            });
+        });
+    }
 
     async function load() {
         try {
-            const resp = await fetch('/api/heatmap?limit=50');
+            const resp = await fetch(`/api/heatmap?limit=50&window=${_currentWindow}`);
             if (!resp.ok) throw new Error('Failed to load heatmap');
             _data = await resp.json();
             render();
@@ -113,5 +128,5 @@ const Heatmap = (() => {
         return 'il y a ' + Math.floor(diffS / 86400) + 'j';
     }
 
-    return { load };
+    return { init, load };
 })();

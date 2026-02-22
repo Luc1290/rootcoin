@@ -6,5 +6,5 @@ router = APIRouter(prefix="/api/heatmap", tags=["heatmap"])
 
 
 @router.get("")
-async def get_heatmap(limit: int = Query(50, le=200)):
-    return heatmap_manager.get_heatmap_data(limit)
+async def get_heatmap(limit: int = Query(50, le=200), window: str = Query("4h")):
+    return heatmap_manager.get_heatmap_data(limit, window)
