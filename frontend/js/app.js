@@ -1,10 +1,14 @@
 const App = (() => {
     let activeTab = 'positions';
+    const validTabs = ['positions', 'trades', 'fills', 'balances', 'chart'];
 
     function init() {
-        // Tab navigation
+        // Tab navigation — links allow middle-click / long-press "Open in new tab"
         document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                switchTab(btn.dataset.tab);
+            });
         });
 
         // Modal close on overlay click
@@ -15,6 +19,16 @@ const App = (() => {
         // Clock
         updateClock();
         setInterval(updateClock, 1000);
+
+        // Read ?tab= from URL
+        const params = new URLSearchParams(window.location.search);
+        const urlTab = params.get('tab');
+        if (urlTab && validTabs.includes(urlTab)) {
+            activeTab = urlTab;
+        }
+
+        // Apply initial tab
+        switchTab(activeTab);
 
         // Initial data load
         Positions.load();
@@ -27,6 +41,11 @@ const App = (() => {
         });
         document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
         document.getElementById(`view-${tab}`).classList.remove('hidden');
+
+        // Update URL without reload
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tab);
+        history.replaceState(null, '', url);
 
         // Load data on tab switch
         if (tab === 'trades') Cycles.load();
