@@ -540,7 +540,7 @@ async def _clean_order_ref(order_id: str):
 # --- Execution report handler ---
 
 
-async def _determine_market_type(symbol: str) -> str:
+async def _determine_market_type(symbol: str, order_id: str = "") -> str:
     for pos in _positions.values():
         if pos.symbol == symbol and pos.is_active:
             return pos.market_type
@@ -549,7 +549,10 @@ async def _determine_market_type(symbol: str) -> str:
     try:
         for bal in await binance_client.get_cross_margin_balances():
             if bal["asset"] == base_asset:
-                if Decimal(bal.get("borrowed", "0")) > 0 or Decimal(bal.get("free", "0")) > 0:
+                borrowed = Decimal(bal.get("borrowed", "0"))
+                free = Decimal(bal.get("free", "0"))
+                locked = Decimal(bal.get("locked", "0"))
+                if borrowed > 0 or free > 0 or locked > 0:
                     return "CROSS_MARGIN"
     except Exception:
         pass
@@ -557,10 +560,29 @@ async def _determine_market_type(symbol: str) -> str:
         for pair in await binance_client.get_isolated_margin_balances():
             if pair.get("symbol") == symbol:
                 base = pair.get("baseAsset", {})
-                if Decimal(base.get("borrowed", "0")) > 0 or Decimal(base.get("free", "0")) > 0:
+                borrowed = Decimal(base.get("borrowed", "0"))
+                free = Decimal(base.get("free", "0"))
+                locked = Decimal(base.get("locked", "0"))
+                if borrowed > 0 or free > 0 or locked > 0:
                     return "ISOLATED_MARGIN"
     except Exception:
         pass
+
+    if order_id:
+        client = await binance_client.get_client()
+        try:
+            await client.get_margin_order(symbol=symbol, orderId=order_id)
+            return "CROSS_MARGIN"
+        except Exception:
+            pass
+        try:
+            await client.get_margin_order(
+                symbol=symbol, orderId=order_id, isIsolated="TRUE",
+            )
+            return "ISOLATED_MARGIN"
+        except Exception:
+            pass
+
     return "SPOT"
 
 
@@ -594,7 +616,7 @@ async def _handle_execution_report(msg: dict):
     log.info("execution_report", symbol=symbol, side=side, qty=str(fill_qty),
              price=str(fill_price), status=status)
 
-    market_type = await _determine_market_type(symbol)
+    market_type = await _determine_market_type(symbol, order_id)
 
     await _record_trade(
         trade_id=trade_id, order_id=order_id, symbol=symbol, side=side,
