@@ -564,15 +564,13 @@ const KlineChart = (() => {
                     color = 'rgba(239,68,68,';    // red
                 }
 
-                // Area that follows candle shape but extends above
                 const cycleCandles = candles.filter(cd => cd.time >= openTs && cd.time <= closeTs);
                 if (!cycleCandles.length) return;
 
-                // Offset = 50% of the price range so the area sits above candles
                 const allHighs = candles.map(cd => cd.high);
                 const allLows = candles.map(cd => cd.low);
                 const range = Math.max(...allHighs) - Math.min(...allLows);
-                const offset = range * 0.5;
+                const offset = range * 0.08;
 
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,
@@ -590,6 +588,7 @@ const KlineChart = (() => {
                     lastValueVisible: false,
                     priceLineVisible: false,
                     crosshairMarkerVisible: false,
+                    autoscaleInfoProvider: () => null,
                 });
                 area.setData(areaData);
                 _cycleSeries.push(area);
@@ -607,6 +606,7 @@ const KlineChart = (() => {
                         lastValueVisible: false,
                         priceLineVisible: false,
                         title: pnlTxt,
+                        autoscaleInfoProvider: () => null,
                     });
                     line.setData([
                         { time: areaData[0].time, value: entryPrice },
