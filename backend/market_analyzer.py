@@ -478,29 +478,22 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     # Deduplicate close levels (within 0.3%)
     levels = _deduplicate_levels(levels)
 
-    # Number duplicate swing labels
-    sw_h_count = 0
-    sw_l_count = 0
-    for lvl in levels:
-        if lvl["type"] == "SW_H":
-            sw_h_count += 1
-        elif lvl["type"] == "SW_L":
-            sw_l_count += 1
-    if sw_h_count > 1:
-        idx = 0
-        for lvl in levels:
-            if lvl["type"] == "SW_H":
-                idx += 1
-                lvl["label"] = f"Plus haut {idx}"
-    if sw_l_count > 1:
-        idx = 0
-        for lvl in levels:
-            if lvl["type"] == "SW_L":
-                idx += 1
-                lvl["label"] = f"Plus bas {idx}"
-
     # Sort by price descending
     levels.sort(key=lambda x: Decimal(x["price"]), reverse=True)
+
+    # Relabel swings based on position vs current price
+    res_idx = 0
+    sup_idx = 0
+    for lvl in levels:
+        if lvl["type"] not in ("SW_H", "SW_L"):
+            continue
+        price = Decimal(lvl["price"])
+        if price >= close:
+            res_idx += 1
+            lvl["label"] = f"Resistance {res_idx}" if res_idx == 1 else f"Resistance {res_idx}"
+        else:
+            sup_idx += 1
+            lvl["label"] = f"Support {sup_idx}" if sup_idx == 1 else f"Support {sup_idx}"
 
     # Attach current price for reference
     levels.insert(0, {"current_price": close, "type": "current"})
