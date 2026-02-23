@@ -91,12 +91,18 @@ async def _run_refresh():
 async def _compute_all():
     global _cache_time
     symbols = _get_symbols()
-    for symbol in symbols:
+
+    async def _safe_analyze(symbol: str) -> tuple[str, dict | None]:
         try:
-            analysis = await _analyze_symbol(symbol)
-            _analysis_cache[symbol] = analysis
+            return symbol, await _analyze_symbol(symbol)
         except Exception:
             log.warning("analysis_symbol_failed", symbol=symbol, exc_info=True)
+            return symbol, None
+
+    results = await asyncio.gather(*[_safe_analyze(s) for s in symbols])
+    for symbol, analysis in results:
+        if analysis:
+            _analysis_cache[symbol] = analysis
     _cache_time = datetime.now(timezone.utc)
     log.info("analysis_refreshed", symbols=len(symbols))
 

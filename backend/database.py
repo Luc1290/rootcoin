@@ -20,6 +20,13 @@ _MIGRATIONS = [
     ("positions", "closed_at", "DATETIME"),
 ]
 
+_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS ix_positions_is_active ON positions (is_active)",
+    "CREATE INDEX IF NOT EXISTS ix_trades_symbol_executed ON trades (symbol, executed_at)",
+    "CREATE INDEX IF NOT EXISTS ix_orders_position_id ON orders (position_id)",
+    "CREATE INDEX IF NOT EXISTS ix_balances_snapshot_at ON balances (snapshot_at)",
+]
+
 
 async def init_db():
     from backend.models import Base
@@ -32,6 +39,8 @@ async def init_db():
                 await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
             except Exception:
                 pass
+        for idx_sql in _INDEXES:
+            await conn.execute(text(idx_sql))
 
 
 async def close_db():

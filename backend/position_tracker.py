@@ -6,7 +6,7 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select
 
-from backend import binance_client, ws_manager
+from backend import binance_client, order_manager, ws_manager
 from backend.config import settings
 from backend.database import async_session
 from backend.models import Position, Trade
@@ -24,27 +24,43 @@ RESIDUAL_SELL_DELAY = 2
 
 _positions: dict[int, Position] = {}
 _recent_short_closes: dict[str, float] = {}
+_reconciled: bool = False
+_reconcile_task: asyncio.Task | None = None
 
 
 # --- Public API ---
 
 
 async def start():
-    await _scan_existing_positions()
-    await _backfill_all_trades()
+    await _fast_load_from_db()
     ws_manager.on(EVENT_EXECUTION_REPORT, _handle_execution_report)
     ws_manager.on(EVENT_LIST_STATUS, _handle_list_status)
     ws_manager.on(EVENT_PRICE_UPDATE, _handle_price_update)
-    log.info("position_tracker_started")
+    log.info("position_tracker_started", positions=len(_positions))
+    global _reconcile_task
+    _reconcile_task = asyncio.create_task(_background_reconcile())
 
 
 async def stop():
+    global _reconcile_task, _reconciled
+    if _reconcile_task and not _reconcile_task.done():
+        _reconcile_task.cancel()
+        try:
+            await _reconcile_task
+        except asyncio.CancelledError:
+            pass
+    _reconcile_task = None
+    _reconciled = False
     _positions.clear()
     log.info("position_tracker_stopped")
 
 
 def get_positions() -> list[Position]:
     return list(_positions.values())
+
+
+def is_reconciled() -> bool:
+    return _reconciled
 
 
 # --- Helpers ---
@@ -138,13 +154,42 @@ def _find_position(symbol: str, market_type: str) -> Position | None:
     return None
 
 
-# --- Scan at startup ---
+# --- Fast load + background reconciliation ---
 
 
-async def _scan_existing_positions():
-    # Fix closed positions missing closed_at or realized_pnl_pct (from earlier bug)
+async def _fast_load_from_db():
     async with async_session() as session:
-        from sqlalchemy import or_
+        result = await session.execute(select(Position).where(Position.is_active == True))
+        for pos in result.scalars().all():
+            _positions[pos.id] = pos
+    symbols = {pos.symbol for pos in _positions.values()}
+    for symbol in symbols:
+        await ws_manager.subscribe_symbol(symbol)
+    log.info("fast_load_complete", positions=len(_positions))
+
+
+async def _background_reconcile():
+    global _reconciled
+    try:
+        log.info("reconciliation_starting")
+        await _fix_closed_positions()
+        await _reconcile_positions()
+        await _verify_order_refs()
+        await _backfill_all_trades()
+        _reconciled = True
+        log.info("reconciliation_complete")
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.error("reconciliation_failed", exc_info=True)
+        await asyncio.sleep(30)
+        if not _reconciled:
+            asyncio.create_task(_background_reconcile())
+
+
+async def _fix_closed_positions():
+    from sqlalchemy import or_
+    async with async_session() as session:
         result = await session.execute(
             select(Position).where(
                 Position.is_active == False,
@@ -165,22 +210,22 @@ async def _scan_existing_positions():
                      pnl_pct=str(pos.realized_pnl_pct))
         await session.commit()
 
-    async with async_session() as session:
-        result = await session.execute(select(Position).where(Position.is_active == True))
-        db_positions = {p.id: p for p in result.scalars().all()}
 
-    found_keys: set[tuple[str, str]] = set()
+async def _reconcile_positions():
     stables = settings.stablecoins_set
     ignored = settings.ignored_assets_set
 
-    # Fetch all ticker prices for dust filtering
+    snapshot_ids = set(_positions.keys())
+
     prices: dict[str, Decimal] = {}
     try:
         client = await binance_client.get_client()
         for t in await client.get_all_tickers():
             prices[t["symbol"]] = Decimal(t["price"])
     except Exception:
-        log.warning("ticker_fetch_failed_for_scan", exc_info=True)
+        log.warning("ticker_fetch_failed_for_reconcile", exc_info=True)
+
+    found_keys: set[tuple[str, str]] = set()
 
     # Spot
     try:
@@ -196,9 +241,9 @@ async def _scan_existing_positions():
             if price and _is_dust(total, price):
                 continue
             found_keys.add((symbol, "SPOT"))
-            await _upsert_scanned(symbol, "LONG", total, "SPOT", db_positions)
+            await _reconcile_single(symbol, "LONG", total, "SPOT")
     except Exception:
-        log.error("scan_spot_failed", exc_info=True)
+        log.error("reconcile_spot_failed", exc_info=True)
 
     # Cross margin
     try:
@@ -212,16 +257,16 @@ async def _scan_existing_positions():
             symbol = _asset_to_symbol(asset)
             if borrowed > 0:
                 found_keys.add((symbol, "CROSS_MARGIN"))
-                await _upsert_scanned(symbol, "SHORT", borrowed, "CROSS_MARGIN", db_positions)
+                await _reconcile_single(symbol, "SHORT", borrowed, "CROSS_MARGIN")
             elif free + locked > 0:
                 total = free + locked
                 price = prices.get(symbol)
                 if price and _is_dust(total, price):
                     continue
                 found_keys.add((symbol, "CROSS_MARGIN"))
-                await _upsert_scanned(symbol, "LONG", total, "CROSS_MARGIN", db_positions)
+                await _reconcile_single(symbol, "LONG", total, "CROSS_MARGIN")
     except Exception:
-        log.error("scan_cross_margin_failed", exc_info=True)
+        log.error("reconcile_cross_margin_failed", exc_info=True)
 
     # Isolated margin
     try:
@@ -235,86 +280,83 @@ async def _scan_existing_positions():
             base_locked = Decimal(base.get("locked", "0"))
             if base_borrowed > 0:
                 found_keys.add((symbol, "ISOLATED_MARGIN"))
-                await _upsert_scanned(symbol, "SHORT", base_borrowed, "ISOLATED_MARGIN", db_positions)
+                await _reconcile_single(symbol, "SHORT", base_borrowed, "ISOLATED_MARGIN")
             elif base_free + base_locked > 0:
                 total = base_free + base_locked
                 price = prices.get(symbol)
                 if price and _is_dust(total, price):
                     continue
                 found_keys.add((symbol, "ISOLATED_MARGIN"))
-                await _upsert_scanned(symbol, "LONG", total, "ISOLATED_MARGIN", db_positions)
+                await _reconcile_single(symbol, "LONG", total, "ISOLATED_MARGIN")
     except Exception:
-        log.error("scan_isolated_margin_failed", exc_info=True)
+        log.error("reconcile_isolated_margin_failed", exc_info=True)
 
-    # Close stale DB positions not found on Binance
-    async with async_session() as session:
-        for pos in db_positions.values():
-            if pos.is_active and (pos.symbol, pos.market_type) not in found_keys:
-                pos.is_active = False
-                pos.quantity = Decimal("0")
-                if not pos.closed_at:
-                    pos.closed_at = _now()
-                pos.updated_at = _now()
-                await session.merge(pos)
-                log.info("position_closed_stale", symbol=pos.symbol, market_type=pos.market_type)
-        await session.commit()
+    # Close stale positions (only those present at snapshot, not added by WS during reconciliation)
+    for pos in list(_positions.values()):
+        if pos.id not in snapshot_ids:
+            continue
+        if pos.is_active and (pos.symbol, pos.market_type) not in found_keys:
+            pos.is_active = False
+            pos.quantity = Decimal("0")
+            if not pos.closed_at:
+                pos.closed_at = _now()
+            pos.updated_at = _now()
+            await _save_position(pos)
+            del _positions[pos.id]
+            log.info("position_closed_stale", symbol=pos.symbol, market_type=pos.market_type)
 
     for symbol, _ in found_keys:
         await ws_manager.subscribe_symbol(symbol)
 
-    # Verify order refs against Binance open orders
-    await _verify_order_refs()
-
-    log.info("position_scan_complete", count=len(_positions))
+    log.info("reconciliation_positions_done", count=len(_positions))
 
 
-async def _upsert_scanned(
-    symbol: str, side: str, quantity: Decimal, market_type: str, db_positions: dict
+async def _reconcile_single(
+    symbol: str, side: str, binance_qty: Decimal, market_type: str,
 ):
-    existing = None
-    for pos in db_positions.values():
-        if pos.symbol == symbol and pos.market_type == market_type and pos.is_active:
-            existing = pos
-            break
-
-    # Always backfill trades from Binance history
     await _backfill_trades_for_symbol(symbol, market_type)
 
+    existing = _find_position(symbol, market_type)
     if existing:
-        existing.quantity = quantity
-        existing.side = side
-        if not existing.entry_quantity:
-            existing.entry_quantity = quantity
-        existing.updated_at = _now()
-        if not existing.entry_fees_usd or existing.entry_fees_usd <= 0:
-            entry_price, fees = await _calculate_entry_price(symbol, side, quantity, market_type)
-            existing.entry_fees_usd = fees
-            if not existing.entry_price or existing.entry_price <= 0:
-                existing.entry_price = entry_price
-        await _save_position(existing)
-        _positions[existing.id] = existing
-        log.info("position_synced", symbol=symbol, side=side, qty=str(quantity),
-                 fees_usd=str(existing.entry_fees_usd))
+        changes = {}
+        qty_diff = abs(existing.quantity - binance_qty)
+        if qty_diff > 0 and qty_diff / max(existing.quantity, Decimal("1")) > Decimal("0.001"):
+            changes["quantity"] = binance_qty
+            log.warning("reconcile_qty_mismatch", symbol=symbol,
+                        db_qty=str(existing.quantity), binance_qty=str(binance_qty))
+        if existing.side != side:
+            changes["side"] = side
+            log.warning("reconcile_side_mismatch", symbol=symbol,
+                        db_side=existing.side, binance_side=side)
+        if not existing.entry_price or existing.entry_price <= 0:
+            entry_price, fees = await _calculate_entry_price(symbol, side, binance_qty, market_type)
+            changes["entry_price"] = entry_price
+            changes["entry_fees_usd"] = fees
+        elif not existing.entry_fees_usd or existing.entry_fees_usd <= 0:
+            _, fees = await _calculate_entry_price(symbol, side, binance_qty, market_type)
+            changes["entry_fees_usd"] = fees
+        if changes:
+            for k, v in changes.items():
+                setattr(existing, k, v)
+            existing.updated_at = _now()
+            await _save_position(existing)
+            log.info("position_reconciled", symbol=symbol, changes=list(changes.keys()))
     else:
-        entry_price, fees = await _calculate_entry_price(symbol, side, quantity, market_type)
+        entry_price, fees = await _calculate_entry_price(symbol, side, binance_qty, market_type)
         pos = Position(
-            symbol=symbol,
-            side=side,
-            entry_price=entry_price,
-            quantity=quantity,
-            entry_quantity=quantity,
-            market_type=market_type,
-            entry_fees_usd=fees,
-            opened_at=_now(),
-            is_active=True,
+            symbol=symbol, side=side, entry_price=entry_price,
+            quantity=binance_qty, entry_quantity=binance_qty,
+            market_type=market_type, entry_fees_usd=fees,
+            opened_at=_now(), is_active=True,
         )
         async with async_session() as session:
             session.add(pos)
             await session.commit()
             await session.refresh(pos)
         _positions[pos.id] = pos
-        log.info("position_detected", symbol=symbol, side=side, entry=str(entry_price),
-                 qty=str(quantity), fees_usd=str(fees))
+        await ws_manager.subscribe_symbol(symbol)
+        log.info("position_discovered", symbol=symbol, side=side,
+                 entry=str(entry_price), qty=str(binance_qty))
 
 
 # --- Entry price calculation ---
@@ -382,13 +424,16 @@ async def _backfill_trades_for_symbol(symbol: str, market_type: str):
         return
     if not trades:
         return
+    all_ids = [str(t.get("id", "")) for t in trades]
     async with async_session() as session:
+        result = await session.execute(
+            select(Trade.binance_trade_id).where(Trade.binance_trade_id.in_(all_ids))
+        )
+        existing_ids = set(result.scalars().all())
+        added = 0
         for t in trades:
             trade_id = str(t.get("id", ""))
-            existing = await session.execute(
-                select(Trade).where(Trade.binance_trade_id == trade_id)
-            )
-            if existing.scalar_one_or_none():
+            if trade_id in existing_ids:
                 continue
             qty = Decimal(t["qty"])
             price = Decimal(t["price"])
@@ -407,8 +452,9 @@ async def _backfill_trades_for_symbol(symbol: str, market_type: str):
                 executed_at=datetime.fromtimestamp(t["time"] / 1000, tz=timezone.utc),
             )
             session.add(trade)
+            added += 1
         await session.commit()
-    log.info("trades_backfilled", symbol=symbol, count=len(trades))
+    log.info("trades_backfilled", symbol=symbol, total=len(trades), added=added)
 
 
 async def _backfill_all_trades():
@@ -490,34 +536,30 @@ async def _verify_order_refs():
                     updates["sl_order_id"] = oid
                     eff_sl = oid
                     log.info("sl_discovered", symbol=pos.symbol, order_id=oid)
-                    from backend import order_manager as om
-                    await om.ensure_order_record(pos, o, "SL")
+                    await order_manager.ensure_order_record(pos, o, "SL")
                 elif otype in ("TAKE_PROFIT_LIMIT", "LIMIT_MAKER") and not eff_tp:
                     updates["tp_order_id"] = oid
                     eff_tp = oid
                     log.info("tp_discovered", symbol=pos.symbol, order_id=oid)
-                    from backend import order_manager as om
-                    await om.ensure_order_record(pos, o, "TP")
+                    await order_manager.ensure_order_record(pos, o, "TP")
 
         # Ensure OCO order record exists in DB (covers crash recovery)
         final_oco = updates.get("oco_order_list_id", pos.oco_order_list_id)
         if final_oco and final_oco in open_list_ids:
-            from backend import order_manager as om
-            await om.ensure_oco_order_record(pos, final_oco, open_orders)
+            await order_manager.ensure_oco_order_record(pos, final_oco, open_orders)
 
         # Ensure Order records exist for all tracked orders (covers crash recovery)
-        from backend import order_manager as om
         final_sl = updates.get("sl_order_id", pos.sl_order_id)
         final_tp = updates.get("tp_order_id", pos.tp_order_id)
         for o in open_orders:
             oid = str(o["orderId"])
             if oid == final_sl:
-                await om.ensure_order_record(pos, o, "SL")
+                await order_manager.ensure_order_record(pos, o, "SL")
             elif oid == final_tp:
-                await om.ensure_order_record(pos, o, "TP")
+                await order_manager.ensure_order_record(pos, o, "TP")
 
         # Clean stale Order records (cancelled on Binance but still NEW in DB)
-        await om.cleanup_stale_orders(pos.id, open_ids)
+        await order_manager.cleanup_stale_orders(pos.id, open_ids)
 
         if updates:
             for k, v in updates.items():
@@ -597,7 +639,6 @@ async def _handle_execution_report(msg: dict):
         order_id = str(msg.get("i", ""))
         if order_id:
             await _clean_order_ref(order_id)
-            from backend import order_manager
             await order_manager.mark_order_status(order_id, status)
         return
 
@@ -869,7 +910,6 @@ async def _handle_list_status(msg: dict):
                 await _save_position(pos)
                 log.info("oco_ref_cleaned", symbol=pos.symbol, order_list_id=order_list_id)
                 break
-        from backend import order_manager
         await order_manager.mark_oco_done(order_list_id)
 
 

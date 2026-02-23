@@ -5,6 +5,7 @@ from decimal import Decimal
 
 import structlog
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from backend import binance_client
 from backend.database import async_session
@@ -104,29 +105,30 @@ def _parse_raw(symbol: str, interval: str, raw: list) -> Kline:
 
 
 async def _upsert_klines(klines: list[Kline]):
+    if not klines:
+        return
+    update_cols = (
+        "open", "high", "low", "close", "volume", "close_time",
+        "quote_volume", "trade_count", "taker_buy_base_vol", "taker_buy_quote_vol",
+    )
+    rows = [
+        {
+            "symbol": k.symbol, "interval": k.interval, "open_time": k.open_time,
+            "open": k.open, "high": k.high, "low": k.low, "close": k.close,
+            "volume": k.volume, "close_time": k.close_time,
+            "quote_volume": k.quote_volume, "trade_count": k.trade_count,
+            "taker_buy_base_vol": k.taker_buy_base_vol,
+            "taker_buy_quote_vol": k.taker_buy_quote_vol,
+        }
+        for k in klines
+    ]
+    stmt = sqlite_insert(Kline).values(rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["symbol", "interval", "open_time"],
+        set_={col: stmt.excluded[col] for col in update_cols},
+    )
     async with async_session() as session:
-        for k in klines:
-            existing = await session.execute(
-                select(Kline).where(
-                    Kline.symbol == k.symbol,
-                    Kline.interval == k.interval,
-                    Kline.open_time == k.open_time,
-                )
-            )
-            row = existing.scalar_one_or_none()
-            if row:
-                row.open = k.open
-                row.high = k.high
-                row.low = k.low
-                row.close = k.close
-                row.volume = k.volume
-                row.close_time = k.close_time
-                row.quote_volume = k.quote_volume
-                row.trade_count = k.trade_count
-                row.taker_buy_base_vol = k.taker_buy_base_vol
-                row.taker_buy_quote_vol = k.taker_buy_quote_vol
-            else:
-                session.add(k)
+        await session.execute(stmt)
         await session.commit()
 
 

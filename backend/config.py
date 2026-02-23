@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     analysis_refresh_interval: int = 60
     macro_refresh_interval: int = 300
     whale_min_quote_qty: int = 100000
-    whale_poll_interval: int = 120
     heatmap_top_n: int = 50
     heatmap_refresh_interval: int = 300
     news_refresh_interval: int = 600

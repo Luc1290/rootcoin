@@ -36,6 +36,7 @@ _news_cache: list[dict] = []
 _fetched_at: datetime | None = None
 _refresh_task: asyncio.Task | None = None
 _translate_cache: dict[str, str] = {}
+_TRANSLATE_CACHE_MAX = 500
 
 
 async def start():
@@ -175,6 +176,11 @@ async def _translate_items(items: list[dict]):
         translated = await loop.run_in_executor(None, _sync_translate_batch, to_translate)
         for orig, tr in zip(to_translate, translated):
             _translate_cache[orig] = tr
+        # Evict oldest entries if cache exceeds max size
+        if len(_translate_cache) > _TRANSLATE_CACHE_MAX:
+            excess = len(_translate_cache) - _TRANSLATE_CACHE_MAX
+            for _ in range(excess):
+                _translate_cache.pop(next(iter(_translate_cache)))
 
     # Apply translations
     for it in items:

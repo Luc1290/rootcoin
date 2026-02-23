@@ -18,6 +18,7 @@ log = structlog.get_logger()
 router = APIRouter()
 
 _clients: set[WebSocket] = set()
+_positions_dirty = True  # start dirty for initial broadcast
 
 POSITION_BROADCAST_INTERVAL = 2
 
@@ -36,6 +37,9 @@ async def _broadcast(message: dict):
 
 
 async def _on_price_update(msg: dict):
+    global _positions_dirty
+    if not _positions_dirty and position_tracker.get_positions():
+        _positions_dirty = True
     await _broadcast({
         "type": "price_update",
         "data": {
@@ -47,6 +51,8 @@ async def _on_price_update(msg: dict):
 
 
 async def _on_execution_report(msg: dict):
+    global _positions_dirty
+    _positions_dirty = True
     await _broadcast({
         "type": "order_update",
         "data": {
@@ -77,11 +83,13 @@ async def _on_account_update(msg: dict):
 
 
 async def _broadcast_positions():
+    global _positions_dirty
     while True:
         try:
             await asyncio.sleep(POSITION_BROADCAST_INTERVAL)
-            if not _clients:
+            if not _clients or not _positions_dirty:
                 continue
+            _positions_dirty = False
             positions = position_tracker.get_positions()
             pos_ids = [p.id for p in positions if p.sl_order_id or p.tp_order_id or p.oco_order_list_id]
             order_prices = await fetch_order_prices(pos_ids)
@@ -149,8 +157,10 @@ def _ensure_callbacks():
 
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    global _positions_dirty
     await ws.accept()
     _clients.add(ws)
+    _positions_dirty = True
     _ensure_callbacks()
     log.info("frontend_ws_connected", clients=len(_clients))
 

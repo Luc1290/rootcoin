@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 
 from backend import binance_client, ws_manager, position_tracker
 from backend.config import settings
@@ -146,20 +146,37 @@ async def _fill_usd_values(records: list[Balance]):
     # Assets without a price from positions: fallback to latest DB price
     missing = {r.asset for r in records if r.asset not in stables and r.asset not in price_map}
     if missing:
+        # Build all candidate symbols: assetUSDC and assetUSDT for each missing asset
+        candidate_symbols = []
+        symbol_to_asset: dict[str, str] = {}
+        for asset in missing:
+            for stable in ("USDC", "USDT"):
+                sym = f"{asset}{stable}"
+                candidate_symbols.append(sym)
+                symbol_to_asset[sym] = asset
+
+        # Single query: latest price per symbol using MAX(recorded_at)
+        latest_sub = (
+            select(Price.symbol, func.max(Price.recorded_at).label("max_at"))
+            .where(Price.symbol.in_(candidate_symbols))
+            .group_by(Price.symbol)
+            .subquery()
+        )
         async with async_session() as session:
-            for asset in missing:
-                for stable in ("USDC", "USDT"):
-                    symbol = f"{asset}{stable}"
-                    result = await session.execute(
-                        select(Price.price)
-                        .where(Price.symbol == symbol)
-                        .order_by(Price.recorded_at.desc())
-                        .limit(1)
-                    )
-                    price = result.scalar_one_or_none()
-                    if price and price > 0:
-                        price_map[asset] = price
-                        break
+            result = await session.execute(
+                select(Price.symbol, Price.price).join(
+                    latest_sub,
+                    and_(
+                        Price.symbol == latest_sub.c.symbol,
+                        Price.recorded_at == latest_sub.c.max_at,
+                    ),
+                )
+            )
+            # Prefer USDC over USDT (first match wins since asset not yet in price_map)
+            for sym, price in result.all():
+                asset = symbol_to_asset[sym]
+                if price and price > 0 and asset not in price_map:
+                    price_map[asset] = price
 
     for record in records:
         if record.asset in stables:

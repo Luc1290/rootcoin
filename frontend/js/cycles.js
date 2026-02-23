@@ -139,7 +139,6 @@ const Cycles = (() => {
             if (status) url += `&status=${status}`;
             const resp = await fetch(url);
             const data = await resp.json();
-            console.log('Cycles loaded:', data.length, data);
             render(data);
             currentOffset = data.length;
         } catch (e) {

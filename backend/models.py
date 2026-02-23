@@ -11,6 +11,7 @@ class Base(DeclarativeBase):
 
 class Position(Base):
     __tablename__ = "positions"
+    __table_args__ = (Index("ix_positions_is_active", "is_active"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String, nullable=False)
@@ -38,6 +39,7 @@ class Position(Base):
 
 class Trade(Base):
     __tablename__ = "trades"
+    __table_args__ = (Index("ix_trades_symbol_executed", "symbol", "executed_at"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     binance_trade_id: Mapped[str | None] = mapped_column(String, unique=True)
@@ -58,6 +60,7 @@ class Trade(Base):
 
 class Order(Base):
     __tablename__ = "orders"
+    __table_args__ = (Index("ix_orders_position_id", "position_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     binance_order_id: Mapped[str | None] = mapped_column(String, unique=True)
@@ -79,6 +82,7 @@ class Order(Base):
 
 class Balance(Base):
     __tablename__ = "balances"
+    __table_args__ = (Index("ix_balances_snapshot_at", "snapshot_at"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     asset: Mapped[str] = mapped_column(String, nullable=False)

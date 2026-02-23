@@ -10,14 +10,13 @@ router = APIRouter(prefix="/api/balances", tags=["balances"])
 @router.get("")
 async def get_current_balances():
     async with async_session() as session:
-        # Get the latest snapshot_at
-        latest = await session.execute(select(func.max(Balance.snapshot_at)))
-        max_ts = latest.scalar()
-        if not max_ts:
-            return []
+        latest_sub = select(func.max(Balance.snapshot_at)).scalar_subquery()
         result = await session.execute(
-            select(Balance).where(Balance.snapshot_at == max_ts)
+            select(Balance).where(Balance.snapshot_at == latest_sub)
         )
+        rows = result.scalars().all()
+        if not rows:
+            return []
         return [
             {
                 "asset": b.asset,
@@ -30,7 +29,7 @@ async def get_current_balances():
                 "usd_value": str(b.usd_value) if b.usd_value else None,
                 "snapshot_at": b.snapshot_at.isoformat(),
             }
-            for b in result.scalars().all()
+            for b in rows
         ]
 
 

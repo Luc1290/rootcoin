@@ -84,23 +84,33 @@ async def _fetch_macro():
 def _sync_fetch() -> dict:
     import yfinance as yf
 
+    symbols = list(TICKERS.values())
+    key_by_symbol = {v: k for k, v in TICKERS.items()}
+
+    try:
+        df = yf.download(symbols, period="5d", interval="1d", progress=False, threads=False)
+    except Exception:
+        log.error("macro_download_failed", exc_info=True)
+        return _macro_cache.get("indicators", {})
+
+    if df.empty:
+        return _macro_cache.get("indicators", {})
+
     result = {}
-    for key, symbol in TICKERS.items():
+    for symbol in symbols:
+        key = key_by_symbol[symbol]
         try:
-            tk = yf.Ticker(symbol)
-            hist = tk.history(period="5d", interval="1d")
-            if hist.empty:
+            close = df["Close"][symbol].dropna()
+            if close.empty:
                 log.warning("macro_no_data", ticker=symbol)
-                # Keep previous value if exists
                 prev = _macro_cache.get("indicators", {}).get(key)
                 if prev:
                     result[key] = prev
                 continue
 
-            current = Decimal(str(round(hist["Close"].iloc[-1], 2)))
-            prev_close = Decimal(str(round(hist["Close"].iloc[-2], 2))) if len(hist) >= 2 else current
+            current = Decimal(str(round(close.iloc[-1], 2)))
+            prev_close = Decimal(str(round(close.iloc[-2], 2))) if len(close) >= 2 else current
 
-            # Yield tickers: convert from yield*10 to actual %
             if key in YIELD_TICKERS:
                 current = current / 10
                 prev_close = prev_close / 10

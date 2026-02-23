@@ -5,7 +5,7 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select
 
-from backend import binance_client, position_tracker
+from backend import binance_client
 from backend.database import async_session
 from backend.models import Order, Position
 from backend.utils.symbol_filters import round_price, round_quantity, validate_order
@@ -21,13 +21,6 @@ SHORT_CLOSE_FEE_BUFFER = Decimal("0.0015")
 
 def _client_order_id(purpose: str, position_id: int) -> str:
     return f"rootcoin_{purpose}_{position_id}_{int(time.time() * 1000)}"
-
-
-def _get_position(position_id: int) -> Position:
-    for pos in position_tracker.get_positions():
-        if pos.id == position_id:
-            return pos
-    raise ValueError(f"Position {position_id} not found or inactive")
 
 
 def _close_side(position: Position) -> str:
@@ -90,8 +83,7 @@ async def _update_position_order_ref(position: Position, **kwargs):
 # --- Public API ---
 
 
-async def place_stop_loss(position_id: int, stop_price: Decimal) -> dict:
-    pos = _get_position(position_id)
+async def place_stop_loss(pos: Position, stop_price: Decimal) -> dict:
     side = _close_side(pos)
     qty = _close_qty(pos)
 
@@ -130,8 +122,7 @@ async def place_stop_loss(position_id: int, stop_price: Decimal) -> dict:
     return result
 
 
-async def place_take_profit(position_id: int, tp_price: Decimal) -> dict:
-    pos = _get_position(position_id)
+async def place_take_profit(pos: Position, tp_price: Decimal) -> dict:
     side = _close_side(pos)
     qty = _close_qty(pos)
 
@@ -170,8 +161,7 @@ async def place_take_profit(position_id: int, tp_price: Decimal) -> dict:
     return result
 
 
-async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> dict:
-    pos = _get_position(position_id)
+async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict:
     side = _close_side(pos)
     qty = _close_qty(pos)
     tp_price = round_price(pos.symbol, tp_price)
@@ -268,8 +258,7 @@ async def place_oco(position_id: int, tp_price: Decimal, sl_price: Decimal) -> d
     return result
 
 
-async def close_position(position_id: int) -> dict:
-    pos = _get_position(position_id)
+async def close_position(pos: Position) -> dict:
     side = _close_side(pos)
     qty = _close_qty(pos)
 
@@ -313,24 +302,27 @@ async def cancel_order(order_db_id: int) -> dict:
         await session.merge(order)
         await session.commit()
 
-    # Clean position refs
+    # Clean position refs in DB (in-memory refs updated by WS execution_report)
     if order.position_id:
-        pos = _get_position(order.position_id) if order.position_id else None
-        if pos:
-            updates = {}
-            if pos.sl_order_id == order.binance_order_id:
-                updates["sl_order_id"] = None
-            if pos.tp_order_id == order.binance_order_id:
-                updates["tp_order_id"] = None
-            if updates:
-                await _update_position_order_ref(pos, **updates)
+        async with async_session() as session:
+            pos = await session.get(Position, order.position_id)
+            if pos:
+                changed = False
+                if pos.sl_order_id == order.binance_order_id:
+                    pos.sl_order_id = None
+                    changed = True
+                if pos.tp_order_id == order.binance_order_id:
+                    pos.tp_order_id = None
+                    changed = True
+                if changed:
+                    pos.updated_at = datetime.now(timezone.utc)
+                    await session.commit()
 
     log.info("order_cancelled", order_id=order.binance_order_id, symbol=order.symbol)
     return result
 
 
-async def cancel_position_orders(position_id: int) -> dict:
-    pos = _get_position(position_id)
+async def cancel_position_orders(pos: Position) -> dict:
     cancelled = 0
     updates = {}
 

@@ -10,6 +10,13 @@ from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 router = APIRouter(prefix="/api/positions", tags=["positions"])
 
 
+def _find_position(position_id: int):
+    for p in position_tracker.get_positions():
+        if p.id == position_id:
+            return p
+    raise HTTPException(404, "Position not found or inactive")
+
+
 class PriceBody(BaseModel):
     price: str
 
@@ -39,7 +46,8 @@ async def get_position(position_id: int):
 @router.post("/{position_id}/sl")
 async def set_stop_loss(position_id: int, body: PriceBody):
     try:
-        result = await order_manager.place_stop_loss(position_id, Decimal(body.price))
+        pos = _find_position(position_id)
+        result = await order_manager.place_stop_loss(pos, Decimal(body.price))
         return {"status": "ok", "order_id": str(result["orderId"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -50,7 +58,8 @@ async def set_stop_loss(position_id: int, body: PriceBody):
 @router.post("/{position_id}/tp")
 async def set_take_profit(position_id: int, body: PriceBody):
     try:
-        result = await order_manager.place_take_profit(position_id, Decimal(body.price))
+        pos = _find_position(position_id)
+        result = await order_manager.place_take_profit(pos, Decimal(body.price))
         return {"status": "ok", "order_id": str(result["orderId"])}
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -61,8 +70,9 @@ async def set_take_profit(position_id: int, body: PriceBody):
 @router.post("/{position_id}/oco")
 async def set_oco(position_id: int, body: OcoBody):
     try:
+        pos = _find_position(position_id)
         result = await order_manager.place_oco(
-            position_id, Decimal(body.tp_price), Decimal(body.sl_price),
+            pos, Decimal(body.tp_price), Decimal(body.sl_price),
         )
         return {"status": "ok", "order_list_id": str(result.get("orderListId", ""))}
     except ValueError as e:
@@ -74,7 +84,8 @@ async def set_oco(position_id: int, body: OcoBody):
 @router.post("/{position_id}/cancel-orders")
 async def cancel_orders(position_id: int):
     try:
-        result = await order_manager.cancel_position_orders(position_id)
+        pos = _find_position(position_id)
+        result = await order_manager.cancel_position_orders(pos)
         return result
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -85,7 +96,8 @@ async def cancel_orders(position_id: int):
 @router.post("/{position_id}/close")
 async def close_position(position_id: int):
     try:
-        result = await order_manager.close_position(position_id)
+        pos = _find_position(position_id)
+        result = await order_manager.close_position(pos)
         return {"status": "ok", "order_id": str(result["orderId"])}
     except ValueError as e:
         raise HTTPException(400, str(e))

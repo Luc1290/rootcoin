@@ -18,6 +18,8 @@ const KlineChart = (() => {
     let _bsChart = null;
     let _bsSeries = null;
     let _cycleSeries = [];
+    let _cyclesCache = { symbol: null, data: null };
+    let _cyclesRendered = { symbol: null, interval: null };
     let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles']);
     let _loading = false;
     let _initialized = false;
@@ -560,14 +562,32 @@ const KlineChart = (() => {
     function _clearCycles() {
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
+        _cyclesRendered = { symbol: null, interval: null };
     }
 
     async function _loadCycles(candles) {
-        _clearCycles();
+        // Same symbol + interval: series already correct, skip entirely
+        if (_cyclesRendered.symbol === _symbol && _cyclesRendered.interval === _interval) {
+            return;
+        }
+
+        _cycleSeries.forEach(s => _mainChart.removeSeries(s));
+        _cycleSeries = [];
+
         try {
-            const resp = await fetch(`/api/cycles?symbol=${_symbol}&limit=50`);
-            const cycles = await resp.json();
-            if (!cycles.length || !candles.length) return;
+            // Only fetch from API if symbol changed
+            let cycles;
+            if (_cyclesCache.symbol === _symbol) {
+                cycles = _cyclesCache.data;
+            } else {
+                const resp = await fetch(`/api/cycles?symbol=${_symbol}&limit=50`);
+                cycles = await resp.json();
+                _cyclesCache = { symbol: _symbol, data: cycles };
+            }
+            if (!cycles.length || !candles.length) {
+                _cyclesRendered = { symbol: _symbol, interval: _interval };
+                return;
+            }
 
             const now = Math.floor(Date.now() / 1000);
 
@@ -636,6 +656,7 @@ const KlineChart = (() => {
                     _cycleSeries.push(line);
                 }
             });
+            _cyclesRendered = { symbol: _symbol, interval: _interval };
         } catch (e) {
             console.error('KlineChart: cycles failed', e);
         }

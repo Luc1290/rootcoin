@@ -93,11 +93,15 @@ const Positions = (() => {
             }
         });
 
-        // Reorder DOM to match sort order
-        sorted.forEach(p => {
-            const card = list.querySelector(`.position-card[data-id="${p.id}"]`);
-            if (card) list.appendChild(card);
-        });
+        // Reorder DOM only if order actually changed
+        const currentOrder = [...list.querySelectorAll('.position-card')].map(c => c.dataset.id);
+        const targetOrder = sorted.map(p => String(p.id));
+        if (currentOrder.length !== targetOrder.length || currentOrder.some((id, i) => id !== targetOrder[i])) {
+            sorted.forEach(p => {
+                const card = list.querySelector(`.position-card[data-id="${p.id}"]`);
+                if (card) list.appendChild(card);
+            });
+        }
     }
 
     function showModal(title, body) {
