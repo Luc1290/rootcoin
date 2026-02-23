@@ -28,7 +28,8 @@ MACRO_WEIGHT = 0.3
 TA_WEIGHT = 0.7
 BIAS_THRESHOLD = 0.15
 
-TIMEFRAMES = ["5m", "15m", "1h"]
+TIMEFRAMES = ["15m", "1h", "4h"]
+TIMEFRAME_WEIGHTS = {"15m": 0.7, "1h": 1.0, "4h": 1.3}
 
 _analysis_cache: dict[str, dict] = {}
 _prev_direction: dict[str, str] = {}
@@ -141,9 +142,9 @@ async def _analyze_symbol(symbol: str) -> dict:
 
     # Final bias
     final_score = TA_WEIGHT * ta_score + MACRO_WEIGHT * macro_score
-    # Square root scaling: stretches low scores while keeping 100% reachable
-    # |0.05| -> 22%, |0.15| -> 39%, |0.30| -> 55%, |0.50| -> 71%, |1.0| -> 100%
-    confidence = round(min(abs(final_score) ** 0.5 * 100, 100))
+    # Power 0.65 scaling: less compressed than sqrt, allows higher confidence
+    # |0.05| -> 11%, |0.15| -> 24%, |0.30| -> 40%, |0.50| -> 57%, |1.0| -> 100%
+    confidence = round(min(abs(final_score) ** 0.65 * 100, 100))
 
     prev = _prev_direction.get(symbol)
     if prev == "LONG" and final_score >= -BIAS_THRESHOLD:
@@ -206,6 +207,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
     signals = []
     n = len(klines) - 1  # Last candle index
     close = float(klines[n]["close"])
+    tf_mult = TIMEFRAME_WEIGHTS.get(interval, 1.0)
 
     # ADX multiplier
     adx_val = _last_valid(indicators.get("adx", []))
@@ -230,7 +232,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"RSI({interval})", "value": rsi,
-                        "score": score * adx_mult, "weight": WEIGHTS["rsi"]})
+                        "score": score * adx_mult, "weight": WEIGHTS["rsi"] * tf_mult})
 
     # MACD
     macd_hist = _last_valid(indicators.get("macd_hist", []))
@@ -247,7 +249,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"MACD({interval})", "value": round(macd_hist, 4),
-                        "score": score * adx_mult, "weight": WEIGHTS["macd"]})
+                        "score": score * adx_mult, "weight": WEIGHTS["macd"] * tf_mult})
 
     # MA cross
     ma7 = _last_valid(indicators.get("ma_7", []))
@@ -260,7 +262,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"MA({interval})", "value": round(ma7, 2),
-                        "score": score * adx_mult, "weight": WEIGHTS["ma_cross"]})
+                        "score": score * adx_mult, "weight": WEIGHTS["ma_cross"] * tf_mult})
 
     # Bollinger
     bb_upper = _last_valid(indicators.get("bb_upper", []))
@@ -281,7 +283,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
             else:
                 score = 0
             signals.append({"name": f"BB({interval})", "value": round(position_in_band, 2),
-                            "score": score * adx_mult, "weight": WEIGHTS["bollinger"]})
+                            "score": score * adx_mult, "weight": WEIGHTS["bollinger"] * tf_mult})
 
     # MFI
     mfi = _last_valid(indicators.get("mfi", []))
@@ -297,7 +299,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"MFI({interval})", "value": mfi,
-                        "score": score, "weight": WEIGHTS["mfi"]})
+                        "score": score, "weight": WEIGHTS["mfi"] * tf_mult})
 
     # StochRSI
     stoch_k = _last_valid(indicators.get("stoch_rsi_k", []))
@@ -314,7 +316,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"StochRSI({interval})", "value": round(stoch_k, 1),
-                        "score": score * adx_mult, "weight": WEIGHTS["stoch_rsi"]})
+                        "score": score * adx_mult, "weight": WEIGHTS["stoch_rsi"] * tf_mult})
 
     # Buy/Sell pressure
     bs = _last_valid(indicators.get("buy_sell", []))
@@ -326,7 +328,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
         else:
             score = 0
         signals.append({"name": f"B/S({interval})", "value": round(bs, 1),
-                        "score": round(score, 2), "weight": WEIGHTS["buy_sell"]})
+                        "score": round(score, 2), "weight": WEIGHTS["buy_sell"] * tf_mult})
 
     # OBV trend (compare last 5 OBV values direction vs price direction)
     obv_list = indicators.get("obv", [])
@@ -345,7 +347,7 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
             else:
                 score = -0.8  # Bearish divergence
             signals.append({"name": f"OBV({interval})", "value": None,
-                            "score": score, "weight": WEIGHTS["obv"]})
+                            "score": score, "weight": WEIGHTS["obv"] * tf_mult})
 
     # Orderbook imbalance (only on 1h to avoid tripling the weight)
     if interval == "1h":
@@ -358,6 +360,21 @@ async def _score_timeframe(symbol: str, interval: str) -> list[dict]:
                 score = ob_imbalance * 1.5
             signals.append({"name": "OB_Imbalance", "value": round(ob_imbalance, 3),
                             "score": round(score, 2), "weight": WEIGHTS["orderbook"]})
+
+    # Trend-aware oscillator dampening: when ADX shows a trend and
+    # MACD+MA agree on direction, cut the weight of oscillators that
+    # disagree (mean-reversion signals fighting a clear trend).
+    if adx_val is not None and adx_val > 25:
+        trend_scores = [s["score"] for s in signals if s["name"].startswith(("MACD", "MA("))]
+        if len(trend_scores) >= 2:
+            avg_trend = sum(trend_scores) / len(trend_scores)
+            if abs(avg_trend) > 0.4:  # trend indicators clearly agree
+                osc_names = ("RSI", "BB", "MFI", "StochRSI")
+                for s in signals:
+                    if s["name"].startswith(osc_names):
+                        # oscillator opposes trend direction
+                        if (avg_trend > 0 and s["score"] < -0.2) or (avg_trend < 0 and s["score"] > 0.2):
+                            s["weight"] *= 0.3
 
     return signals
 

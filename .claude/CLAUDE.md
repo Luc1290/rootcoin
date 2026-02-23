@@ -151,7 +151,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
 | `orderbook_tracker.py` | Poll Binance depth, calcul imbalance bid/ask, detection murs, spread, cache memoire | `start()`, `stop()`, `get_orderbook_data()`, `get_imbalance()` |
 | `heatmap_manager.py` | Top 50 USDC par volume 24h, variation prix sur fenetre 4h glissante, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
-| `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF + macro, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
+| `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF (15m/1h/4h) + macro, dampening oscillateurs en tendance, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
 | `opportunity_detector.py` | Detecte opportunites sur symboles sans position, scoring multi-criteres, messages FR, cooldown | `start()`, `stop()`, `get_opportunities()` |
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
 | `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
