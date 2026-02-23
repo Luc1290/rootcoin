@@ -28,7 +28,7 @@ MACRO_WEIGHT = 0.3
 TA_WEIGHT = 0.7
 BIAS_THRESHOLD = 0.15
 
-TIMEFRAMES = ["1h", "4h", "1d"]
+TIMEFRAMES = ["5m", "15m", "1h"]
 
 _analysis_cache: dict[str, dict] = {}
 _prev_direction: dict[str, str] = {}
@@ -715,7 +715,7 @@ def _build_justification(ta_signals: list, macro_signals: list, direction: str) 
     sections = []
 
     # Per-timeframe analysis
-    for tf in ["1h", "4h", "1d"]:
+    for tf in TIMEFRAMES:
         signals = tf_groups.get(tf, [])
         if not signals:
             continue

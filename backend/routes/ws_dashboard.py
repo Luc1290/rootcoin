@@ -4,7 +4,7 @@ import json
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend import health_collector, log_buffer, market_analyzer, news_tracker, position_tracker, ws_manager
+from backend import health_collector, log_buffer, market_analyzer, news_tracker, opportunity_detector, position_tracker, ws_manager
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 from backend.ws_manager import (
     EVENT_ACCOUNT_UPDATE,
@@ -120,6 +120,7 @@ async def _broadcast_analysis():
                 continue
             data = market_analyzer.get_all_analyses()
             if data:
+                data["opportunities"] = opportunity_detector.get_opportunities()
                 await _broadcast({"type": "analysis_update", "data": data})
         except asyncio.CancelledError:
             break

@@ -40,8 +40,9 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 11. `orderbook_tracker.start()` — poll Binance depth, calcul imbalance/walls/spread
 12. `heatmap_manager.start()` — fetch top 50 USDC par volume 24h, variation sur fenetre 4h glissante
 13. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
-14. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
-15. `health_collector.start()` — collecte sante modules, DB stats, memoire, WS heartbeat toutes les 10s
+14. `opportunity_detector.start()` — evalue les opportunites sur symboles sans position, scoring multi-criteres, message FR
+15. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
+16. `health_collector.start()` — collecte sante modules, DB stats, memoire, WS heartbeat toutes les 10s
 
 L'arret se fait en ordre inverse. Chaque module expose `start()`/`stop()`.
 
@@ -151,6 +152,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `orderbook_tracker.py` | Poll Binance depth, calcul imbalance bid/ask, detection murs, spread, cache memoire | `start()`, `stop()`, `get_orderbook_data()`, `get_imbalance()` |
 | `heatmap_manager.py` | Top 50 USDC par volume 24h, variation prix sur fenetre 4h glissante, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
 | `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF + macro, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
+| `opportunity_detector.py` | Detecte opportunites sur symboles sans position, scoring multi-criteres, messages FR, cooldown | `start()`, `stop()`, `get_opportunities()` |
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
 | `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
 | `log_buffer.py` | Ring buffer structlog, capture processor, real-time subscribers | `capture_processor()`, `get_logs()`, `subscribe()`, `unsubscribe()` |
@@ -181,6 +183,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_analysis.py` | `GET /api/analysis`, `GET /api/analysis/{symbol}` | Analyse du jour : biais, niveaux, macro, alertes |
 | `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto top 50 par volume, variation 4h |
 | `api_orderbook.py` | `GET /api/orderbook`, `GET /api/orderbook/{symbol}` | Depth data : imbalance, murs, spread |
+| `api_opportunities.py` | `GET /api/opportunities` | Opportunites detectees (symboles sans position) |
 | `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
 | `api_journal.py` | `GET /api/journal/calendar`, `GET /api/journal/equity`, `GET /api/journal/entries` | Journal trading : calendrier PnL, equity curve + drawdowns, timeline trades avec snapshots |
 | `api_health.py` | `GET /api/health`, `GET /api/health/logs`, `GET /api/health/events`, `GET /api/health/db` | Health systeme, logs recents, raw WS events, stats DB |
@@ -204,7 +207,8 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `js/kline-chart.js` | Chart candlestick : klines, 7 indicateurs (MA/BB overlay + Vol/B-S/RSI/MACD/OBV sub-charts), markers fills, cycles overlay, crosshair sync, live WS | `KlineChart.init()`, `KlineChart.loadChart()` |
 | `js/analysis.js` | Page analyse du jour : biais, niveaux cles, macro, alertes. Ecoute WS `analysis_update` | `Analysis.load()` |
 | `js/heatmap.js` | Heatmap crypto : grille coloree de tiles par performance 4h | `Heatmap.load()` |
-| `js/cockpit.js` | Page d'accueil cockpit : portfolio, positions compactes, biais marche, derniers fills, whale alerts | `Cockpit.load()` |
+| `js/opportunities.js` | Rendu cartes opportunites cockpit, toast new, dismiss session | `Opportunities.render()`, `Opportunities.update()`, `Opportunities.dismiss()` |
+| `js/cockpit.js` | Page d'accueil cockpit : portfolio, positions compactes, biais marche, derniers fills, whale alerts, opportunites | `Cockpit.load()` |
 | `js/journal.js` | Page journal : equity curve + drawdowns, calendrier PnL heatmap (GitHub style), timeline trades avec contexte marche | `Journal.init()`, `Journal.load()` |
 | `js/health.js` | Page health : statut modules, WS heartbeat, DB stats, terminal logs live | `Health.init()`, `Health.load()`, `Health.startPolling()`, `Health.stopPolling()` |
 

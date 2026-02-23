@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     orderbook_depth_limit: int = 50
     orderbook_wall_threshold: float = 0.15
 
+    # Opportunity detector
+    opportunity_min_score: int = 45
+    opportunity_cooldown_minutes: int = 30
+    opportunity_max_items: int = 20
+
     @property
     def stablecoins_set(self) -> set[str]:
         return {s.strip() for s in self.stablecoins.split(",")}

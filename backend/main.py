@@ -8,8 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from backend import (
     balance_tracker, event_recorder, health_collector, heatmap_manager,
     kline_manager, log_buffer, macro_tracker, market_analyzer, news_tracker,
-    orderbook_tracker, position_tracker, price_recorder, whale_tracker,
-    ws_manager,
+    opportunity_detector, orderbook_tracker, position_tracker, price_recorder,
+    whale_tracker, ws_manager,
 )
 from backend.binance_client import close_client, init_client
 from backend.database import close_db, init_db
@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
     await orderbook_tracker.start()
     await heatmap_manager.start()
     await market_analyzer.start()
+    await opportunity_detector.start()
     await news_tracker.start()
     await health_collector.start()
     log.info("rootcoin_started")
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
     log.info("rootcoin_stopping")
     await health_collector.stop()
     await news_tracker.stop()
+    await opportunity_detector.stop()
     await market_analyzer.stop()
     await heatmap_manager.stop()
     await orderbook_tracker.stop()
@@ -87,6 +89,7 @@ from backend.routes.api_heatmap import router as heatmap_router
 from backend.routes.api_news import router as news_router
 from backend.routes.api_orderbook import router as orderbook_router
 from backend.routes.api_journal import router as journal_router
+from backend.routes.api_opportunities import router as opportunities_router
 from backend.routes.api_health import router as health_router
 from backend.routes.ws_dashboard import router as ws_router
 
@@ -104,6 +107,7 @@ app.include_router(heatmap_router)
 app.include_router(news_router)
 app.include_router(orderbook_router)
 app.include_router(journal_router)
+app.include_router(opportunities_router)
 app.include_router(health_router)
 app.include_router(ws_router)
 

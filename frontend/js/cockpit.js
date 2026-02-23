@@ -7,9 +7,10 @@ const Cockpit = (() => {
 
     async function load() {
         try {
-            const [balResp, anaResp] = await Promise.all([
+            const [balResp, anaResp, oppResp] = await Promise.all([
                 fetch('/api/balances'),
                 fetch('/api/analysis'),
+                fetch('/api/opportunities'),
             ]);
             if (balResp.ok) {
                 const balances = await balResp.json();
@@ -17,6 +18,10 @@ const Cockpit = (() => {
             }
             if (anaResp.ok) {
                 _analysis = await anaResp.json();
+            }
+            if (oppResp.ok) {
+                const oppData = await oppResp.json();
+                Opportunities.update(oppData.opportunities || []);
             }
             render();
         } catch (e) {
@@ -30,6 +35,7 @@ const Cockpit = (() => {
         _renderBias();
         _renderLastFill();
         _renderWhale();
+        _renderOpportunities();
     }
 
     function _renderPortfolio() {
@@ -167,6 +173,11 @@ const Cockpit = (() => {
         </div>`;
     }
 
+    function _renderOpportunities() {
+        const el = document.getElementById('cockpit-opportunities');
+        if (el) Opportunities.render(el);
+    }
+
     // ── Helpers ──
 
     function _calcPortfolioTotal(balances) {
@@ -225,9 +236,11 @@ const Cockpit = (() => {
 
     WS.on('analysis_update', (data) => {
         _analysis = data;
+        if (data.opportunities) Opportunities.update(data.opportunities);
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         _renderBias();
         _renderWhale();
+        _renderOpportunities();
     });
 
     WS.on('order_update', (data) => {
