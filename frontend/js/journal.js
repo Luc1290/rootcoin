@@ -44,7 +44,7 @@ const Journal = (() => {
     async function load() {
         _offset = 0;
         _entries = [];
-        await Promise.all([_loadEquity(), _loadCalendar(), _loadEntries()]);
+        await Promise.all([_loadEquity(), _loadStreaks(), _loadCalendar(), _loadEntries()]);
     }
 
     // ── Equity curve ────────────────────────────────────────
@@ -122,6 +122,68 @@ const Journal = (() => {
         eqData.sort((a, b) => a.time - b.time);
         _equitySeries.setData(eqData);
         _equityChart.timeScale().fitContent();
+    }
+
+    // ── Streak tracker ─────────────────────────────────────
+
+    async function _loadStreaks() {
+        try {
+            const resp = await fetch('/api/journal/streaks');
+            if (!resp.ok) return;
+            const d = await resp.json();
+
+            const flame = document.getElementById('streak-flame');
+            const countEl = document.getElementById('streak-current-count');
+            const labelEl = document.getElementById('streak-current-label');
+
+            if (d.current_streak > 0) {
+                const isWin = d.current_streak_type === 'win';
+                countEl.textContent = d.current_streak;
+                countEl.className = 'streak-value ' + (isWin ? 'pnl-positive' : 'pnl-negative');
+                labelEl.textContent = isWin
+                    ? `trade${d.current_streak > 1 ? 's' : ''} gagnant${d.current_streak > 1 ? 's' : ''}`
+                    : `trade${d.current_streak > 1 ? 's' : ''} perdant${d.current_streak > 1 ? 's' : ''}`;
+                flame.classList.toggle('streak-flame-active', isWin);
+            } else {
+                countEl.textContent = '0';
+                countEl.className = 'streak-value text-gray-400';
+                labelEl.textContent = 'Aucun trade';
+                flame.classList.remove('streak-flame-active');
+            }
+
+            const winrateEl = document.getElementById('streak-month-winrate');
+            const detailEl = document.getElementById('streak-month-detail');
+            if (d.month_trades > 0) {
+                winrateEl.textContent = d.month_win_rate + '%';
+                winrateEl.className = 'streak-value ' + (d.month_win_rate >= 50 ? 'pnl-positive' : 'pnl-negative');
+                const pnl = parseFloat(d.month_pnl);
+                const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+                const portfolioStr = d.month_portfolio_change !== 0
+                    ? ` · ${d.month_portfolio_change > 0 ? '+' : ''}${d.month_portfolio_change}%`
+                    : '';
+                detailEl.textContent = `${d.month_wins}/${d.month_trades} · ${pnlStr}${portfolioStr}`;
+            } else {
+                winrateEl.textContent = '--';
+                winrateEl.className = 'streak-value text-gray-400';
+                detailEl.textContent = 'Aucun trade ce mois';
+            }
+
+            const bestCountEl = document.getElementById('streak-best-count');
+            const bestLabelEl = document.getElementById('streak-best-label');
+            if (d.best_streak > 0) {
+                bestCountEl.textContent = d.best_streak;
+                bestCountEl.className = 'streak-value pnl-positive';
+                bestLabelEl.textContent = d.best_streak_month
+                    ? `wins · ${d.best_streak_month}`
+                    : `wins consecutifs`;
+            } else {
+                bestCountEl.textContent = '0';
+                bestCountEl.className = 'streak-value text-gray-400';
+                bestLabelEl.textContent = 'Meilleure serie';
+            }
+        } catch (e) {
+            console.error('Journal streaks load failed', e);
+        }
     }
 
     // ── Calendar heatmap ────────────────────────────────────

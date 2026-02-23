@@ -761,6 +761,24 @@ select {
 .opp-dismiss:hover { opacity: 1; }
 
 /* ===== Journal ===== */
+
+/* Streak tracker */
+.streak-card {
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid #1f2937;
+    border-radius: 0.5rem;
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+}
+.streak-icon { font-size: 1.5rem; line-height: 1; margin-bottom: 0.25rem; }
+.streak-value { font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
+.streak-label { font-size: 0.7rem; color: #9ca3af; margin-top: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.streak-flame-active { animation: flame-pulse 1.5s ease-in-out infinite; }
+@keyframes flame-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
 .journal-cal-row { display: flex; gap: 3px; }
 .journal-cal-cell {
     width: 14px; height: 14px;

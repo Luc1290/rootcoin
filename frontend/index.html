@@ -292,6 +292,30 @@
                 <div id="journal-equity-chart" style="height:250px;width:100%"></div>
             </div>
 
+            <!-- Streak tracker -->
+            <div class="mb-6">
+                <div class="grid grid-cols-3 gap-2" id="journal-streaks">
+                    <div class="streak-card">
+                        <div class="streak-icon" id="streak-flame">&#128293;</div>
+                        <div id="streak-current-count" class="streak-value">--</div>
+                        <div id="streak-current-label" class="streak-label">Serie en cours</div>
+                    </div>
+                    <div class="streak-card">
+                        <div class="streak-icon">&#128200;</div>
+                        <div class="flex items-baseline justify-center gap-1">
+                            <span id="streak-month-winrate" class="streak-value">--</span>
+                            <span class="text-xs text-gray-500">win rate</span>
+                        </div>
+                        <div id="streak-month-detail" class="streak-label">Dernier mois</div>
+                    </div>
+                    <div class="streak-card">
+                        <div class="streak-icon">&#127942;</div>
+                        <div id="streak-best-count" class="streak-value">--</div>
+                        <div id="streak-best-label" class="streak-label">Meilleure serie</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Calendar PnL heatmap -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-3">

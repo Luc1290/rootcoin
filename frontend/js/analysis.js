@@ -209,7 +209,7 @@ const Analysis = (() => {
             oil: 'Petrole', usdjpy: 'USD/JPY',
         };
         const cryptoImpact = {
-            dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'mixed',
+            dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'inverse',
             us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
         };
 
@@ -226,16 +226,16 @@ const Analysis = (() => {
             const change = parseFloat(ind.change_pct || 0);
             const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
 
-            // Color based on crypto impact
+            // Color based on crypto impact (use change_pct sign, not trend which has a 0.3% dead zone)
             const impact = cryptoImpact[key];
             let impactColor = 'text-gray-400';
             if (impact === 'spread') {
                 const spreadVal = parseFloat(ind.value || 0);
                 impactColor = spreadVal < 0 ? 'pnl-negative' : spreadVal > 0.5 ? 'pnl-positive' : 'text-yellow-400';
             } else if (impact === 'inverse') {
-                impactColor = trend === 'down' ? 'pnl-positive' : trend === 'up' ? 'pnl-negative' : 'text-gray-400';
+                impactColor = change < 0 ? 'pnl-positive' : change > 0 ? 'pnl-negative' : 'text-gray-400';
             } else if (impact === 'direct') {
-                impactColor = trend === 'up' ? 'pnl-positive' : trend === 'down' ? 'pnl-negative' : 'text-gray-400';
+                impactColor = change > 0 ? 'pnl-positive' : change < 0 ? 'pnl-negative' : 'text-gray-400';
             }
 
             const displayValue = _fmtMacroValue(key, ind.value);

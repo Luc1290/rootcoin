@@ -197,6 +197,134 @@ async def get_journal_entries(
     return entries
 
 
+# ── Streak tracker ────────────────────────────────────────
+
+
+@router.get("/streaks")
+async def get_streaks():
+    now = datetime.now(timezone.utc)
+    cutoff_30d = now - timedelta(days=30)
+
+    async with async_session() as session:
+        result = await session.execute(
+            select(Position).where(
+                Position.is_active == False,
+                Position.closed_at.isnot(None),
+                Position.realized_pnl.isnot(None),
+            ).order_by(Position.closed_at.desc())
+        )
+        all_positions = result.scalars().all()
+
+        # Portfolio change last 30d
+        bal_first = await session.execute(
+            select(func.sum(Balance.usd_value).label("total"))
+            .where(Balance.snapshot_at >= cutoff_30d, Balance.usd_value.isnot(None))
+            .group_by(Balance.snapshot_at)
+            .order_by(Balance.snapshot_at.asc())
+            .limit(1)
+        )
+        bal_last = await session.execute(
+            select(func.sum(Balance.usd_value).label("total"))
+            .where(Balance.snapshot_at >= cutoff_30d, Balance.usd_value.isnot(None))
+            .group_by(Balance.snapshot_at)
+            .order_by(Balance.snapshot_at.desc())
+            .limit(1)
+        )
+        first_val = bal_first.scalar()
+        last_val = bal_last.scalar()
+
+    if not all_positions:
+        return {
+            "current_streak": 0,
+            "current_streak_type": "win",
+            "month_win_rate": 0,
+            "month_trades": 0,
+            "month_wins": 0,
+            "month_pnl": "0",
+            "month_portfolio_change": 0,
+            "best_streak": 0,
+            "best_streak_month": None,
+        }
+
+    def _is_win(p: Position) -> bool:
+        fees = (p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0"))
+        return (p.realized_pnl - fees) > 0
+
+    # Current streak (positions already sorted DESC)
+    current_type = _is_win(all_positions[0])
+    current_streak = 0
+    for p in all_positions:
+        if _is_win(p) == current_type:
+            current_streak += 1
+        else:
+            break
+
+    # Last 30 days stats
+    month_trades = 0
+    month_wins = 0
+    month_pnl = Decimal("0")
+    for p in all_positions:
+        closed = p.closed_at
+        if closed.tzinfo is None:
+            closed = closed.replace(tzinfo=timezone.utc)
+        if closed < cutoff_30d:
+            break
+        month_trades += 1
+        fees = (p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0"))
+        net = p.realized_pnl - fees
+        month_pnl += net
+        if net > 0:
+            month_wins += 1
+
+    month_win_rate = round(month_wins / month_trades * 100, 1) if month_trades > 0 else 0
+
+    # Portfolio change
+    portfolio_change = Decimal("0")
+    if first_val and last_val and first_val > 0:
+        portfolio_change = (last_val - first_val) / first_val * 100
+
+    # Best ever streak (iterate ASC)
+    best_streak = 0
+    best_streak_month = None
+    run = 0
+    run_end = None
+    for p in reversed(all_positions):
+        if _is_win(p):
+            run += 1
+            run_end = p.closed_at
+        else:
+            if run > best_streak:
+                best_streak = run
+                best_streak_month = run_end
+            run = 0
+            run_end = None
+    if run > best_streak:
+        best_streak = run
+        best_streak_month = run_end
+
+    month_names = [
+        "Jan", "Fev", "Mar", "Avr", "Mai", "Jun",
+        "Jul", "Aou", "Sep", "Oct", "Nov", "Dec",
+    ]
+    best_month_str = None
+    if best_streak_month:
+        if best_streak_month.tzinfo is None:
+            best_streak_month = best_streak_month.replace(tzinfo=timezone.utc)
+        best_month_str = f"{month_names[best_streak_month.month - 1]} {best_streak_month.year}"
+
+    return {
+        "current_streak": current_streak,
+        "current_streak_type": "win" if current_type else "loss",
+        "month_win_rate": month_win_rate,
+        "month_trades": month_trades,
+        "month_wins": month_wins,
+        "month_pnl": str(round(month_pnl, 2)),
+        "month_portfolio_change": float(round(portfolio_change, 1)),
+        "best_streak": best_streak,
+        "best_streak_month": best_month_str,
+    }
+
+
 def _snap_to_dict(s: TradeSnapshot) -> dict:
     return {
         "snapshot_type": s.snapshot_type,
