@@ -440,21 +440,20 @@ def _score_macro(macro_data: dict) -> list[dict]:
         signals.append({"name": "Nasdaq", "value": nasdaq.get("value"),
                         "score": score, "weight": 0.8, "trend": trend})
 
-    # Gold: context-dependent
+    # Gold: up = risk-off = bearish crypto, scaled by magnitude
     gold = indicators.get("gold")
     if gold:
         gold_trend = gold["trend"]
-        dxy_trend = dxy["trend"] if dxy else "flat"
-        if gold_trend == "up" and dxy_trend == "up":
-            score = -0.5  # Flight to safety
-        elif gold_trend == "up" and dxy_trend != "up":
-            score = 0.3  # Inflation hedge, mildly bullish crypto
+        change = abs(float(gold.get("change_pct", 0)))
+        magnitude = min(change / 2.0, 1.0)  # 2% change = full signal
+        if gold_trend == "up":
+            score = -max(magnitude, 0.3)  # Always bearish, floor at -0.3
         elif gold_trend == "down":
-            score = 0  # Neutral
+            score = magnitude * 0.3  # Mildly bullish (selling safe haven)
         else:
             score = 0
         signals.append({"name": "Gold", "value": gold.get("value"),
-                        "score": score, "weight": 0.6, "trend": gold_trend})
+                        "score": round(score, 2), "weight": 0.8, "trend": gold_trend})
 
     # US10Y: rising yields = bearish (liquidity drain from risk assets)
     us10y = indicators.get("us10y")
@@ -779,7 +778,7 @@ def _build_justification(ta_signals: list, macro_signals: list, direction: str) 
         "DXY": lambda s: f"DXY en {'hausse (bearish crypto)' if s['score'] < 0 else 'baisse (bullish crypto)' if s['score'] > 0 else 'neutre'}",
         "VIX": lambda s: f"VIX a {float(s.get('value', 0)):.0f}" + (" (risk-off, prudence)" if s["score"] < -0.3 else " (risk-on, favorable)" if s["score"] > 0.3 else " (neutre)"),
         "Nasdaq": lambda s: f"Nasdaq en {'hausse (risk-on)' if s['score'] > 0 else 'baisse (risk-off)' if s['score'] < 0 else 'neutre'}",
-        "Gold": lambda s: f"Or en {'hausse' if s.get('trend') == 'up' else 'baisse' if s.get('trend') == 'down' else 'neutre'}" + (" (fuite vers valeur refuge)" if s["score"] < -0.3 else ""),
+        "Gold": lambda s: f"Or en {'hausse (risk-off, fuite vers valeur refuge)' if s.get('trend') == 'up' else 'baisse (risk-on)' if s.get('trend') == 'down' else 'neutre'}",
         "US10Y": lambda s: f"taux 10Y en {'hausse (pression liquidite)' if s['score'] < 0 else 'baisse (assouplissement)' if s['score'] > 0 else 'neutre'}",
         "Spread": lambda s: "courbe des taux inversee (signal recession)" if float(s.get("value", 0)) < 0 else "courbe des taux normale",
         "Oil": lambda s: f"petrole en {'hausse (pression inflation)' if s['score'] < 0 else 'baisse (desinflation)' if s['score'] > 0 else 'neutre'}",
