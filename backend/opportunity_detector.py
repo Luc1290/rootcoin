@@ -92,17 +92,42 @@ def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[floa
     confidence = bias.get("confidence", 0)
     details: dict = {}
 
-    # Hard gate: skip if confidence < 50
-    if confidence < 50:
+    # Hard gate: skip if confidence < 30
+    if confidence < 30:
         return 0, details
 
-    # 1. Bias confidence (max 25)
-    bias_pts = min((confidence - 50) / 50 * 25, 25)
+    # 1. Bias confidence = anchor (max 50)
+    #    30% -> 0 pts, 60% -> 21 pts, 80% -> 36 pts, 100% -> 50 pts
+    bias_pts = min((confidence - 30) / 70 * 50, 50)
 
-    # 2. RSI extreme (max 20)
+    # 2. Signal agreement (max 15) — what % of TA signals agree with direction
+    ta_signals = analysis.get("signals", {}).get("technical", [])
+    agree = 0
+    disagree = 0
+    for sig in ta_signals:
+        sc = sig.get("score", 0)
+        if direction == "LONG":
+            if sc > 0.15:
+                agree += 1
+            elif sc < -0.15:
+                disagree += 1
+        elif direction == "SHORT":
+            if sc < -0.15:
+                agree += 1
+            elif sc > 0.15:
+                disagree += 1
+    total_opinionated = agree + disagree
+    if total_opinionated > 0:
+        agreement_ratio = agree / total_opinionated
+        agreement_pts = agreement_ratio * 15
+    else:
+        agreement_pts = 0.0
+    details["signal_agreement"] = round(agreement_ratio * 100) if total_opinionated else 0
+
+    # 3. RSI extreme — bonus (max 10)
     rsi_pts = 0.0
     best_rsi = None
-    for sig in analysis.get("signals", {}).get("technical", []):
+    for sig in ta_signals:
         if "RSI" not in sig.get("name", ""):
             continue
         val = sig.get("value")
@@ -111,24 +136,24 @@ def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[floa
         pts = 0.0
         if direction == "LONG":
             if val < 30:
-                pts = 20
-            elif val < 35:
-                pts = 15
+                pts = 10
             elif val < 40:
-                pts = 8
+                pts = 6
+            elif val < 45:
+                pts = 3
         elif direction == "SHORT":
             if val > 70:
-                pts = 20
-            elif val > 65:
-                pts = 15
+                pts = 10
             elif val > 60:
-                pts = 8
+                pts = 6
+            elif val > 55:
+                pts = 3
         if pts > rsi_pts:
             rsi_pts = pts
             best_rsi = val
     details["best_rsi"] = best_rsi
 
-    # 3. Proximity to key level (max 20)
+    # 4. Proximity to key level — bonus (max 10)
     level_pts = 0.0
     nearest_level = None
     relevant_types = SUPPORT_TYPES if direction == "LONG" else RESISTANCE_TYPES
@@ -140,62 +165,47 @@ def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[floa
             dist = abs(Decimal(level.get("distance_pct", "99")))
         except (InvalidOperation, TypeError):
             continue
-        if dist >= Decimal("2"):
+        if dist >= Decimal("3"):
             continue
         pts = 0.0
         if dist < Decimal("0.5"):
-            pts = 20
-        elif dist < Decimal("1"):
-            pts = 15
-        elif dist < Decimal("1.5"):
             pts = 10
-        else:
+        elif dist < Decimal("1"):
+            pts = 8
+        elif dist < Decimal("2"):
             pts = 5
+        else:
+            pts = 2
         if pts > level_pts:
             level_pts = pts
             nearest_level = level
     details["nearest_level"] = nearest_level
 
-    # 4. Volume/pressure confirmation (max 10)
-    pressure_pts = 0.0
+    # 5. Volume / orderbook / whale — combined bonus (max 10)
+    extra_pts = 0.0
     has_buy = False
     has_sell = False
-    for sig in analysis.get("signals", {}).get("technical", []):
+    for sig in ta_signals:
         name = sig.get("name", "")
         sc = sig.get("score", 0)
-        if "B/S" in name or "Buy" in name:
-            if direction == "LONG" and sc > 0.3:
-                pressure_pts += 5
+        if "B/S" in name or "OBV" in name:
+            if direction == "LONG" and sc > 0.2:
+                extra_pts += 2
                 has_buy = True
-            elif direction == "SHORT" and sc < -0.3:
-                pressure_pts += 5
+            elif direction == "SHORT" and sc < -0.2:
+                extra_pts += 2
                 has_sell = True
-        elif "OBV" in name:
-            if direction == "LONG" and sc > 0.3:
-                pressure_pts += 5
-                has_buy = True
-            elif direction == "SHORT" and sc < -0.3:
-                pressure_pts += 5
-                has_sell = True
-    pressure_pts = min(pressure_pts, 10)
     details["has_buy_pressure"] = has_buy
     details["has_sell_pressure"] = has_sell
 
-    # 5. Orderbook imbalance (max 10)
-    ob_pts = 0.0
     ob_confirming = False
     imbalance = orderbook_tracker.get_imbalance(symbol)
     if imbalance is not None:
-        if direction == "LONG" and imbalance > 0.1:
-            ob_pts = 10 if imbalance > 0.2 else 5
-            ob_confirming = True
-        elif direction == "SHORT" and imbalance < -0.1:
-            ob_pts = 10 if imbalance < -0.2 else 5
+        if (direction == "LONG" and imbalance > 0.1) or (direction == "SHORT" and imbalance < -0.1):
+            extra_pts += 3
             ob_confirming = True
     details["ob_confirming"] = ob_confirming
 
-    # 6. Whale activity (max 10)
-    whale_pts = 0.0
     whale_confirming = False
     whales = whale_tracker.get_whale_alerts()
     for w in whales:
@@ -206,30 +216,26 @@ def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[floa
             age = (now - datetime.fromisoformat(ts)).total_seconds()
         except (ValueError, TypeError):
             continue
-        if age > 600:
+        if age > 600 or w.get("symbol") != symbol:
             continue
-        if w.get("symbol") != symbol:
-            continue
-        if direction == "LONG" and w.get("side") == "BUY":
-            whale_pts += 5
+        if (direction == "LONG" and w.get("side") == "BUY") or (direction == "SHORT" and w.get("side") == "SELL"):
+            extra_pts += 3
             whale_confirming = True
-        elif direction == "SHORT" and w.get("side") == "SELL":
-            whale_pts += 5
-            whale_confirming = True
-    whale_pts = min(whale_pts, 10)
+            break
     details["whale_confirming"] = whale_confirming
+    extra_pts = min(extra_pts, 10)
 
-    # 7. Conflict penalty / alignment bonus
+    # 6. Conflict penalty / alignment bonus
     conflict_pts = 0.0
     alerts = analysis.get("alerts", [])
     has_conflict = any(a.get("type") == "conflict" for a in alerts)
     has_aligned = any(a.get("type") == "aligned" for a in alerts)
     if has_conflict:
-        conflict_pts = -20
+        conflict_pts = -15
     elif has_aligned:
         conflict_pts = 5
 
-    total = bias_pts + rsi_pts + level_pts + pressure_pts + ob_pts + whale_pts + conflict_pts
+    total = bias_pts + agreement_pts + rsi_pts + level_pts + extra_pts + conflict_pts
     return max(0, min(total, 100)), details
 
 
@@ -282,6 +288,10 @@ def _build_message(symbol: str, direction: str, confidence: int, details: dict) 
     elif details.get("has_sell_pressure"):
         parts.append("pression vendeuse")
 
+    agreement = details.get("signal_agreement", 0)
+    if agreement >= 70:
+        parts.append(f"{agreement}% des signaux alignes")
+
     if details.get("ob_confirming"):
         parts.append("orderbook favorable")
 
@@ -298,6 +308,11 @@ def _build_message(symbol: str, direction: str, confidence: int, details: dict) 
 
 def _extract_key_signals(direction: str, confidence: int, details: dict) -> list[dict]:
     signals = []
+    agreement = details.get("signal_agreement", 0)
+    if agreement >= 60:
+        stype = "bullish" if direction == "LONG" else "bearish"
+        signals.append({"label": f"{agreement}% align\u00e9s", "type": stype})
+
     rsi = details.get("best_rsi")
     if rsi is not None:
         stype = "bullish" if direction == "LONG" else "bearish"

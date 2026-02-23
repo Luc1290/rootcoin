@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     orderbook_wall_threshold: float = 0.15
 
     # Opportunity detector
-    opportunity_min_score: int = 45
+    opportunity_min_score: int = 35
     opportunity_cooldown_minutes: int = 30
     opportunity_max_items: int = 20
 
