@@ -55,7 +55,9 @@ async def _run_stream():
             streams = [f"{s.lower()}@aggTrade" for s in symbols]
             url = f"{BINANCE_WS_URL}/stream?streams={'/'.join(streams)}"
 
-            async with websockets.connect(url) as ws:
+            async with websockets.connect(
+                url, ping_interval=30, ping_timeout=60,
+            ) as ws:
                 connected_at = time.monotonic()
                 backoff = 1
                 log.info("whale_stream_connected", symbols=symbols)

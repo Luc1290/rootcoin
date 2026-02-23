@@ -66,12 +66,12 @@ const PositionCards = (() => {
         </div>`;
     }
 
-    function _distancePct(orderPrice, currentPrice) {
-        if (!orderPrice || !currentPrice) return null;
+    function _distancePct(orderPrice, entryPrice) {
+        if (!orderPrice || !entryPrice) return null;
         const op = parseFloat(orderPrice);
-        const cp = parseFloat(currentPrice);
-        if (!cp) return null;
-        return ((op - cp) / cp * 100).toFixed(1);
+        const ep = parseFloat(entryPrice);
+        if (!ep) return null;
+        return ((op - ep) / ep * 100).toFixed(1);
     }
 
     function _buildBadgesHtml(p) {
@@ -79,12 +79,12 @@ const PositionCards = (() => {
         const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
 
         if (p.sl_order_id || (p.oco_order_list_id && p.sl_price)) {
-            const dist = _distancePct(p.sl_price, p.current_price);
+            const dist = _distancePct(p.sl_price, p.entry_price);
             const label = dist !== null ? `SL ${dist > 0 ? '+' : ''}${dist}%` : 'SL';
             badges.push(`<span class="badge bg-red-900/40 text-red-400 tabular-nums">${label}</span>`);
         }
         if (p.tp_order_id || (p.oco_order_list_id && p.tp_price)) {
-            const dist = _distancePct(p.tp_price, p.current_price);
+            const dist = _distancePct(p.tp_price, p.entry_price);
             const label = dist !== null ? `TP ${dist > 0 ? '+' : ''}${dist}%` : 'TP';
             badges.push(`<span class="badge bg-emerald-900/40 text-emerald-400 tabular-nums">${label}</span>`);
         }

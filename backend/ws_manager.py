@@ -41,6 +41,7 @@ class WSManager:
         self._tasks: list[asyncio.Task] = []
         self._running = False
         self._listen_token: str | None = None
+        self._user_ws: Any = None
         self._price_ws: Any = None
         self._msg_id = 0
         self._last_user_msg_at: float | None = None
@@ -183,7 +184,10 @@ class WSManager:
             try:
                 self._listen_token = await self._obtain_listen_token()
 
-                async with websockets.connect(BINANCE_WS_API_URL) as ws:
+                async with websockets.connect(
+                    BINANCE_WS_API_URL, ping_interval=30, ping_timeout=60,
+                ) as ws:
+                    self._user_ws = ws
                     # Subscribe via the new listenToken method
                     subscribe_msg = {
                         "id": self._next_id(),
@@ -223,6 +227,7 @@ class WSManager:
                 break
             except Exception as e:
                 self._user_stream_connected = False
+                self._user_ws = None
                 if not self._running:
                     break
                 log.warning("user_stream_disconnected", error=str(e), reconnect_in=backoff)
@@ -249,18 +254,17 @@ class WSManager:
     # --- Token Refresh ---
 
     async def _keepalive_listen_key(self):
-        if not self._listen_token:
+        if not self._listen_token or not self._user_ws:
             return
-        headers = {"X-MBX-APIKEY": settings.binance_api_key}
-        params = {"timestamp": str(int(time.time() * 1000))}
-        params = self._sign_params(params)
-        async with httpx.AsyncClient() as http:
-            resp = await http.put(
-                f"{BINANCE_API_URL}/sapi/v1/userListenToken",
-                headers=headers,
-                params=params,
-            )
-            resp.raise_for_status()
+        new_token = await self._obtain_listen_token()
+        if new_token != self._listen_token:
+            self._listen_token = new_token
+            subscribe_msg = {
+                "id": self._next_id(),
+                "method": "userDataStream.subscribe.listenToken",
+                "params": {"listenToken": self._listen_token},
+            }
+            await self._user_ws.send(json.dumps(subscribe_msg))
 
     async def _run_token_refresh(self):
         while self._running:
@@ -291,7 +295,9 @@ class WSManager:
                 stream_path = "/".join(streams)
                 url = f"{BINANCE_WS_URL}/stream?streams={stream_path}"
 
-                async with websockets.connect(url) as ws:
+                async with websockets.connect(
+                    url, ping_interval=30, ping_timeout=60,
+                ) as ws:
                     self._price_ws = ws
                     connected_at = time.monotonic()
                     self._price_stream_connected = True
