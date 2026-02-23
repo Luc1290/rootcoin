@@ -54,12 +54,13 @@ async def fetch_and_store(symbol: str, interval: str, limit: int = 500) -> int:
     kwargs: dict = {"symbol": symbol, "interval": interval, "limit": limit}
     if last:
         open_time, close_time = last
-        if close_time and close_time > datetime.now(timezone.utc):
+        open_time_utc = open_time.replace(tzinfo=timezone.utc)
+        if close_time and close_time.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
             # Current candle still open — re-fetch it to update OHLCV
-            kwargs["startTime"] = int(open_time.timestamp() * 1000)
+            kwargs["startTime"] = int(open_time_utc.timestamp() * 1000)
         else:
             # Last candle closed — skip it
-            kwargs["startTime"] = int(open_time.timestamp() * 1000) + 1
+            kwargs["startTime"] = int(open_time_utc.timestamp() * 1000) + 1
 
     raw_klines = await client.get_klines(**kwargs)
     if not raw_klines:

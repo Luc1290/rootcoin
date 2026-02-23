@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     binance_secret_key: str = ""
 
     stablecoins: str = "USDT,USDC,BUSD,DAI,TUSD,FDUSD"
+    ignored_assets: str = "BNB"
     default_watchlist: str = "BTCUSDC,ETHUSDC,BNBUSDC"
 
     balance_snapshot_interval: int = 300
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     @property
     def stablecoins_set(self) -> set[str]:
         return {s.strip() for s in self.stablecoins.split(",")}
+
+    @property
+    def ignored_assets_set(self) -> set[str]:
+        return {s.strip() for s in self.ignored_assets.split(",") if s.strip()}
 
     @property
     def watchlist(self) -> list[str]:

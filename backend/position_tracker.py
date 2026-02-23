@@ -171,6 +171,7 @@ async def _scan_existing_positions():
 
     found_keys: set[tuple[str, str]] = set()
     stables = settings.stablecoins_set
+    ignored = settings.ignored_assets_set
 
     # Fetch all ticker prices for dust filtering
     prices: dict[str, Decimal] = {}
@@ -185,7 +186,7 @@ async def _scan_existing_positions():
     try:
         for bal in await binance_client.get_spot_balances():
             asset = bal["asset"]
-            if asset in stables:
+            if asset in stables or asset in ignored:
                 continue
             total = Decimal(bal["free"]) + Decimal(bal["locked"])
             if total <= 0:
@@ -203,7 +204,7 @@ async def _scan_existing_positions():
     try:
         for bal in await binance_client.get_cross_margin_balances():
             asset = bal["asset"]
-            if asset in stables:
+            if asset in stables or asset in ignored:
                 continue
             free = Decimal(bal.get("free", "0"))
             locked = Decimal(bal.get("locked", "0"))
@@ -227,6 +228,8 @@ async def _scan_existing_positions():
         for pair in await binance_client.get_isolated_margin_balances():
             symbol = pair.get("symbol", "")
             base = pair.get("baseAsset", {})
+            if _extract_base_asset(symbol) in ignored:
+                continue
             base_borrowed = Decimal(base.get("borrowed", "0"))
             base_free = Decimal(base.get("free", "0"))
             base_locked = Decimal(base.get("locked", "0"))
