@@ -8,8 +8,21 @@ const App = (() => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 switchTab(btn.dataset.tab);
+                _closeDrawer();
             });
         });
+
+        // Burger menu
+        const burgerBtn = document.getElementById('burger-btn');
+        const drawer = document.getElementById('nav-drawer');
+        const overlay = document.getElementById('nav-drawer-overlay');
+        if (burgerBtn && drawer && overlay) {
+            burgerBtn.addEventListener('click', () => {
+                drawer.classList.toggle('open');
+                overlay.classList.toggle('hidden');
+            });
+            overlay.addEventListener('click', _closeDrawer);
+        }
 
         // Modal close on overlay click
         document.getElementById('modal-overlay').addEventListener('click', (e) => {
@@ -56,6 +69,13 @@ const App = (() => {
         if (tab === 'analysis') Analysis.load();
         if (tab === 'heatmap') { Heatmap.init(); Heatmap.load(); Heatmap.startPolling(); } else { Heatmap.stopPolling(); }
         if (tab === 'health') { Health.init(); Health.load(); Health.startPolling(); } else { Health.stopPolling(); }
+    }
+
+    function _closeDrawer() {
+        const drawer = document.getElementById('nav-drawer');
+        const overlay = document.getElementById('nav-drawer-overlay');
+        if (drawer) drawer.classList.remove('open');
+        if (overlay) overlay.classList.add('hidden');
     }
 
     function updateClock() {

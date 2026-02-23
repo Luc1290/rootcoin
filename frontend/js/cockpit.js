@@ -87,7 +87,7 @@ const Cockpit = (() => {
     function _renderBias() {
         const el = document.getElementById('cockpit-bias');
         if (!_analysis || !_analysis.analyses || !_analysis.analyses.length) {
-            el.innerHTML = '';
+            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Analyse en attente...</span></div>';
             return;
         }
 
@@ -143,7 +143,7 @@ const Cockpit = (() => {
         const el = document.getElementById('cockpit-whale');
         const alerts = _analysis && _analysis.whale_alerts ? _analysis.whale_alerts : [];
         if (!alerts.length) {
-            el.innerHTML = '';
+            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucune alerte whale</span></div>';
             return;
         }
 

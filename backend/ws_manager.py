@@ -344,28 +344,32 @@ class WSManager:
             "user_stream": {
                 "connected": self._user_stream_connected,
                 "last_msg_age_s": round(user_age, 1) if user_age is not None else None,
-                "status": _ws_stream_status(self._user_stream_connected, user_age, lenient=True),
+                "status": _ws_stream_status(self._user_stream_connected, user_age, event_driven=True),
             },
             "price_stream": {
                 "connected": self._price_stream_connected,
                 "last_msg_age_s": round(price_age, 1) if price_age is not None else None,
-                "status": _ws_stream_status(self._price_stream_connected, price_age, lenient=False),
+                "status": _ws_stream_status(self._price_stream_connected, price_age, event_driven=False),
             },
             "subscribed_symbols": list(self._subscribed_symbols),
             "subscribed_klines": list(self._subscribed_klines),
         }
 
 
-def _ws_stream_status(connected: bool, age: float | None, *, lenient: bool) -> str:
+def _ws_stream_status(connected: bool, age: float | None, *, event_driven: bool) -> str:
     if not connected:
         return "disconnected"
     if age is None:
-        return "waiting"
-    degraded_threshold = 120 if lenient else 30
-    unhealthy_threshold = 600 if lenient else 120
-    if age < degraded_threshold:
+        # Connected but no message yet
+        return "healthy" if event_driven else "waiting"
+    if event_driven:
+        # User data stream: only receives messages on activity (trades, orders).
+        # Silence is normal — connection health is all that matters.
         return "healthy"
-    if age < unhealthy_threshold:
+    # Continuous streams (price ticker): expect frequent data
+    if age < 30:
+        return "healthy"
+    if age < 120:
         return "degraded"
     return "unhealthy"
 

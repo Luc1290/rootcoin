@@ -79,32 +79,35 @@ async def _collect() -> dict:
 
 
 _MODULE_REGISTRY = [
-    ("ws_manager", ws_manager, "_tasks", True),
-    ("position_tracker", position_tracker, "_reconcile_task", False),
-    ("price_recorder", price_recorder, "_cleanup_task", False),
-    ("balance_tracker", balance_tracker, "_snapshot_task", False),
-    ("kline_manager", kline_manager, "_cleanup_task", False),
-    ("macro_tracker", macro_tracker, "_refresh_task", False),
-    ("whale_tracker", whale_tracker, "_stream_task", False),
-    ("orderbook_tracker", orderbook_tracker, "_poll_task", False),
-    ("heatmap_manager", heatmap_manager, "_refresh_task", False),
-    ("market_analyzer", market_analyzer, "_refresh_task", False),
-    ("news_tracker", news_tracker, "_refresh_task", False),
+    ("ws_manager", lambda: ws_manager._manager._tasks, True, False),
+    ("position_tracker", lambda: position_tracker._reconcile_task, False, True),
+    ("price_recorder", lambda: price_recorder._cleanup_task, False, False),
+    ("balance_tracker", lambda: balance_tracker._snapshot_task, False, False),
+    ("kline_manager", lambda: kline_manager._cleanup_task, False, False),
+    ("macro_tracker", lambda: macro_tracker._refresh_task, False, False),
+    ("whale_tracker", lambda: whale_tracker._stream_task, False, False),
+    ("orderbook_tracker", lambda: orderbook_tracker._poll_task, False, False),
+    ("heatmap_manager", lambda: heatmap_manager._refresh_task, False, False),
+    ("market_analyzer", lambda: market_analyzer._refresh_task, False, False),
+    ("news_tracker", lambda: news_tracker._refresh_task, False, False),
 ]
 
 
 def _collect_module_status() -> list[dict]:
     modules = []
-    for name, mod, task_attr, is_list in _MODULE_REGISTRY:
-        task = getattr(mod, task_attr, None)
+    for name, task_fn, is_list, one_shot in _MODULE_REGISTRY:
+        task = task_fn()
         if is_list and isinstance(task, list):
             alive = all(t and not t.done() for t in task) if task else False
+        elif one_shot:
+            # One-shot tasks: alive if task exists (done = completed successfully)
+            alive = task is not None and (not task.done() or task.done() and not task.cancelled() and task.exception() is None)
         elif task:
             alive = not task.done()
         else:
             alive = False
 
-        is_stale = _check_staleness(name, mod)
+        is_stale = _check_staleness(name)
 
         status = "healthy"
         if not alive:
@@ -121,18 +124,18 @@ def _collect_module_status() -> list[dict]:
     return modules
 
 
-def _check_staleness(name: str, mod) -> bool | None:
+def _check_staleness(name: str) -> bool | None:
     if name == "macro_tracker":
-        data = mod.get_macro_data()
+        data = macro_tracker.get_macro_data()
         return data.get("is_stale") if data else None
     if name == "heatmap_manager":
-        data = mod.get_heatmap_data()
+        data = heatmap_manager.get_heatmap_data()
         return data.get("is_stale") if data else None
     if name == "news_tracker":
-        data = mod.get_news()
+        data = news_tracker.get_news()
         return data.get("is_stale") if data else None
     if name == "position_tracker":
-        return not mod.is_reconciled()
+        return not position_tracker.is_reconciled()
     return None
 
 

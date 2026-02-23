@@ -17,35 +17,54 @@
 <body class="min-h-screen flex flex-col">
 
     <!-- Header + Navigation -->
-    <header class="app-header shrink-0 px-4 py-2.5 flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1">
-        <img src="/static/logo.svg" alt="RootCoin" style="height:36px;width:auto" class="shrink-0 sm:order-1">
-        <div class="flex items-center gap-3 text-sm shrink-0 ml-auto sm:ml-0 sm:order-3">
+    <header class="app-header shrink-0 px-4 py-2.5 flex items-center gap-3">
+        <button id="burger-btn" class="burger-btn sm:hidden" aria-label="Menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <img src="/static/logo.svg" alt="RootCoin" style="height:36px;width:auto" class="shrink-0">
+        <nav id="nav-desktop" class="hidden sm:flex gap-1.5 flex-1 justify-center overflow-x-auto scrollbar-hide">
+            <a class="tab-btn active px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=cockpit" data-tab="cockpit">Cockpit</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=positions" data-tab="positions">Positions</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=trades" data-tab="trades">Cycles</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=fills" data-tab="fills">Trades</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=balances" data-tab="balances">Balances</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=chart" data-tab="chart">Chart</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=analysis" data-tab="analysis">Analyse</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=health" data-tab="health">Health</a>
+        </nav>
+        <div class="flex items-center gap-3 text-sm shrink-0 ml-auto">
             <span id="header-pnl" class="font-bold tabular-nums text-gray-500">--</span>
             <span id="clock" class="font-medium tabular-nums text-gray-400"></span>
             <span id="ws-status" class="ws-dot w-2 h-2 rounded-full bg-red-500" title="Disconnected"></span>
         </div>
-        <nav class="flex gap-1.5 w-full sm:w-auto sm:flex-1 sm:justify-center sm:order-2 overflow-x-auto scrollbar-hide">
-            <a class="tab-btn active px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=cockpit" data-tab="cockpit">Cockpit</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=positions" data-tab="positions">Positions</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=trades" data-tab="trades">Cycles</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=fills" data-tab="fills">Trades</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=balances" data-tab="balances">Balances</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=chart" data-tab="chart">Chart</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=analysis" data-tab="analysis">Analyse</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
-            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=health" data-tab="health">Health</a>
-        </nav>
     </header>
+
+    <!-- Mobile drawer -->
+    <div id="nav-drawer-overlay" class="nav-drawer-overlay sm:hidden hidden"></div>
+    <nav id="nav-drawer" class="nav-drawer sm:hidden">
+        <a class="tab-btn active" href="/?tab=cockpit" data-tab="cockpit">Cockpit</a>
+        <a class="tab-btn" href="/?tab=positions" data-tab="positions">Positions</a>
+        <a class="tab-btn" href="/?tab=trades" data-tab="trades">Cycles</a>
+        <a class="tab-btn" href="/?tab=fills" data-tab="fills">Trades</a>
+        <a class="tab-btn" href="/?tab=balances" data-tab="balances">Balances</a>
+        <a class="tab-btn" href="/?tab=chart" data-tab="chart">Chart</a>
+        <a class="tab-btn" href="/?tab=analysis" data-tab="analysis">Analyse</a>
+        <a class="tab-btn" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
+        <a class="tab-btn" href="/?tab=health" data-tab="health">Health</a>
+    </nav>
 
     <!-- Main content -->
     <main class="flex-1 overflow-y-auto">
         <!-- Cockpit view -->
         <div id="view-cockpit" class="view p-4">
-            <div id="cockpit-portfolio" class="mb-3"></div>
-            <div id="cockpit-positions" class="mb-3"></div>
-            <div id="cockpit-bias" class="mb-3"></div>
-            <div id="cockpit-lastfill" class="mb-3"></div>
-            <div id="cockpit-whale"></div>
+            <div class="cockpit-grid">
+                <div id="cockpit-portfolio" class="cockpit-span-full"></div>
+                <div id="cockpit-positions"></div>
+                <div id="cockpit-bias"></div>
+                <div id="cockpit-lastfill"></div>
+                <div id="cockpit-whale"></div>
+            </div>
         </div>
 
         <!-- Positions view -->

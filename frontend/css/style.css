@@ -274,6 +274,54 @@ select {
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+/* ===== Burger + Mobile drawer ===== */
+.burger-btn {
+    color: #9ca3af;
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.burger-btn:active { color: #fff; }
+
+.nav-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 40;
+}
+.nav-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    background: rgba(17, 24, 39, 0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 0.75rem;
+    gap: 0.25rem;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+}
+.nav-drawer.open {
+    transform: translateX(0);
+}
+.nav-drawer .tab-btn {
+    display: block;
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.9375rem;
+    text-align: left;
+    border-radius: 0.5rem;
+    text-decoration: none;
+}
+
 /* ===== Empty state ===== */
 .empty-state {
     color: #4b5563;
@@ -614,6 +662,25 @@ select {
 }
 
 /* ===== Cockpit ===== */
+.cockpit-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.cockpit-span-full { grid-column: 1 / -1; }
+@media (min-width: 768px) {
+    .cockpit-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+}
+@media (min-width: 1280px) {
+    .cockpit-grid {
+        grid-template-columns: 1fr 1fr 1fr;
+        max-width: 1200px;
+    }
+}
 .cockpit-card {
     background: linear-gradient(145deg, rgba(17, 24, 39, 0.7), rgba(17, 24, 39, 0.4));
     border: 1px solid rgba(255, 255, 255, 0.04);
