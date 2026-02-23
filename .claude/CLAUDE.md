@@ -138,7 +138,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `main.py` | Entry point FastAPI, lifespan (init/shutdown ordre) | `app` |
 | `config.py` | Settings Pydantic depuis `.env` | `settings` (singleton) |
 | `database.py` | SQLAlchemy async engine, session, migrations | `engine`, `async_session`, `init_db()` |
-| `models.py` | ORM : Position, Trade, Order, Balance, Price, Kline, Setting | 7 modeles declaratifs |
+| `models.py` | ORM : Position, Trade, Order, Balance, Price, Kline, Setting, TradeSnapshot | 8 modeles declaratifs |
 | `binance_client.py` | Wrapper AsyncClient Binance (spot+margin+OCO) | `_client` singleton, `place_order()`, `place_margin_order()`, `place_oco_order()`, `cancel_order()`, `cancel_margin_order()`, `cancel_oco_order()`, `cancel_margin_oco_order()`, `get_spot_balances()`, `get_cross/isolated_margin_balances()` |
 | `ws_manager.py` | 3 streams WS (user data, prix, token refresh) + dispatcher events + kline stream + health tracking | `_manager` singleton, `on()`, `subscribe_symbol()`, `unsubscribe_symbol()`, `subscribe_kline()`, `unsubscribe_kline()`, `get_ws_health()` |
 | `position_tracker.py` | State machine positions : scan startup, handle fills, open/DCA/reduce/close. Delegue les ops Order DB a `order_manager` (mark_order_status, mark_oco_done, ensure_order_record, cleanup_stale_orders) | `_positions` dict, `start()`, `stop()`, `get_positions()` |
@@ -154,6 +154,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
 | `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
 | `log_buffer.py` | Ring buffer structlog, capture processor, real-time subscribers | `capture_processor()`, `get_logs()`, `subscribe()`, `unsubscribe()` |
+| `journal_snapshotter.py` | Capture snapshot contexte marche (AT, macro, orderbook, whales) a l'ouverture/DCA/fermeture de position | `capture_snapshot()` |
 | `event_recorder.py` | Enregistre les raw WS events user data en JSONL rotatif (7j) + ring buffer memoire | `start()`, `stop()`, `record()`, `get_recent()` |
 
 ### Utilitaires (`backend/utils/`)
@@ -181,6 +182,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto top 50 par volume, variation 4h |
 | `api_orderbook.py` | `GET /api/orderbook`, `GET /api/orderbook/{symbol}` | Depth data : imbalance, murs, spread |
 | `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
+| `api_journal.py` | `GET /api/journal/calendar`, `GET /api/journal/equity`, `GET /api/journal/entries` | Journal trading : calendrier PnL, equity curve + drawdowns, timeline trades avec snapshots |
 | `api_health.py` | `GET /api/health`, `GET /api/health/logs`, `GET /api/health/events`, `GET /api/health/db` | Health systeme, logs recents, raw WS events, stats DB |
 
 ### Frontend (`frontend/`)
@@ -203,6 +205,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `js/analysis.js` | Page analyse du jour : biais, niveaux cles, macro, alertes. Ecoute WS `analysis_update` | `Analysis.load()` |
 | `js/heatmap.js` | Heatmap crypto : grille coloree de tiles par performance 4h | `Heatmap.load()` |
 | `js/cockpit.js` | Page d'accueil cockpit : portfolio, positions compactes, biais marche, derniers fills, whale alerts | `Cockpit.load()` |
+| `js/journal.js` | Page journal : equity curve + drawdowns, calendrier PnL heatmap (GitHub style), timeline trades avec contexte marche | `Journal.init()`, `Journal.load()` |
 | `js/health.js` | Page health : statut modules, WS heartbeat, DB stats, terminal logs live | `Health.init()`, `Health.load()`, `Health.startPolling()`, `Health.stopPolling()` |
 
 ### Autres

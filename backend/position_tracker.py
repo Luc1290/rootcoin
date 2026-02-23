@@ -6,7 +6,7 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select
 
-from backend import binance_client, order_manager, ws_manager
+from backend import binance_client, journal_snapshotter, order_manager, ws_manager
 from backend.config import settings
 from backend.database import async_session
 from backend.models import Position, Trade
@@ -768,6 +768,9 @@ async def _open_position(
         await session.refresh(pos)
     _positions[pos.id] = pos
     await ws_manager.subscribe_symbol(symbol)
+    asyncio.create_task(journal_snapshotter.capture_snapshot(
+        pos.id, "OPEN", symbol, side, price, qty,
+    ))
     log.info("position_opened", symbol=symbol, side=side, price=str(price), qty=str(qty),
              market_type=market_type)
 
@@ -781,6 +784,9 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
     position.entry_quantity = (position.entry_quantity or Decimal("0")) + qty
     position.updated_at = _now()
     await _save_position(position)
+    asyncio.create_task(journal_snapshotter.capture_snapshot(
+        position.id, "DCA", position.symbol, position.side, price, qty,
+    ))
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
              qty=str(position.quantity))
 
@@ -809,6 +815,9 @@ async def _reduce_or_close(
         position.quantity = Decimal("0")
         position.updated_at = _now()
         await _save_position(position)
+        asyncio.create_task(journal_snapshotter.capture_snapshot(
+            position.id, "CLOSE", position.symbol, position.side, price, qty,
+        ))
         del _positions[position.id]
 
         if position.side == "SHORT" and position.market_type != "SPOT":

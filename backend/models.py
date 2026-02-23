@@ -135,3 +135,22 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String, primary_key=True)
     value: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class TradeSnapshot(Base):
+    __tablename__ = "trade_snapshots"
+    __table_args__ = (
+        Index("ix_snapshots_position_id", "position_id"),
+        Index("ix_snapshots_captured_at", "captured_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    position_id: Mapped[int] = mapped_column(Integer, ForeignKey("positions.id"), nullable=False)
+    snapshot_type: Mapped[str] = mapped_column(String, nullable=False)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    side: Mapped[str] = mapped_column(String, nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    exit_reason: Mapped[str | None] = mapped_column(String)
+    data: Mapped[str] = mapped_column(String, nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

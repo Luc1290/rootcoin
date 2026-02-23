@@ -1,6 +1,6 @@
 const App = (() => {
     let activeTab = 'cockpit';
-    const validTabs = ['cockpit', 'positions', 'trades', 'fills', 'balances', 'chart', 'analysis', 'heatmap', 'health'];
+    const validTabs = ['cockpit', 'positions', 'trades', 'fills', 'balances', 'chart', 'analysis', 'heatmap', 'journal', 'health'];
 
     function init() {
         // Tab navigation — links allow middle-click / long-press "Open in new tab"
@@ -68,6 +68,7 @@ const App = (() => {
         if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }
         if (tab === 'analysis') Analysis.load();
         if (tab === 'heatmap') { Heatmap.init(); Heatmap.load(); Heatmap.startPolling(); } else { Heatmap.stopPolling(); }
+        if (tab === 'journal') { Journal.init(); Journal.load(); }
         if (tab === 'health') { Health.init(); Health.load(); Health.startPolling(); } else { Health.stopPolling(); }
     }
 

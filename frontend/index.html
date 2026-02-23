@@ -31,6 +31,7 @@
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=chart" data-tab="chart">Chart</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=analysis" data-tab="analysis">Analyse</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=journal" data-tab="journal">Journal</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=health" data-tab="health">Health</a>
         </nav>
         <div class="flex items-center gap-3 text-sm shrink-0 ml-auto">
@@ -51,6 +52,7 @@
         <a class="tab-btn" href="/?tab=chart" data-tab="chart">Chart</a>
         <a class="tab-btn" href="/?tab=analysis" data-tab="analysis">Analyse</a>
         <a class="tab-btn" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
+        <a class="tab-btn" href="/?tab=journal" data-tab="journal">Journal</a>
         <a class="tab-btn" href="/?tab=health" data-tab="health">Health</a>
     </nav>
 
@@ -259,6 +261,68 @@
             </div>
         </div>
 
+        <!-- Journal view -->
+        <div id="view-journal" class="view p-4 hidden">
+            <!-- Equity curve -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold">Equity Curve</h2>
+                    <div class="flex gap-1" id="equity-ranges">
+                        <button class="chart-range-btn text-xs px-3 py-1.5 font-medium" data-hours="168">7d</button>
+                        <button class="chart-range-btn active text-xs px-3 py-1.5 font-medium" data-hours="720">30d</button>
+                        <button class="chart-range-btn text-xs px-3 py-1.5 font-medium" data-hours="2160">90d</button>
+                        <button class="chart-range-btn text-xs px-3 py-1.5 font-medium" data-hours="8760">1y</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 mb-3 text-center text-sm">
+                    <div class="stat-card">
+                        <div class="metric-label mb-1">Max Drawdown</div>
+                        <div id="journal-max-dd" class="font-bold text-base pnl-negative">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="metric-label mb-1">Drawdown actuel</div>
+                        <div id="journal-current-dd" class="font-bold text-base">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="metric-label mb-1">Portfolio</div>
+                        <div id="journal-portfolio-val" class="font-bold text-base">--</div>
+                    </div>
+                </div>
+                <div id="journal-equity-chart" style="height:250px;width:100%"></div>
+            </div>
+
+            <!-- Calendar PnL heatmap -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold">Calendrier PnL</h2>
+                    <div class="flex items-center gap-2">
+                        <button id="journal-year-prev" class="action-btn text-xs px-2 py-1.5">&lt;</button>
+                        <span id="journal-year-label" class="text-sm font-bold tabular-nums"></span>
+                        <button id="journal-year-next" class="action-btn text-xs px-2 py-1.5">&gt;</button>
+                    </div>
+                </div>
+                <div id="journal-calendar" class="overflow-x-auto"></div>
+                <div id="journal-day-detail" class="mt-3 hidden"></div>
+            </div>
+
+            <!-- Trade entries timeline -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold">Trades</h2>
+                    <select id="journal-symbol-filter" class="px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg">
+                        <option value="">Tous</option>
+                    </select>
+                </div>
+                <div id="journal-entries" class="space-y-3"></div>
+                <div id="journal-empty" class="empty-state hidden">
+                    <div class="empty-state-text">Aucun trade dans le journal</div>
+                </div>
+                <div class="text-center mt-4">
+                    <button id="journal-load-more" class="action-btn text-sm px-4 py-2 hidden">Charger plus</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Health view -->
         <div id="view-health" class="view p-4 hidden">
             <div class="flex items-center justify-between mb-4">
@@ -319,6 +383,7 @@
     <script src="/static/js/heatmap.js"></script>
     <script src="/static/js/health.js"></script>
     <script src="/static/js/cockpit.js"></script>
+    <script src="/static/js/journal.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

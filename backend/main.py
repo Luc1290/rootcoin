@@ -86,6 +86,7 @@ from backend.routes.api_analysis import router as analysis_router
 from backend.routes.api_heatmap import router as heatmap_router
 from backend.routes.api_news import router as news_router
 from backend.routes.api_orderbook import router as orderbook_router
+from backend.routes.api_journal import router as journal_router
 from backend.routes.api_health import router as health_router
 from backend.routes.ws_dashboard import router as ws_router
 
@@ -102,6 +103,7 @@ app.include_router(analysis_router)
 app.include_router(heatmap_router)
 app.include_router(news_router)
 app.include_router(orderbook_router)
+app.include_router(journal_router)
 app.include_router(health_router)
 app.include_router(ws_router)
 
