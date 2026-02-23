@@ -25,20 +25,31 @@
             <span id="ws-status" class="ws-dot w-2 h-2 rounded-full bg-red-500" title="Disconnected"></span>
         </div>
         <nav class="flex gap-1.5 w-full sm:w-auto sm:flex-1 sm:justify-center sm:order-2 overflow-x-auto scrollbar-hide">
-            <a class="tab-btn active px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=positions" data-tab="positions">Positions</a>
+            <a class="tab-btn active px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=cockpit" data-tab="cockpit">Cockpit</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=positions" data-tab="positions">Positions</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=trades" data-tab="trades">Cycles</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=fills" data-tab="fills">Trades</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=balances" data-tab="balances">Balances</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=chart" data-tab="chart">Chart</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=analysis" data-tab="analysis">Analyse</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=heatmap" data-tab="heatmap">Heatmap</a>
+            <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap flex-shrink-0 sm:flex-none sm:min-w-[70px]" href="/?tab=health" data-tab="health">Health</a>
         </nav>
     </header>
 
     <!-- Main content -->
     <main class="flex-1 overflow-y-auto">
+        <!-- Cockpit view -->
+        <div id="view-cockpit" class="view p-4">
+            <div id="cockpit-portfolio" class="mb-3"></div>
+            <div id="cockpit-positions" class="mb-3"></div>
+            <div id="cockpit-bias" class="mb-3"></div>
+            <div id="cockpit-lastfill" class="mb-3"></div>
+            <div id="cockpit-whale"></div>
+        </div>
+
         <!-- Positions view -->
-        <div id="view-positions" class="view p-4">
+        <div id="view-positions" class="view p-4 hidden">
             <div id="positions-toolbar" class="mb-3 hidden">
                 <select id="positions-sort" class="px-3 py-2 text-sm">
                     <option value="pnl">Tri : PnL</option>
@@ -228,6 +239,41 @@
                 <div class="empty-state-text">Chargement de la heatmap...</div>
             </div>
         </div>
+
+        <!-- Health view -->
+        <div id="view-health" class="view p-4 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-bold">System Health</h2>
+                <span id="health-freshness" class="text-xs text-gray-500"></span>
+            </div>
+            <div id="health-ws" class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4"></div>
+            <div id="health-modules" class="mb-4"></div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <div id="health-db"></div>
+                <div id="health-system"></div>
+            </div>
+            <div id="health-events" class="mb-4"></div>
+            <div class="card">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="metric-label">Live Logs</div>
+                    <div class="flex items-center gap-2">
+                        <select id="log-level-filter" class="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1 text-xs">
+                            <option value="">All</option>
+                            <option value="error">ERROR</option>
+                            <option value="warning">WARNING</option>
+                            <option value="info">INFO</option>
+                            <option value="debug">DEBUG</option>
+                        </select>
+                        <button id="log-clear-btn" class="text-xs text-gray-500 hover:text-gray-300 px-2 py-1">Clear</button>
+                        <button id="log-pause-btn" class="text-xs text-gray-500 hover:text-gray-300 px-2 py-1">Pause</button>
+                    </div>
+                </div>
+                <div id="log-terminal" class="log-terminal"></div>
+            </div>
+            <div id="health-empty" class="empty-state hidden">
+                <div class="empty-state-text">Chargement du diagnostic...</div>
+            </div>
+        </div>
     </main>
 
     <!-- Modal -->
@@ -252,6 +298,8 @@
     <script src="/static/js/balances.js"></script>
     <script src="/static/js/analysis.js"></script>
     <script src="/static/js/heatmap.js"></script>
+    <script src="/static/js/health.js"></script>
+    <script src="/static/js/cockpit.js"></script>
     <script src="/static/js/app.js"></script>
 </body>
 </html>

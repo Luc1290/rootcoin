@@ -31,15 +31,17 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 2. `init_client()` — singleton `AsyncClient` python-binance (`binance_client._client`)
 3. `symbol_filters.init_filters()` — cache `exchangeInfo` (LOT_SIZE, PRICE_FILTER, MIN_NOTIONAL)
 4. `ws_manager.start()` — lance 3 tasks async : user data stream, price stream, token refresh
-5. `position_tracker.start()` — scan Binance pour reconstruire les positions, puis ecoute les events WS
-6. `price_recorder.start()` / `balance_tracker.start()` — s'abonnent aux events WS
-7. `kline_manager.start()` — cleanup periodique des vieilles klines
-8. `macro_tracker.start()` — fetch macro (DXY, VIX, SPX, Gold) via yfinance, refresh 5 min
-9. `whale_tracker.start()` — poll Binance aggTrades pour gros mouvements
-10. `orderbook_tracker.start()` — poll Binance depth, calcul imbalance/walls/spread
-11. `heatmap_manager.start()` — fetch top 50 USDC par volume 24h, variation sur fenetre 4h glissante
-12. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
-13. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
+5. `event_recorder.start()` — cree dossier JSONL, cleanup fichiers > 7 jours
+6. `position_tracker.start()` — scan Binance pour reconstruire les positions, puis ecoute les events WS
+7. `price_recorder.start()` / `balance_tracker.start()` — s'abonnent aux events WS
+8. `kline_manager.start()` — cleanup periodique des vieilles klines
+9. `macro_tracker.start()` — fetch macro (DXY, VIX, SPX, Gold) via yfinance, refresh 5 min
+10. `whale_tracker.start()` — poll Binance aggTrades pour gros mouvements
+11. `orderbook_tracker.start()` — poll Binance depth, calcul imbalance/walls/spread
+12. `heatmap_manager.start()` — fetch top 50 USDC par volume 24h, variation sur fenetre 4h glissante
+13. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
+14. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
+15. `health_collector.start()` — collecte sante modules, DB stats, memoire, WS heartbeat toutes les 10s
 
 L'arret se fait en ordre inverse. Chaque module expose `start()`/`stop()`.
 
@@ -138,7 +140,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `database.py` | SQLAlchemy async engine, session, migrations | `engine`, `async_session`, `init_db()` |
 | `models.py` | ORM : Position, Trade, Order, Balance, Price, Kline, Setting | 7 modeles declaratifs |
 | `binance_client.py` | Wrapper AsyncClient Binance (spot+margin+OCO) | `_client` singleton, `place_order()`, `place_margin_order()`, `place_oco_order()`, `cancel_order()`, `cancel_margin_order()`, `cancel_oco_order()`, `cancel_margin_oco_order()`, `get_spot_balances()`, `get_cross/isolated_margin_balances()` |
-| `ws_manager.py` | 3 streams WS (user data, prix, token refresh) + dispatcher events + kline stream | `_manager` singleton, `on()`, `subscribe_symbol()`, `unsubscribe_symbol()`, `subscribe_kline()`, `unsubscribe_kline()` |
+| `ws_manager.py` | 3 streams WS (user data, prix, token refresh) + dispatcher events + kline stream + health tracking | `_manager` singleton, `on()`, `subscribe_symbol()`, `unsubscribe_symbol()`, `subscribe_kline()`, `unsubscribe_kline()`, `get_ws_health()` |
 | `position_tracker.py` | State machine positions : scan startup, handle fills, open/DCA/reduce/close. Delegue les ops Order DB a `order_manager` (mark_order_status, mark_oco_done, ensure_order_record, cleanup_stale_orders) | `_positions` dict, `start()`, `stop()`, `get_positions()` |
 | `order_manager.py` | Placement SL/TP/OCO, close position, cancel orders (individuels + OCO), cleanup stale orders, ensure order records | `place_stop_loss()`, `place_take_profit()`, `place_oco()`, `close_position()`, `cancel_position_orders()`, `cleanup_stale_orders()`, `ensure_oco_order_record()`, `ensure_order_record()`, `mark_order_status()`, `mark_oco_done()` |
 | `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
@@ -150,6 +152,9 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `heatmap_manager.py` | Top 50 USDC par volume 24h, variation prix sur fenetre 4h glissante, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
 | `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF + macro, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
+| `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
+| `log_buffer.py` | Ring buffer structlog, capture processor, real-time subscribers | `capture_processor()`, `get_logs()`, `subscribe()`, `unsubscribe()` |
+| `event_recorder.py` | Enregistre les raw WS events user data en JSONL rotatif (7j) + ring buffer memoire | `start()`, `stop()`, `record()`, `get_recent()` |
 
 ### Utilitaires (`backend/utils/`)
 
@@ -176,13 +181,14 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_heatmap.py` | `GET /api/heatmap?limit=50` | Heatmap crypto top 50 par volume, variation 4h |
 | `api_orderbook.py` | `GET /api/orderbook`, `GET /api/orderbook/{symbol}` | Depth data : imbalance, murs, spread |
 | `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
+| `api_health.py` | `GET /api/health`, `GET /api/health/logs`, `GET /api/health/events`, `GET /api/health/db` | Health systeme, logs recents, raw WS events, stats DB |
 
 ### Frontend (`frontend/`)
 
 | Fichier | Responsabilite | Exports cles |
 |---------|---------------|--------------|
-| `index.html` | SPA : 7 tabs (positions/cycles/trades/balances/chart/analyse/heatmap), modals SL/TP/OCO | — |
-| `css/style.css` | Styles custom : couleurs PnL, cards, responsive, modals, chart indicators, heatmap tiles, analyse | Classes : `.pnl-positive/negative`, `.position-card`, `.cycle-card`, `.chart-interval-btn`, `.indicator-toggle`, `.subchart-label`, `.heatmap-tile`, `.bias-direction`, `.alert-card`, `.macro-card` |
+| `index.html` | SPA : 9 tabs (cockpit/positions/cycles/trades/balances/chart/analyse/heatmap/health), modals SL/TP/OCO | — |
+| `css/style.css` | Styles custom : couleurs PnL, cards, responsive, modals, chart indicators, heatmap tiles, analyse, health dots, log terminal, cockpit | Classes : `.pnl-positive/negative`, `.position-card`, `.cycle-card`, `.chart-interval-btn`, `.indicator-toggle`, `.subchart-label`, `.heatmap-tile`, `.bias-direction`, `.alert-card`, `.macro-card`, `.health-dot-*`, `.health-module-card`, `.log-terminal`, `.cockpit-card`, `.cockpit-position`, `.cockpit-bias-*` |
 | `css/tailwind.css` | Source Tailwind (input pour compilation) | — |
 | `css/output.css` | Tailwind compile (ne pas editer a la main) | — |
 | `js/websocket.js` | Client WS avec reconnexion auto + dispatch par type | `WS.on(type, fn)` |
@@ -196,6 +202,8 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `js/kline-chart.js` | Chart candlestick : klines, 7 indicateurs (MA/BB overlay + Vol/B-S/RSI/MACD/OBV sub-charts), markers fills, cycles overlay, crosshair sync, live WS | `KlineChart.init()`, `KlineChart.loadChart()` |
 | `js/analysis.js` | Page analyse du jour : biais, niveaux cles, macro, alertes. Ecoute WS `analysis_update` | `Analysis.load()` |
 | `js/heatmap.js` | Heatmap crypto : grille coloree de tiles par performance 4h | `Heatmap.load()` |
+| `js/cockpit.js` | Page d'accueil cockpit : portfolio, positions compactes, biais marche, derniers fills, whale alerts | `Cockpit.load()` |
+| `js/health.js` | Page health : statut modules, WS heartbeat, DB stats, terminal logs live | `Health.init()`, `Health.load()`, `Health.startPolling()`, `Health.stopPolling()` |
 
 ### Autres
 

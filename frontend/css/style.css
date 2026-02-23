@@ -536,3 +536,123 @@ select {
     border-radius: 0.375rem;
     font-weight: 600;
 }
+
+/* ===== Health page ===== */
+.health-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.health-dot-green { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+.health-dot-yellow { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+.health-dot-red { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+
+.health-module-card {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    background: rgba(17, 24, 39, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.health-status-healthy { color: #22c55e; }
+.health-status-degraded { color: #f59e0b; }
+.health-status-unhealthy { color: #ef4444; }
+.health-status-disconnected { color: #ef4444; }
+.health-status-waiting { color: #6b7280; }
+
+/* ===== Log terminal ===== */
+.log-terminal {
+    background: #0a0a0a;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    max-height: 400px;
+    overflow-y: auto;
+}
+.log-line { white-space: pre-wrap; word-break: break-all; }
+.log-ts { color: #4b5563; }
+.log-event { color: #d1d5db; }
+.log-ctx { color: #6b7280; }
+.log-level-error { color: #f87171; font-weight: 600; }
+.log-level-warning { color: #fbbf24; }
+.log-level-info { color: #60a5fa; }
+.log-level-debug { color: #6b7280; }
+
+/* ===== WS Event replay ===== */
+.event-row {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+}
+.event-row:hover { background: rgba(255, 255, 255, 0.02); }
+.event-type { font-weight: 600; font-size: 0.6875rem; }
+.event-type-execution_report { color: #f59e0b; }
+.event-type-account_update { color: #60a5fa; }
+.event-type-balance_update { color: #34d399; }
+.event-type-list_status { color: #a78bfa; }
+.event-raw {
+    background: #0a0a0a;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+    margin-top: 0.375rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.625rem;
+    line-height: 1.4;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    color: #9ca3af;
+}
+
+/* ===== Cockpit ===== */
+.cockpit-card {
+    background: linear-gradient(145deg, rgba(17, 24, 39, 0.7), rgba(17, 24, 39, 0.4));
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+}
+.cockpit-position {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    cursor: pointer;
+}
+.cockpit-position:last-child { border-bottom: none; }
+.cockpit-position:active { opacity: 0.7; }
+.cockpit-side {
+    font-size: 0.625rem;
+    font-weight: 700;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    background: rgba(255, 255, 255, 0.06);
+}
+.cockpit-bias-row {
+    padding: 0.375rem 0;
+    cursor: pointer;
+}
+.cockpit-bias-row:active { opacity: 0.7; }
+.cockpit-bias-track {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.cockpit-bias-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.cockpit-whale-card {
+    border-left: 3px solid #8b5cf6;
+}

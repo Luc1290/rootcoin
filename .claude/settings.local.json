@@ -13,7 +13,8 @@
       "WebFetch(domain:www.coindesk.com)",
       "WebFetch(domain:www.reuters.com)",
       "WebFetch(domain:cointelegraph.com)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

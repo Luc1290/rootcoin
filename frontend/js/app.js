@@ -1,6 +1,6 @@
 const App = (() => {
-    let activeTab = 'positions';
-    const validTabs = ['positions', 'trades', 'fills', 'balances', 'chart', 'analysis', 'heatmap'];
+    let activeTab = 'cockpit';
+    const validTabs = ['cockpit', 'positions', 'trades', 'fills', 'balances', 'chart', 'analysis', 'heatmap', 'health'];
 
     function init() {
         // Tab navigation — links allow middle-click / long-press "Open in new tab"
@@ -48,12 +48,14 @@ const App = (() => {
         history.replaceState(null, '', url);
 
         // Load data on tab switch
+        if (tab === 'cockpit') Cockpit.load();
         if (tab === 'trades') { Cycles.load(); Cycles.startPolling(); } else { Cycles.stopPolling(); }
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
         if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }
         if (tab === 'analysis') Analysis.load();
         if (tab === 'heatmap') { Heatmap.init(); Heatmap.load(); Heatmap.startPolling(); } else { Heatmap.stopPolling(); }
+        if (tab === 'health') { Health.init(); Health.load(); Health.startPolling(); } else { Health.stopPolling(); }
     }
 
     function updateClock() {

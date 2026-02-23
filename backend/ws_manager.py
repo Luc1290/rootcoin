@@ -43,6 +43,10 @@ class WSManager:
         self._listen_token: str | None = None
         self._price_ws: Any = None
         self._msg_id = 0
+        self._last_user_msg_at: float | None = None
+        self._last_price_msg_at: float | None = None
+        self._user_stream_connected: bool = False
+        self._price_stream_connected: bool = False
 
     def on(self, event_type: str, callback: Callback):
         self._callbacks[event_type].append(callback)
@@ -195,12 +199,14 @@ class WSManager:
                         raise RuntimeError(f"Subscribe failed: {resp['error']}")
 
                     connected_at = time.monotonic()
+                    self._user_stream_connected = True
                     backoff = 1
                     log.info("user_data_stream_connected", method="listenToken")
 
                     async for raw in ws:
                         if not self._running:
                             break
+                        self._last_user_msg_at = time.monotonic()
                         msg = json.loads(raw)
                         # WS API wraps events in {"subscriptionId": ..., "event": {...}}
                         event_data = msg.get("event")
@@ -216,6 +222,7 @@ class WSManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                self._user_stream_connected = False
                 if not self._running:
                     break
                 log.warning("user_stream_disconnected", error=str(e), reconnect_in=backoff)
@@ -223,14 +230,20 @@ class WSManager:
                 backoff = min(backoff * 2, MAX_BACKOFF)
 
     async def _handle_user_event(self, msg: dict):
+        from backend import event_recorder
+
         event_type = msg.get("e")
         if event_type == "executionReport":
+            event_recorder.record(EVENT_EXECUTION_REPORT, msg)
             await self._dispatch(EVENT_EXECUTION_REPORT, msg)
         elif event_type == "outboundAccountPosition":
+            event_recorder.record(EVENT_ACCOUNT_UPDATE, msg)
             await self._dispatch(EVENT_ACCOUNT_UPDATE, msg)
         elif event_type == "balanceUpdate":
+            event_recorder.record(EVENT_BALANCE_UPDATE, msg)
             await self._dispatch(EVENT_BALANCE_UPDATE, msg)
         elif event_type == "listStatus":
+            event_recorder.record(EVENT_LIST_STATUS, msg)
             await self._dispatch(EVENT_LIST_STATUS, msg)
 
     # --- Token Refresh ---
@@ -281,12 +294,14 @@ class WSManager:
                 async with websockets.connect(url) as ws:
                     self._price_ws = ws
                     connected_at = time.monotonic()
+                    self._price_stream_connected = True
                     backoff = 1
                     log.info("price_stream_connected", symbols=list(self._subscribed_symbols))
 
                     async for raw in ws:
                         if not self._running:
                             break
+                        self._last_price_msg_at = time.monotonic()
                         msg = json.loads(raw)
                         data = msg.get("data", {})
                         if data.get("e") == "24hrTicker":
@@ -312,6 +327,7 @@ class WSManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                self._price_stream_connected = False
                 if not self._running:
                     break
                 log.warning("price_stream_disconnected", error=str(e), reconnect_in=backoff)
@@ -319,6 +335,39 @@ class WSManager:
                 backoff = min(backoff * 2, MAX_BACKOFF)
 
         self._price_ws = None
+
+    def get_ws_health(self) -> dict:
+        now = time.monotonic()
+        user_age = (now - self._last_user_msg_at) if self._last_user_msg_at else None
+        price_age = (now - self._last_price_msg_at) if self._last_price_msg_at else None
+        return {
+            "user_stream": {
+                "connected": self._user_stream_connected,
+                "last_msg_age_s": round(user_age, 1) if user_age is not None else None,
+                "status": _ws_stream_status(self._user_stream_connected, user_age, lenient=True),
+            },
+            "price_stream": {
+                "connected": self._price_stream_connected,
+                "last_msg_age_s": round(price_age, 1) if price_age is not None else None,
+                "status": _ws_stream_status(self._price_stream_connected, price_age, lenient=False),
+            },
+            "subscribed_symbols": list(self._subscribed_symbols),
+            "subscribed_klines": list(self._subscribed_klines),
+        }
+
+
+def _ws_stream_status(connected: bool, age: float | None, *, lenient: bool) -> str:
+    if not connected:
+        return "disconnected"
+    if age is None:
+        return "waiting"
+    degraded_threshold = 120 if lenient else 30
+    unhealthy_threshold = 600 if lenient else 120
+    if age < degraded_threshold:
+        return "healthy"
+    if age < unhealthy_threshold:
+        return "degraded"
+    return "unhealthy"
 
 
 # Singleton
@@ -337,3 +386,7 @@ async def start():
 
 async def stop():
     await _manager.stop()
+
+
+def get_ws_health() -> dict:
+    return _manager.get_ws_health()

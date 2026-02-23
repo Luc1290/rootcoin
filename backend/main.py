@@ -6,9 +6,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend import (
-    balance_tracker, heatmap_manager, kline_manager, macro_tracker,
-    market_analyzer, news_tracker, orderbook_tracker, position_tracker,
-    price_recorder, whale_tracker, ws_manager,
+    balance_tracker, event_recorder, health_collector, heatmap_manager,
+    kline_manager, log_buffer, macro_tracker, market_analyzer, news_tracker,
+    orderbook_tracker, position_tracker, price_recorder, whale_tracker,
+    ws_manager,
 )
 from backend.binance_client import close_client, init_client
 from backend.database import close_db, init_db
@@ -19,6 +20,7 @@ structlog.configure(
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.format_exc_info,
+        log_buffer.capture_processor,
         structlog.processors.JSONRenderer(),
     ],
 )
@@ -35,6 +37,7 @@ async def lifespan(app: FastAPI):
     await init_client()
     await symbol_filters.init_filters()
     await ws_manager.start()
+    await event_recorder.start()
     await position_tracker.start()
     await price_recorder.start()
     await balance_tracker.start()
@@ -45,9 +48,11 @@ async def lifespan(app: FastAPI):
     await heatmap_manager.start()
     await market_analyzer.start()
     await news_tracker.start()
+    await health_collector.start()
     log.info("rootcoin_started")
     yield
     log.info("rootcoin_stopping")
+    await health_collector.stop()
     await news_tracker.stop()
     await market_analyzer.stop()
     await heatmap_manager.stop()
@@ -58,6 +63,7 @@ async def lifespan(app: FastAPI):
     await balance_tracker.stop()
     await price_recorder.stop()
     await position_tracker.stop()
+    await event_recorder.stop()
     await ws_manager.stop()
     await symbol_filters.stop()
     await close_client()
@@ -80,6 +86,7 @@ from backend.routes.api_analysis import router as analysis_router
 from backend.routes.api_heatmap import router as heatmap_router
 from backend.routes.api_news import router as news_router
 from backend.routes.api_orderbook import router as orderbook_router
+from backend.routes.api_health import router as health_router
 from backend.routes.ws_dashboard import router as ws_router
 
 app.include_router(dashboard_router)
@@ -95,6 +102,7 @@ app.include_router(analysis_router)
 app.include_router(heatmap_router)
 app.include_router(news_router)
 app.include_router(orderbook_router)
+app.include_router(health_router)
 app.include_router(ws_router)
 
 if FRONTEND_DIR.exists():

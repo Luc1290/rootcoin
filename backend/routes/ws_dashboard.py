@@ -4,7 +4,7 @@ import json
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend import market_analyzer, news_tracker, position_tracker, ws_manager
+from backend import health_collector, log_buffer, market_analyzer, news_tracker, position_tracker, ws_manager
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 from backend.ws_manager import (
     EVENT_ACCOUNT_UPDATE,
@@ -108,6 +108,8 @@ ANALYSIS_BROADCAST_INTERVAL = 30
 _broadcast_task: asyncio.Task | None = None
 _analysis_task: asyncio.Task | None = None
 _news_task: asyncio.Task | None = None
+_health_task: asyncio.Task | None = None
+_log_task: asyncio.Task | None = None
 
 
 async def _broadcast_analysis():
@@ -126,6 +128,35 @@ async def _broadcast_analysis():
 
 
 NEWS_BROADCAST_INTERVAL = 120
+HEALTH_BROADCAST_INTERVAL = 10
+
+
+async def _broadcast_health():
+    while True:
+        try:
+            await asyncio.sleep(HEALTH_BROADCAST_INTERVAL)
+            if not _clients:
+                continue
+            data = health_collector.get_health()
+            if data:
+                await _broadcast({"type": "health_update", "data": data})
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.error("health_broadcast_failed", exc_info=True)
+
+
+async def _stream_logs():
+    q = log_buffer.subscribe()
+    try:
+        while True:
+            entry = await q.get()
+            if _clients:
+                await _broadcast({"type": "log_entry", "data": entry})
+    except asyncio.CancelledError:
+        pass
+    finally:
+        log_buffer.unsubscribe(q)
 
 
 async def _broadcast_news():
@@ -144,7 +175,7 @@ async def _broadcast_news():
 
 
 def _ensure_callbacks():
-    global _broadcast_task, _analysis_task, _news_task
+    global _broadcast_task, _analysis_task, _news_task, _health_task, _log_task
     if _broadcast_task is None:
         ws_manager.on(EVENT_PRICE_UPDATE, _on_price_update)
         ws_manager.on(EVENT_EXECUTION_REPORT, _on_execution_report)
@@ -153,6 +184,8 @@ def _ensure_callbacks():
         _broadcast_task = asyncio.create_task(_broadcast_positions())
         _analysis_task = asyncio.create_task(_broadcast_analysis())
         _news_task = asyncio.create_task(_broadcast_news())
+        _health_task = asyncio.create_task(_broadcast_health())
+        _log_task = asyncio.create_task(_stream_logs())
 
 
 @router.websocket("/ws")
