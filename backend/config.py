@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     # Market analysis
-    analysis_refresh_interval: int = 300
+    analysis_refresh_interval: int = 60
     macro_refresh_interval: int = 300
     whale_min_quote_qty: int = 100000
     whale_poll_interval: int = 120

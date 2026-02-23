@@ -407,5 +407,23 @@ const Analysis = (() => {
         _renderNews();
     });
 
+    WS.on('price_update', (data) => {
+        if (!_data || !_data.analyses || !_currentSymbol) return;
+        if (data.symbol !== _currentSymbol) return;
+        const analysis = _data.analyses.find(a => a.symbol === _currentSymbol);
+        if (!analysis) return;
+        const newPrice = data.price;
+        analysis.current_price = newPrice;
+        // Recalculate distance_pct for each level
+        const cp = parseFloat(newPrice);
+        if (cp && analysis.key_levels) {
+            for (const lvl of analysis.key_levels) {
+                const p = parseFloat(lvl.price);
+                lvl.distance_pct = (((p - cp) / cp) * 100).toFixed(2);
+            }
+        }
+        _renderLevels(analysis);
+    });
+
     return { load };
 })();

@@ -240,15 +240,27 @@ const Positions = (() => {
         const pct = ((price - entry) / entry * 100);
         const absPct = Math.abs(pct).toFixed(2);
 
+        const mirror = mode === 'pct'
+            ? `<div class="text-xs text-gray-500 mt-0.5">Prix: ${_fmtPrice(price)}</div>`
+            : `<div class="text-xs text-gray-500 mt-0.5">${absPct}% depuis l'entree</div>`;
+
         if (type === 'sl') {
             const loss = Math.abs(delta);
-            el.textContent = `Risque -$${loss.toFixed(2)} (${absPct}%)`;
+            el.innerHTML = `<div>Risque -$${loss.toFixed(2)} (${absPct}%)</div>${mirror}`;
             el.className = 'text-center text-sm font-semibold text-red-400 mb-4';
         } else {
             const gain = Math.abs(delta);
-            el.textContent = `Gain +$${gain.toFixed(2)} (${absPct}%)`;
+            el.innerHTML = `<div>Gain +$${gain.toFixed(2)} (${absPct}%)</div>${mirror}`;
             el.className = 'text-center text-sm font-semibold text-emerald-400 mb-4';
         }
+    }
+
+    function _fmtPrice(val) {
+        const n = parseFloat(val);
+        if (isNaN(n)) return val;
+        if (n >= 1000) return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (n >= 1) return n.toFixed(4);
+        return n.toFixed(6);
     }
 
     function _updateRR(id) {
@@ -284,6 +296,8 @@ const Positions = (() => {
         const qty = parseFloat(pos.quantity) || 0;
         const riskUsd = Math.abs(risk * qty).toFixed(2);
         const rewardUsd = Math.abs(reward * qty).toFixed(2);
+        const tpPct = Math.abs((tpPrice - entry) / entry * 100).toFixed(2);
+        const slPct = Math.abs((slPrice - entry) / entry * 100).toFixed(2);
 
         if (risk <= 0 || reward <= 0) {
             rrEl.innerHTML = 'R:R --';
@@ -291,11 +305,15 @@ const Positions = (() => {
             return;
         }
         const ratio = (reward / risk).toFixed(1);
-        rrEl.innerHTML = `<span class="text-blue-400 font-semibold">R:R 1:${ratio}</span>`
+        const mirror = mode === 'pct'
+            ? `<div class="text-xs text-gray-500 mt-0.5">TP: ${_fmtPrice(tpPrice)} | SL: ${_fmtPrice(slPrice)}</div>`
+            : `<div class="text-xs text-gray-500 mt-0.5">TP: ${tpPct}% | SL: ${slPct}%</div>`;
+        rrEl.innerHTML = `<div><span class="text-blue-400 font-semibold">R:R 1:${ratio}</span>`
             + `<span class="text-gray-500 mx-2">|</span>`
             + `<span class="text-red-400">-$${riskUsd}</span>`
             + `<span class="text-gray-500 mx-1">/</span>`
-            + `<span class="text-emerald-400">+$${rewardUsd}</span>`;
+            + `<span class="text-emerald-400">+$${rewardUsd}</span></div>`
+            + mirror;
         rrEl.className = 'text-center text-sm font-semibold mb-4';
     }
 

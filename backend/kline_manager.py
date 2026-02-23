@@ -50,10 +50,16 @@ async def stop():
 async def fetch_and_store(symbol: str, interval: str, limit: int = 500) -> int:
     client = await binance_client.get_client()
 
-    start_time = await _get_last_open_time(symbol, interval)
+    last = await _get_last_kline_times(symbol, interval)
     kwargs: dict = {"symbol": symbol, "interval": interval, "limit": limit}
-    if start_time:
-        kwargs["startTime"] = int(start_time.timestamp() * 1000) + 1
+    if last:
+        open_time, close_time = last
+        if close_time and close_time > datetime.now(timezone.utc):
+            # Current candle still open — re-fetch it to update OHLCV
+            kwargs["startTime"] = int(open_time.timestamp() * 1000)
+        else:
+            # Last candle closed — skip it
+            kwargs["startTime"] = int(open_time.timestamp() * 1000) + 1
 
     raw_klines = await client.get_klines(**kwargs)
     if not raw_klines:
@@ -64,16 +70,18 @@ async def fetch_and_store(symbol: str, interval: str, limit: int = 500) -> int:
     return len(klines)
 
 
-async def _get_last_open_time(symbol: str, interval: str) -> datetime | None:
+async def _get_last_kline_times(symbol: str, interval: str) -> tuple[datetime, datetime] | None:
     async with async_session() as session:
         result = await session.execute(
-            select(Kline.open_time)
+            select(Kline.open_time, Kline.close_time)
             .where(Kline.symbol == symbol, Kline.interval == interval)
             .order_by(Kline.open_time.desc())
             .limit(1)
         )
-        row = result.scalar_one_or_none()
-        return row
+        row = result.one_or_none()
+        if row:
+            return row[0], row[1]
+        return None
 
 
 def _parse_raw(symbol: str, interval: str, raw: list) -> Kline:
