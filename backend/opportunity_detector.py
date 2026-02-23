@@ -14,8 +14,6 @@ _opportunities: deque[dict] = deque(maxlen=20)
 _cooldowns: dict[str, datetime] = {}
 _loop_task: asyncio.Task | None = None
 
-SUPPORT_TYPES = {"S1", "S2", "SW_L", "PP"}
-RESISTANCE_TYPES = {"R1", "R2", "SW_H", "PP"}
 
 
 async def start():
@@ -154,25 +152,29 @@ def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[floa
     details["best_rsi"] = best_rsi
 
     # 4. Proximity to key level — bonus (max 10)
+    # LONG → look for levels BELOW price (negative distance_pct = support)
+    # SHORT → look for levels ABOVE price (positive distance_pct = resistance)
     level_pts = 0.0
     nearest_level = None
-    relevant_types = SUPPORT_TYPES if direction == "LONG" else RESISTANCE_TYPES
     for level in analysis.get("key_levels", []):
-        ltype = level.get("type", "")
-        if ltype not in relevant_types:
-            continue
         try:
-            dist = abs(Decimal(level.get("distance_pct", "99")))
+            raw_dist = Decimal(level.get("distance_pct", "99"))
         except (InvalidOperation, TypeError):
             continue
-        if dist >= Decimal("3"):
+        # For LONG: we want levels below (raw_dist < 0), for SHORT: above (raw_dist > 0)
+        if direction == "LONG" and raw_dist > Decimal("0"):
+            continue
+        if direction == "SHORT" and raw_dist < Decimal("0"):
+            continue
+        abs_dist = abs(raw_dist)
+        if abs_dist >= Decimal("3"):
             continue
         pts = 0.0
-        if dist < Decimal("0.5"):
+        if abs_dist < Decimal("0.5"):
             pts = 10
-        elif dist < Decimal("1"):
+        elif abs_dist < Decimal("1"):
             pts = 8
-        elif dist < Decimal("2"):
+        elif abs_dist < Decimal("2"):
             pts = 5
         else:
             pts = 2
@@ -271,11 +273,10 @@ def _build_message(symbol: str, direction: str, confidence: int, details: dict) 
     level = details.get("nearest_level")
     if level:
         price_str = _fmt_price(level.get("price", ""))
-        label = level.get("label", "").lower()
         if direction == "LONG":
-            parts.append(f"{short} touche le {label} {price_str}")
+            parts.append(f"{short} proche du support {price_str}")
         else:
-            parts.append(f"{short} bute sur la {label} {price_str}")
+            parts.append(f"{short} sous la resistance {price_str}")
     else:
         parts.append(short)
 
@@ -321,8 +322,7 @@ def _extract_key_signals(direction: str, confidence: int, details: dict) -> list
     level = details.get("nearest_level")
     if level:
         price_str = _fmt_price(level.get("price", ""))
-        ltype = level.get("type", "")
-        if ltype in SUPPORT_TYPES:
+        if direction == "LONG":
             signals.append({"label": f"Support {price_str}", "type": "level"})
         else:
             signals.append({"label": f"R\u00e9sistance {price_str}", "type": "level"})
