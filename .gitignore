@@ -9,6 +9,7 @@ build/
 .venv/
 venv/
 node_modules/
+frontend/css/output.css
 log.txt
 *.bat
 doc/private/

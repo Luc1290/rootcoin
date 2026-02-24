@@ -50,11 +50,7 @@ async def capture_snapshot(
 async def _gather_context(symbol: str) -> dict:
     context = {}
 
-    technical, _ = await asyncio.gather(
-        _get_technical(symbol),
-        asyncio.sleep(0),
-    )
-    context["technical"] = technical
+    context["technical"] = await _get_technical(symbol)
 
     analysis = market_analyzer.get_analysis(symbol)
     if analysis:
@@ -85,27 +81,32 @@ async def _gather_context(symbol: str) -> dict:
 
 async def _get_technical(symbol: str) -> dict:
     try:
-        klines = await kline_manager.get_klines(symbol, "1h", limit=200)
-        if len(klines) < 30:
-            return {}
-        inds = kline_manager.compute_indicators(klines, {"rsi", "macd", "ma", "bb", "buy_sell", "adx"})
+        klines_15m, klines_1h, klines_4h = await asyncio.gather(
+            kline_manager.get_klines(symbol, "15m", limit=200),
+            kline_manager.get_klines(symbol, "1h", limit=200),
+            kline_manager.get_klines(symbol, "4h", limit=200),
+        )
         result = {}
-        for out_key, ind_key in [
-            ("rsi_1h", "rsi"),
-            ("macd_hist_1h", "macd_hist"),
-            ("ma7_1h", "ma_7"),
-            ("ma25_1h", "ma_25"),
-            ("buy_sell_1h", "buy_sell"),
-            ("adx_1h", "adx"),
-        ]:
-            if ind_key in inds:
-                result[out_key] = _last_valid(inds[ind_key])
+        for suffix, klines in [("15m", klines_15m), ("1h", klines_1h), ("4h", klines_4h)]:
+            if len(klines) < 30:
+                continue
+            inds = kline_manager.compute_indicators(klines, {"rsi", "macd", "ma", "bb", "buy_sell", "adx"})
+            for out_key, ind_key in [
+                (f"rsi_{suffix}", "rsi"),
+                (f"macd_hist_{suffix}", "macd_hist"),
+                (f"ma7_{suffix}", "ma_7"),
+                (f"ma25_{suffix}", "ma_25"),
+                (f"buy_sell_{suffix}", "buy_sell"),
+                (f"adx_{suffix}", "adx"),
+            ]:
+                if ind_key in inds:
+                    result[out_key] = _last_valid(inds[ind_key])
 
-        bb_upper = _last_valid(inds.get("bb_upper", []))
-        bb_lower = _last_valid(inds.get("bb_lower", []))
-        close = float(klines[-1]["close"])
-        if bb_upper and bb_lower and (bb_upper - bb_lower) > 0:
-            result["bb_position_1h"] = round((close - bb_lower) / (bb_upper - bb_lower), 3)
+            bb_upper = _last_valid(inds.get("bb_upper", []))
+            bb_lower = _last_valid(inds.get("bb_lower", []))
+            close = float(klines[-1]["close"])
+            if bb_upper and bb_lower and (bb_upper - bb_lower) > 0:
+                result[f"bb_position_{suffix}"] = round((close - bb_lower) / (bb_upper - bb_lower), 3)
         return result
     except Exception:
         log.warning("snapshot_technical_failed", symbol=symbol, exc_info=True)

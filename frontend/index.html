@@ -11,7 +11,7 @@
     <link rel="apple-touch-icon" href="/static/icon-192.png">
     <link rel="icon" type="image/png" href="/static/icon-192.png">
     <title>RootCoin</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/output.css">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="min-h-screen flex flex-col">
@@ -55,6 +55,13 @@
         <a class="tab-btn" href="/?tab=journal" data-tab="journal">Journal</a>
         <a class="tab-btn" href="/?tab=health" data-tab="health">Health</a>
     </nav>
+
+    <!-- Connection banner -->
+    <div id="connection-banner" class="connection-banner hidden">
+        <span class="connection-banner-icon">&#9888;</span>
+        <span id="connection-banner-text">Connexion au serveur...</span>
+        <button id="connection-retry-btn" class="connection-retry-btn">Retry</button>
+    </div>
 
     <!-- Main content -->
     <main class="flex-1 overflow-y-auto">
@@ -199,6 +206,8 @@
                 <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="buy_sell">B/S</button>
                 <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="trades">Fills</button>
                 <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="cycles">Cycles</button>
+                <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="orders">Orders</button>
+                <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="levels">Levels</button>
             </div>
             <div id="kline-chart-main" class="rounded-lg overflow-hidden" style="height:500px;width:100%"></div>
             <div id="kline-wrap-volume" class="mt-4 hidden">
@@ -232,9 +241,11 @@
             <div id="analysis-bias" class="mb-4"></div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
                 <div id="analysis-levels"></div>
-                <div id="analysis-macro"></div>
+                <div>
+                    <div id="analysis-macro"></div>
+                    <div id="analysis-alerts" class="mt-3"></div>
+                </div>
             </div>
-            <div id="analysis-alerts"></div>
             <div id="analysis-news" class="mt-4"></div>
             <div id="analysis-empty" class="empty-state hidden">
                 <div class="empty-state-icon">📈</div>
@@ -397,6 +408,7 @@
 
     <script src="https://unpkg.com/lightweight-charts@4.2.2/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/utils.js"></script>
     <script src="/static/js/charts.js"></script>
     <script src="/static/js/kline-chart.js"></script>
     <script src="/static/js/position-cards.js"></script>

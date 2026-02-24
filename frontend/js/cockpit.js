@@ -2,28 +2,26 @@ const Cockpit = (() => {
     let _positions = [];
     let _analysis = null;
     let _lastFills = [];
-    let _portfolioTotal = null;
+    let _prevPositionKeys = null;
     const MAX_FILLS = 3;
 
     async function load() {
         try {
-            const [balResp, anaResp, oppResp] = await Promise.all([
-                fetch('/api/balances'),
+            const [, anaResp, oppResp] = await Promise.all([
+                BalanceStore.load(),
                 fetch('/api/analysis'),
                 fetch('/api/opportunities'),
             ]);
-            if (balResp.ok) {
-                const balances = await balResp.json();
-                _portfolioTotal = _calcPortfolioTotal(balances);
-            }
             if (anaResp.ok) {
                 _analysis = await anaResp.json();
             }
             if (oppResp.ok) {
                 const oppData = await oppResp.json();
-                Opportunities.update(oppData.opportunities || []);
+                Opportunities.update(oppData.opportunities || [], true);
             }
             render();
+            Charts.createCockpitChart('cockpit-portfolio-chart');
+            Charts.loadCockpitData();
         } catch (e) {
             console.error('Cockpit load failed', e);
         }
@@ -43,28 +41,70 @@ const Cockpit = (() => {
         const totalPnl = _positions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
         const pnlClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
         const pnlSign = totalPnl >= 0 ? '+' : '';
-        const portfolioStr = _portfolioTotal !== null ? '$' + _portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
+        const portfolioTotal = BalanceStore.getTotal();
+        const portfolioStr = portfolioTotal !== null ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
+
+        const totalSpan = el.querySelector('[data-field="total"]');
+        const pnlSpan = el.querySelector('[data-field="pnl"]');
+        if (totalSpan && pnlSpan) {
+            totalSpan.textContent = portfolioStr;
+            pnlSpan.textContent = `${pnlSign}$${Math.abs(totalPnl).toFixed(2)}`;
+            pnlSpan.className = `text-base font-bold tabular-nums ${pnlClass}`;
+            return;
+        }
 
         el.innerHTML = `
         <div class="cockpit-card">
             <div class="flex items-center justify-between">
                 <span class="text-sm text-gray-400">Portfolio</span>
-                <span class="text-lg font-bold tabular-nums">${portfolioStr}</span>
+                <span class="text-lg font-bold tabular-nums" data-field="total">${portfolioStr}</span>
             </div>
             <div class="flex items-center justify-between mt-1">
                 <span class="text-sm text-gray-400">PnL ouvert</span>
-                <span class="text-base font-bold tabular-nums ${pnlClass}">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}</span>
+                <span class="text-base font-bold tabular-nums ${pnlClass}" data-field="pnl">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}</span>
             </div>
+            <div id="cockpit-portfolio-chart" style="height:80px;width:100%;margin-top:8px"></div>
         </div>`;
     }
 
     function _renderPositions() {
         const el = document.getElementById('cockpit-positions');
         if (!_positions.length) {
+            _prevPositionKeys = null;
             el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucune position ouverte</span></div>';
             return;
         }
 
+        const keys = _positions.map(p => p.symbol + ':' + p.side).join(',');
+
+        if (_prevPositionKeys === keys) {
+            for (const p of _positions) {
+                const row = el.querySelector(`[data-pos="${p.symbol}"]`);
+                if (!row) continue;
+                const pnl = parseFloat(p.pnl_pct) || 0;
+                const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+                const pnlSign = pnl >= 0 ? '+' : '';
+                const pnlUsd = parseFloat(p.pnl_usd) || 0;
+                const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
+
+                const priceEl = row.querySelector('[data-field="price"]');
+                const pctEl = row.querySelector('[data-field="pnl-pct"]');
+                const usdEl = row.querySelector('[data-field="pnl-usd"]');
+
+                if (priceEl) priceEl.textContent = _fmtPrice(p.current_price);
+                if (pctEl) {
+                    pctEl.textContent = `${pnlSign}${pnl.toFixed(1)}%`;
+                    pctEl.className = `text-sm font-bold tabular-nums ${pnlClass}`;
+                }
+                if (usdEl) {
+                    usdEl.textContent = `${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}`;
+                    usdEl.className = `text-xs tabular-nums ${pnlClass}`;
+                }
+            }
+            return;
+        }
+
+        _prevPositionKeys = keys;
         const rows = _positions.map(p => {
             const pnl = parseFloat(p.pnl_pct) || 0;
             const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
@@ -74,15 +114,15 @@ const Cockpit = (() => {
             const price = _fmtPrice(p.current_price);
             const pnlUsd = parseFloat(p.pnl_usd) || 0;
             const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
-            return `<div class="cockpit-position" onclick="App.switchTab('positions')">
+            return `<div class="cockpit-position" data-pos="${p.symbol}" onclick="App.switchTab('positions')">
                 <div class="flex items-center gap-2 flex-1 min-w-0">
                     <span class="font-bold text-sm">${symbol}</span>
                     <span class="cockpit-side ${sideClass}">${p.side}</span>
                 </div>
                 <div class="flex items-center gap-3">
-                    <span class="text-xs text-gray-400 tabular-nums">${price}</span>
-                    <span class="text-sm font-bold tabular-nums ${pnlClass}">${pnlSign}${pnl.toFixed(1)}%</span>
-                    <span class="text-xs tabular-nums ${pnlClass}">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
+                    <span class="text-xs text-gray-400 tabular-nums" data-field="price">${price}</span>
+                    <span class="text-sm font-bold tabular-nums ${pnlClass}" data-field="pnl-pct">${pnlSign}${pnl.toFixed(1)}%</span>
+                    <span class="text-xs tabular-nums ${pnlClass}" data-field="pnl-usd">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
                 </div>
             </div>`;
         }).join('');
@@ -153,24 +193,25 @@ const Cockpit = (() => {
             return;
         }
 
-        const latest = alerts[alerts.length - 1];
-        const symbol = latest.symbol.replace('USDC', '');
-        const sideClass = latest.side === 'BUY' ? 'side-long' : 'side-short';
-        const qty = _fmtQuoteQty(latest.quote_qty);
-        const ago = _timeAgo(latest.timestamp);
-
-        el.innerHTML = `
-        <div class="cockpit-card cockpit-whale-card">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
+        const rows = alerts.slice(-3).reverse().map(w => {
+            const sym = w.symbol.replace('USDC', '');
+            const qty = _fmtQuoteQty(w.quote_qty);
+            const price = _fmtPrice(w.price);
+            const ago = Utils.timeAgoShort(w.timestamp);
+            const isBuy = w.side === 'BUY';
+            const sideClass = isBuy ? 'side-long' : 'side-short';
+            const label = isBuy ? 'Achat massif' : 'Vente massive';
+            return `<div class="flex items-center justify-between py-1.5">
+                <div class="flex items-center gap-1.5 min-w-0">
                     <span class="text-xs">&#x1F40B;</span>
-                    <span class="text-xs font-bold">${symbol}</span>
-                    <span class="cockpit-side ${sideClass}">${latest.side}</span>
-                    <span class="text-xs font-semibold text-gray-200">${qty}</span>
+                    <span class="cockpit-side ${sideClass}">${label}</span>
+                    <span class="text-xs text-gray-300"><b>${qty}</b> de ${sym} \u00e0 ${price}</span>
                 </div>
-                <span class="text-xs text-gray-500">${ago}</span>
-            </div>
-        </div>`;
+                <span class="text-xs text-gray-500 shrink-0 ml-2">${ago}</span>
+            </div>`;
+        }).join('');
+
+        el.innerHTML = `<div class="cockpit-card cockpit-whale-card">${rows}</div>`;
     }
 
     function _renderOpportunities() {
@@ -179,26 +220,6 @@ const Cockpit = (() => {
     }
 
     // ── Helpers ──
-
-    function _calcPortfolioTotal(balances) {
-        const stables = new Set(['USDC', 'USDT', 'BUSD', 'FDUSD', 'DAI', 'TUSD']);
-        let total = 0;
-        const grouped = {};
-        for (const b of balances) {
-            const a = b.asset;
-            if (!grouped[a]) grouped[a] = { net: 0, usd: 0, hasUsd: false };
-            grouped[a].net += parseFloat(b.net) || 0;
-            if (b.usd_value) {
-                grouped[a].usd += parseFloat(b.usd_value) || 0;
-                grouped[a].hasUsd = true;
-            }
-        }
-        for (const [asset, g] of Object.entries(grouped)) {
-            if (g.hasUsd) total += g.usd;
-            else if (stables.has(asset)) total += g.net;
-        }
-        return total;
-    }
 
     function _fmtPrice(p) {
         const n = parseFloat(p);
@@ -214,15 +235,6 @@ const Cockpit = (() => {
         if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
         if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K';
         return '$' + n.toFixed(0);
-    }
-
-    function _timeAgo(isoStr) {
-        if (!isoStr) return '';
-        const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
-        if (diff < 60) return diff + 's';
-        if (diff < 3600) return Math.floor(diff / 60) + 'min';
-        if (diff < 86400) return Math.floor(diff / 3600) + 'h';
-        return Math.floor(diff / 86400) + 'd';
     }
 
     // ── WS real-time updates ──
@@ -251,12 +263,9 @@ const Cockpit = (() => {
         _renderLastFill();
     });
 
-    WS.on('balance_update', () => {
-        fetch('/api/balances').then(r => r.json()).then(balances => {
-            _portfolioTotal = _calcPortfolioTotal(balances);
-            if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
-            _renderPortfolio();
-        }).catch(() => {});
+    BalanceStore.onChange(() => {
+        if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
+        _renderPortfolio();
     });
 
     return { load };

@@ -25,12 +25,19 @@ async def get_portfolio_history(
             .where(Balance.snapshot_at >= cutoff, Balance.usd_value.isnot(None))
             .group_by(Balance.snapshot_at)
             .order_by(Balance.snapshot_at.asc())
-            .limit(limit)
         )
-        return [
-            {
-                "total_usd": str(row.total_usd),
-                "snapshot_at": row.snapshot_at.isoformat(),
-            }
-            for row in result.all()
-        ]
+        rows = result.all()
+
+    if len(rows) > limit:
+        step = len(rows) / limit
+        sampled = [rows[int(i * step)] for i in range(limit - 1)]
+        sampled.append(rows[-1])
+        rows = sampled
+
+    return [
+        {
+            "total_usd": str(row.total_usd),
+            "snapshot_at": row.snapshot_at.isoformat(),
+        }
+        for row in rows
+    ]

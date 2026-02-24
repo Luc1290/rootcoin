@@ -68,7 +68,7 @@ const Health = (() => {
     function _renderFreshness() {
         const el = document.getElementById('health-freshness');
         if (_data.collected_at) {
-            el.textContent = 'Mis a jour ' + _timeAgo(_data.collected_at);
+            el.textContent = 'Mis a jour ' + Utils.timeAgo(_data.collected_at);
         }
     }
 
@@ -271,15 +271,6 @@ const Health = (() => {
         return m + 'm';
     }
 
-    function _timeAgo(isoStr) {
-        const dt = new Date(isoStr);
-        const now = new Date();
-        const diffS = Math.floor((now - dt) / 1000);
-        if (diffS < 60) return 'il y a ' + diffS + 's';
-        if (diffS < 3600) return 'il y a ' + Math.floor(diffS / 60) + ' min';
-        return 'il y a ' + Math.floor(diffS / 3600) + 'h';
-    }
-
     function _escHtml(s) {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
@@ -295,13 +286,15 @@ const Health = (() => {
         _renderSystem();
     });
 
+    const _throttledRenderLogs = Utils.throttle(() => _renderLogs(), 200);
+
     WS.on('log_entry', (entry) => {
         _logEntries.push(entry);
         if (_logEntries.length > 1000) {
             _logEntries = _logEntries.slice(-500);
         }
         if (!_logPaused && !document.getElementById('view-health').classList.contains('hidden')) {
-            _renderLogs();
+            _throttledRenderLogs();
         }
     });
 

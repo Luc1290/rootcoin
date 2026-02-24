@@ -15,11 +15,15 @@ router = APIRouter(prefix="/api/journal", tags=["journal"])
 
 
 @router.get("/calendar")
-async def get_calendar_data(year: int | None = Query(None)):
+async def get_calendar_data(
+    year: int | None = Query(None),
+    tz_offset: int = Query(0, ge=-840, le=840),
+):
     now = datetime.now(timezone.utc)
     target_year = year or now.year
-    start_date = datetime(target_year, 1, 1, tzinfo=timezone.utc)
-    end_date = datetime(target_year + 1, 1, 1, tzinfo=timezone.utc)
+    offset_delta = timedelta(minutes=tz_offset)
+    start_date = datetime(target_year, 1, 1, tzinfo=timezone.utc) - offset_delta
+    end_date = datetime(target_year + 1, 1, 1, tzinfo=timezone.utc) - offset_delta
 
     async with async_session() as session:
         result = await session.execute(
@@ -38,7 +42,7 @@ async def get_calendar_data(year: int | None = Query(None)):
         closed = p.closed_at
         if closed.tzinfo is None:
             closed = closed.replace(tzinfo=timezone.utc)
-        day_key = closed.strftime("%Y-%m-%d")
+        day_key = (closed + offset_delta).strftime("%Y-%m-%d")
         if day_key not in daily:
             daily[day_key] = {"pnl": Decimal("0"), "trades": 0, "wins": 0}
         fees = (p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0"))
@@ -104,6 +108,13 @@ async def get_equity_curve(
         })
 
     current_dd = points[-1]["drawdown_pct"] if points else "0"
+
+    max_points = 1000
+    if len(points) > max_points:
+        step = len(points) / max_points
+        sampled = [points[int(i * step)] for i in range(max_points - 1)]
+        sampled.append(points[-1])
+        points = sampled
 
     return {
         "points": points,

@@ -83,7 +83,7 @@ const Analysis = (() => {
         if (_data.is_stale) {
             el.innerHTML = '<span class="stale-badge">STALE</span>';
         } else if (_data.computed_at) {
-            const ago = _timeAgo(_data.computed_at);
+            const ago = Utils.timeAgo(_data.computed_at);
             el.textContent = `Mis a jour ${ago}`;
         }
     }
@@ -154,7 +154,7 @@ const Analysis = (() => {
                 <div class="level-current">
                     <div class="flex justify-between">
                         <span class="text-blue-400 font-bold text-xs uppercase">Prix actuel</span>
-                        <span class="text-blue-400 font-bold tabular-nums">${_fmtPrice(current)}</span>
+                        <span class="text-blue-400 font-bold tabular-nums">${Utils.fmtPrice(current)}</span>
                     </div>
                 </div>`;
                 currentInserted = true;
@@ -170,7 +170,7 @@ const Analysis = (() => {
             rows += `
             <div class="level-row">
                 <span class="${typeColor} text-xs font-semibold" style="min-width:5.5rem">${label}</span>
-                <span class="text-gray-300 tabular-nums">${_fmtPrice(lvl.price)}</span>
+                <span class="text-gray-300 tabular-nums">${Utils.fmtPrice(lvl.price)}</span>
                 ${dist}
             </div>`;
         }
@@ -181,7 +181,7 @@ const Analysis = (() => {
             <div class="level-current">
                 <div class="flex justify-between">
                     <span class="text-blue-400 font-bold text-xs uppercase">Prix actuel</span>
-                    <span class="text-blue-400 font-bold tabular-nums">${_fmtPrice(current)}</span>
+                    <span class="text-blue-400 font-bold tabular-nums">${Utils.fmtPrice(current)}</span>
                 </div>
             </div>`;
         }
@@ -271,20 +271,19 @@ const Analysis = (() => {
             return;
         }
 
-        const cards = alerts.map(a => {
-            const cls = `alert-${a.type}`;
+        const chips = alerts.map(a => {
+            const cls = `alert-chip alert-chip-${a.type}`;
             const icon = a.type === 'conflict' ? '\u26A0'
                 : a.type === 'aligned' ? '\u2705'
                 : a.type === 'whale' ? '\uD83D\uDC0B'
                 : '\u2139';
-            const time = a.timestamp ? `<span class="text-xs text-gray-500 ml-2">${_timeAgo(a.timestamp)}</span>` : '';
-            return `<div class="alert-card ${cls}">${icon} ${a.message}${time}</div>`;
+            return `<span class="${cls}" title="${a.message}">${icon} ${a.message}</span>`;
         }).join('');
 
         el.innerHTML = `
         <div class="card">
             <div class="metric-label mb-2">Alertes</div>
-            <div class="space-y-1.5">${cards}</div>
+            <div class="flex flex-wrap gap-1.5">${chips}</div>
         </div>`;
     }
 
@@ -306,7 +305,7 @@ const Analysis = (() => {
 
     function _renderNewsItem(item) {
         const title = item.title_fr || item.title;
-        const ago = item.published_at ? _timeAgo(item.published_at) : '';
+        const ago = item.published_at ? Utils.timeAgo(item.published_at) : '';
         const sourceLabel = item.source || '';
 
         return `
@@ -341,7 +340,7 @@ const Analysis = (() => {
 
         const staleHtml = _newsData.is_stale ? '<span class="stale-badge ml-2">STALE</span>' : '';
         const freshnessHtml = _newsData.fetched_at
-            ? `<span class="text-xs text-gray-500">${_timeAgo(_newsData.fetched_at)}</span>`
+            ? `<span class="text-xs text-gray-500">${Utils.timeAgo(_newsData.fetched_at)}</span>`
             : '';
 
         const crypto = [];
@@ -369,14 +368,6 @@ const Analysis = (() => {
 
     // ── Helpers ─────────────────────────────────────────────
 
-    function _fmtPrice(val) {
-        const n = parseFloat(val);
-        if (isNaN(n)) return val;
-        if (n >= 1000) return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        if (n >= 1) return n.toFixed(4);
-        return n.toFixed(6);
-    }
-
     function _fmtMacroValue(key, val) {
         const n = parseFloat(val);
         if (isNaN(n)) return val;
@@ -384,16 +375,6 @@ const Analysis = (() => {
         if (key === 'spread') return (n >= 0 ? '+' : '') + n.toFixed(3) + '%';
         if (n >= 1000) return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         return n.toFixed(2);
-    }
-
-    function _timeAgo(isoStr) {
-        const dt = new Date(isoStr);
-        const now = new Date();
-        const diffS = Math.floor((now - dt) / 1000);
-        if (diffS < 60) return 'il y a ' + diffS + 's';
-        if (diffS < 3600) return 'il y a ' + Math.floor(diffS / 60) + ' min';
-        if (diffS < 86400) return 'il y a ' + Math.floor(diffS / 3600) + 'h';
-        return 'il y a ' + Math.floor(diffS / 86400) + 'j';
     }
 
     // WS updates
@@ -407,22 +388,22 @@ const Analysis = (() => {
         _renderNews();
     });
 
+    const _throttledRenderLevels = Utils.throttle((analysis) => _renderLevels(analysis), 300);
+
     WS.on('price_update', (data) => {
         if (!_data || !_data.analyses || !_currentSymbol) return;
         if (data.symbol !== _currentSymbol) return;
         const analysis = _data.analyses.find(a => a.symbol === _currentSymbol);
         if (!analysis) return;
-        const newPrice = data.price;
-        analysis.current_price = newPrice;
-        // Recalculate distance_pct for each level
-        const cp = parseFloat(newPrice);
+        analysis.current_price = data.price;
+        const cp = parseFloat(data.price);
         if (cp && analysis.key_levels) {
             for (const lvl of analysis.key_levels) {
                 const p = parseFloat(lvl.price);
                 lvl.distance_pct = (((p - cp) / cp) * 100).toFixed(2);
             }
         }
-        _renderLevels(analysis);
+        _throttledRenderLevels(analysis);
     });
 
     return { load };

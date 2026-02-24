@@ -197,6 +197,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `css/tailwind.css` | Source Tailwind (input pour compilation) | — |
 | `css/output.css` | Tailwind compile (ne pas editer a la main) | — |
 | `js/websocket.js` | Client WS avec reconnexion auto + dispatch par type | `WS.on(type, fn)` |
+| `js/utils.js` | Helpers partages frontend : formatage prix, temps relatif | `Utils.timeAgo()`, `Utils.timeAgoShort()`, `Utils.fmtPrice()` |
 | `js/app.js` | Orchestrateur : tabs, horloge, toasts, chargement initial | `App.toast()`, `App.switchTab()` |
 | `js/positions.js` | Rendu cartes positions actives, tri, modals SL/TP/OCO/close, cancel orders avec toast contextuel | `Positions.load()`, `Positions.render()`, `Positions.showSL/TP/OCO()`, `Positions.confirmCancelOrders()` |
 | `js/position-cards.js` | Construction HTML d'une carte position | `PositionCards.buildCardHtml()` |

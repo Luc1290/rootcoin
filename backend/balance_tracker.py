@@ -190,29 +190,5 @@ async def _fill_usd_values(records: list[Balance]):
 
 async def _handle_account_update(msg: dict):
     balances = msg.get("B", [])
-    if not balances:
-        return
-
-    now = datetime.now(timezone.utc)
-    records: list[Balance] = []
-
-    for b in balances:
-        asset = b.get("a", "")
-        free = Decimal(b.get("f", "0"))
-        locked = Decimal(b.get("l", "0"))
-        if not asset:
-            continue
-        records.append(Balance(
-            asset=asset,
-            free=free,
-            locked=locked,
-            net=free + locked,
-            wallet_type="SPOT",
-            snapshot_at=now,
-        ))
-
-    if records:
-        async with async_session() as session:
-            session.add_all(records)
-            await session.commit()
-        log.debug("balance_event_recorded", assets=[r.asset for r in records])
+    if balances:
+        log.debug("balance_event_received", assets=[b.get("a", "") for b in balances])

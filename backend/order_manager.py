@@ -372,7 +372,7 @@ async def cancel_position_orders(pos: Position) -> dict:
     if updates:
         await _update_position_order_ref(pos, **updates)
 
-    log.info("position_orders_cancelled", symbol=pos.symbol, position_id=position_id, cancelled=cancelled)
+    log.info("position_orders_cancelled", symbol=pos.symbol, position_id=pos.id, cancelled=cancelled)
     return {"cancelled": cancelled}
 
 

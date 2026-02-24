@@ -570,6 +570,19 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     # Deduplicate close levels (within 0.3%)
     levels = _deduplicate_levels(levels)
 
+    # Keep only the 2 closest swings above and 2 below current price
+    pivots = [l for l in levels if l["type"] not in ("SW_H", "SW_L")]
+    swings_above = sorted(
+        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) >= close],
+        key=lambda x: Decimal(x["price"]),
+    )[:2]
+    swings_below = sorted(
+        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) < close],
+        key=lambda x: Decimal(x["price"]),
+        reverse=True,
+    )[:2]
+    levels = pivots + swings_above + swings_below
+
     # Sort by price descending
     levels.sort(key=lambda x: Decimal(x["price"]), reverse=True)
 

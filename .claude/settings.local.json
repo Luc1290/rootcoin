@@ -16,7 +16,10 @@
       "Bash(head:*)",
       "mcp__ide__getDiagnostics",
       "Bash(ssh:*)",
-      "Bash(scp E:/rootcoin/scripts/backfill_balances.py root@<tailscale-ip>:/home/rootcoin_app/scripts/ && sleep 15 && ssh root@<tailscale-ip> \"cd /home/rootcoin_app && source venv/bin/activate && PYTHONPATH=/home/rootcoin_app python3 scripts/backfill_balances.py data/rootcoin.db\" 2>&1)"
+      "Bash(scp E:/rootcoin/scripts/backfill_balances.py root@<tailscale-ip>:/home/rootcoin_app/scripts/ && sleep 15 && ssh root@<tailscale-ip> \"cd /home/rootcoin_app && source venv/bin/activate && PYTHONPATH=/home/rootcoin_app python3 scripts/backfill_balances.py data/rootcoin.db\" 2>&1)",
+      "Bash(echo NO_NODE:*)",
+      "Bash(cd E:/rootcoin && npx tailwindcss -i frontend/css/input.css -o frontend/css/output.css --minify 2>&1)",
+      "Bash(cd E:/rootcoin && npx -y tailwindcss@3 -i frontend/css/input.css -o frontend/css/output.css --minify 2>&1)"
     ]
   }
 }

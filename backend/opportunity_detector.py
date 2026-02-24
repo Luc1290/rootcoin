@@ -126,7 +126,8 @@ def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[floa
     rsi_pts = 0.0
     best_rsi = None
     for sig in ta_signals:
-        if "RSI" not in sig.get("name", ""):
+        name = sig.get("name", "")
+        if not name.startswith("RSI"):
             continue
         val = sig.get("value")
         if val is None:

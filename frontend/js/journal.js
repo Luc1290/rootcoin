@@ -191,7 +191,8 @@ const Journal = (() => {
     async function _loadCalendar() {
         document.getElementById('journal-year-label').textContent = _calendarYear;
         try {
-            const resp = await fetch(`/api/journal/calendar?year=${_calendarYear}`);
+            const tzOffset = -new Date().getTimezoneOffset();
+            const resp = await fetch(`/api/journal/calendar?year=${_calendarYear}&tz_offset=${tzOffset}`);
             if (!resp.ok) return;
             const data = await resp.json();
             _renderCalendar(data);

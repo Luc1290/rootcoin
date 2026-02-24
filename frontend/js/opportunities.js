@@ -1,14 +1,16 @@
 const Opportunities = (() => {
     let _opportunities = [];
     let _knownIds = new Set();
-    let _dismissedIds = new Set();
+    let _dismissedIds = _loadDismissed();
 
-    function update(list) {
+    function update(list, silent) {
         if (!Array.isArray(list)) return;
-        for (const o of list) {
-            if (!_knownIds.has(o.id) && !_dismissedIds.has(o.id)) {
-                const sym = o.symbol.replace('USDC', '');
-                App.toast('warning', `Opportunit\u00e9 ${sym} ${o.direction} (${o.confidence}%)`);
+        if (!silent) {
+            for (const o of list) {
+                if (!_knownIds.has(o.id) && !_dismissedIds.has(o.id)) {
+                    const sym = o.symbol.replace('USDC', '');
+                    App.toast('warning', `Opportunit\u00e9 ${sym} ${o.direction} (${o.confidence}%)`);
+                }
             }
         }
         _opportunities = list;
@@ -34,7 +36,7 @@ const Opportunities = (() => {
                     : 'opp-signal-level';
                 return `<span class="opp-signal ${cls}">${s.label}</span>`;
             }).join('');
-            const ago = _timeAgo(o.detected_at);
+            const ago = Utils.timeAgoShort(o.detected_at);
 
             return `<div class="opp-card ${dirClass}">
                 <div class="flex items-center justify-between mb-1.5">
@@ -58,17 +60,22 @@ const Opportunities = (() => {
 
     function dismiss(id) {
         _dismissedIds.add(id);
+        _saveDismissed();
         const el = document.getElementById('cockpit-opportunities');
         if (el) render(el);
     }
 
-    function _timeAgo(isoStr) {
-        if (!isoStr) return '';
-        const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
-        if (diff < 60) return diff + 's';
-        if (diff < 3600) return Math.floor(diff / 60) + 'min';
-        if (diff < 86400) return Math.floor(diff / 3600) + 'h';
-        return Math.floor(diff / 86400) + 'd';
+    function _loadDismissed() {
+        try {
+            const raw = sessionStorage.getItem('opp_dismissed');
+            return raw ? new Set(JSON.parse(raw)) : new Set();
+        } catch { return new Set(); }
+    }
+
+    function _saveDismissed() {
+        try {
+            sessionStorage.setItem('opp_dismissed', JSON.stringify([..._dismissedIds]));
+        } catch {}
     }
 
     return { update, render, dismiss };

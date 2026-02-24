@@ -1,6 +1,9 @@
 const App = (() => {
     let activeTab = 'cockpit';
     const validTabs = ['cockpit', 'positions', 'trades', 'fills', 'balances', 'chart', 'analysis', 'heatmap', 'journal', 'health'];
+    let _retryTimer = null;
+    let _retryDelay = 3;
+    let _apiOk = false;
 
     function init() {
         // Tab navigation — links allow middle-click / long-press "Open in new tab"
@@ -29,6 +32,10 @@ const App = (() => {
             if (e.target === e.currentTarget) Positions.hideModal();
         });
 
+        // Connection retry button
+        const retryBtn = document.getElementById('connection-retry-btn');
+        if (retryBtn) retryBtn.addEventListener('click', _retryNow);
+
         // Clock
         updateClock();
         setInterval(updateClock, 1000);
@@ -44,7 +51,66 @@ const App = (() => {
         switchTab(activeTab);
 
         // Initial data load
-        Positions.load();
+        _initialLoad();
+    }
+
+    async function _initialLoad() {
+        try {
+            const resp = await fetch('/api/positions');
+            if (!resp.ok) throw new Error(resp.status);
+            const data = await resp.json();
+            Positions.render(data);
+            _onApiOk();
+        } catch (e) {
+            console.error('Initial load failed', e);
+            _showBanner();
+            _scheduleRetry();
+        }
+    }
+
+    function _showBanner() {
+        const el = document.getElementById('connection-banner');
+        if (el) el.classList.remove('hidden');
+    }
+
+    function _hideBanner() {
+        const el = document.getElementById('connection-banner');
+        if (el) el.classList.add('hidden');
+    }
+
+    function _onApiOk() {
+        if (!_apiOk) {
+            _apiOk = true;
+            _hideBanner();
+            clearTimeout(_retryTimer);
+            _retryTimer = null;
+            _retryDelay = 3;
+        }
+    }
+
+    function _scheduleRetry() {
+        clearTimeout(_retryTimer);
+        const txt = document.getElementById('connection-banner-text');
+        if (txt) txt.textContent = `Connexion au serveur... (retry ${_retryDelay}s)`;
+        _retryTimer = setTimeout(_retryNow, _retryDelay * 1000);
+        _retryDelay = Math.min(_retryDelay * 2, 30);
+    }
+
+    async function _retryNow() {
+        clearTimeout(_retryTimer);
+        _retryTimer = null;
+        const txt = document.getElementById('connection-banner-text');
+        if (txt) txt.textContent = 'Connexion au serveur...';
+        try {
+            const resp = await fetch('/api/positions');
+            if (!resp.ok) throw new Error(resp.status);
+            const data = await resp.json();
+            Positions.render(data);
+            _onApiOk();
+            switchTab(activeTab);
+        } catch (e) {
+            _scheduleRetry();
+        }
     }
 
     function switchTab(tab) {
@@ -98,6 +164,9 @@ const App = (() => {
 
     // Notifications from WS
     WS.on('notification', (data) => toast(data.level, data.message));
+
+    // WS positions_snapshot = server is alive → hide banner
+    WS.on('positions_snapshot', () => _onApiOk());
 
     document.addEventListener('DOMContentLoaded', init);
 

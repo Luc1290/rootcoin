@@ -93,15 +93,18 @@ const Balances = (() => {
 
     async function load() {
         try {
-            const resp = await fetch('/api/balances');
-            const data = await resp.json();
-            render(data);
+            await BalanceStore.load();
+            render(BalanceStore.get());
         } catch (e) {
             console.error('Failed to load balances', e);
         }
     }
 
-    WS.on('balance_update', () => load());
+    BalanceStore.onChange(() => {
+        const view = document.getElementById('view-balances');
+        if (view && view.classList.contains('hidden')) return;
+        render(BalanceStore.get());
+    });
 
     return { load, render, setChartRange };
 })();

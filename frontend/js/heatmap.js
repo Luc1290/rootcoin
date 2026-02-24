@@ -47,7 +47,7 @@ const Heatmap = (() => {
             if (_data.is_stale) {
                 freshness.innerHTML = '<span class="stale-badge">STALE</span>';
             } else if (_data.updated_at) {
-                freshness.textContent = `Mis a jour ${_timeAgo(_data.updated_at)}`;
+                freshness.textContent = `Mis a jour ${Utils.timeAgo(_data.updated_at)}`;
             }
         }
 
@@ -118,16 +118,6 @@ const Heatmap = (() => {
         if (n >= 1000) return n.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
         if (n >= 1) return n.toFixed(2);
         return n.toFixed(4);
-    }
-
-    function _timeAgo(isoStr) {
-        const dt = new Date(isoStr);
-        const now = new Date();
-        const diffS = Math.floor((now - dt) / 1000);
-        if (diffS < 60) return 'il y a ' + diffS + 's';
-        if (diffS < 3600) return 'il y a ' + Math.floor(diffS / 60) + ' min';
-        if (diffS < 86400) return 'il y a ' + Math.floor(diffS / 3600) + 'h';
-        return 'il y a ' + Math.floor(diffS / 86400) + 'j';
     }
 
     function startPolling() {

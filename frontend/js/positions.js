@@ -245,7 +245,7 @@ const Positions = (() => {
         const absPct = Math.abs(pct).toFixed(2);
 
         const mirror = mode === 'pct'
-            ? `<div class="text-xs text-gray-500 mt-0.5">Prix: ${_fmtPrice(price)}</div>`
+            ? `<div class="text-xs text-gray-500 mt-0.5">Prix: ${Utils.fmtPrice(price)}</div>`
             : `<div class="text-xs text-gray-500 mt-0.5">${absPct}% depuis l'entree</div>`;
 
         if (type === 'sl') {
@@ -257,14 +257,6 @@ const Positions = (() => {
             el.innerHTML = `<div>Gain +$${gain.toFixed(2)} (${absPct}%)</div>${mirror}`;
             el.className = 'text-center text-sm font-semibold text-emerald-400 mb-4';
         }
-    }
-
-    function _fmtPrice(val) {
-        const n = parseFloat(val);
-        if (isNaN(n)) return val;
-        if (n >= 1000) return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        if (n >= 1) return n.toFixed(4);
-        return n.toFixed(6);
     }
 
     function _updateRR(id) {
@@ -310,7 +302,7 @@ const Positions = (() => {
         }
         const ratio = (reward / risk).toFixed(1);
         const mirror = mode === 'pct'
-            ? `<div class="text-xs text-gray-500 mt-0.5">TP: ${_fmtPrice(tpPrice)} | SL: ${_fmtPrice(slPrice)}</div>`
+            ? `<div class="text-xs text-gray-500 mt-0.5">TP: ${Utils.fmtPrice(tpPrice)} | SL: ${Utils.fmtPrice(slPrice)}</div>`
             : `<div class="text-xs text-gray-500 mt-0.5">TP: ${tpPct}% | SL: ${slPct}%</div>`;
         rrEl.innerHTML = `<div><span class="text-blue-400 font-semibold">R:R 1:${ratio}</span>`
             + `<span class="text-gray-500 mx-2">|</span>`

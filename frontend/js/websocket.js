@@ -63,15 +63,19 @@ const WS = (() => {
     // Reconnect + refresh on resume from background (iOS / mobile)
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
-            // Force reconnect immediately
             backoff = 1;
             clearTimeout(reconnectTimer);
             reconnectTimer = null;
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                connect();
+            // Kill zombie WS — mobile browsers don't always fire onclose
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+                ws = null;
             }
-            // Reload active data regardless — WS data may be stale
+            connect();
+            // Reload active tab data — WS data is stale after background
             Positions.load();
+            if (typeof Cockpit !== 'undefined') Cockpit.load();
         }
     });
 

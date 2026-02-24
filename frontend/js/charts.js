@@ -3,6 +3,8 @@ const Charts = (() => {
     const _posCharts = {};
     let _portfolioChart = null;
     let _portfolioSeries = null;
+    let _cockpitChart = null;
+    let _cockpitSeries = null;
 
     // --- Mini position charts ---
 
@@ -213,10 +215,18 @@ const Charts = (() => {
                 return;
             }
 
-            const points = data.map(d => ({
-                time: Math.floor(new Date(d.snapshot_at + 'Z').getTime() / 1000),
-                value: parseFloat(d.total_usd),
-            }));
+            const seen = new Set();
+            const points = [];
+            for (const d of data) {
+                const ts = d.snapshot_at;
+                const t = Math.floor(new Date(ts + (ts.endsWith('Z') || ts.includes('+') ? '' : 'Z')).getTime() / 1000);
+                const v = parseFloat(d.total_usd);
+                if (!seen.has(t) && !isNaN(t) && isFinite(v)) {
+                    seen.add(t);
+                    points.push({ time: t, value: v });
+                }
+            }
+            points.sort((a, b) => a.time - b.time);
             _portfolioSeries.setData(points);
             _portfolioChart.timeScale().fitContent();
         } catch (e) {
@@ -224,10 +234,90 @@ const Charts = (() => {
         }
     }
 
-    // Feed real-time price updates to mini charts
+    // --- Cockpit sparkline chart ---
+
+    function createCockpitChart(containerId) {
+        const el = document.getElementById(containerId);
+        if (!el || _cockpitChart) return;
+
+        _cockpitChart = LightweightCharts.createChart(el, {
+            width: el.clientWidth,
+            height: 80,
+            layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
+            grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+            rightPriceScale: { visible: false },
+            timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            handleScroll: false,
+            handleScale: false,
+        });
+
+        _cockpitSeries = _cockpitChart.addAreaSeries({
+            lineColor: '#22c55e',
+            topColor: 'rgba(34,197,94,0.12)',
+            bottomColor: 'rgba(34,197,94,0)',
+            lineWidth: 1.5,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+        });
+
+        const ro = new ResizeObserver(entries => {
+            const w = entries[0].contentRect.width;
+            if (w > 0) _cockpitChart.applyOptions({ width: w });
+        });
+        ro.observe(el);
+    }
+
+    async function loadCockpitData() {
+        try {
+            const resp = await fetch('/api/portfolio/history?hours=24');
+            const data = await resp.json();
+            if (!_cockpitSeries) return;
+
+            if (!data.length) {
+                _cockpitSeries.setData([]);
+                return;
+            }
+
+            const seen = new Set();
+            const points = [];
+            for (const d of data) {
+                const ts = d.snapshot_at;
+                const t = Math.floor(new Date(ts + (ts.endsWith('Z') || ts.includes('+') ? '' : 'Z')).getTime() / 1000);
+                const v = parseFloat(d.total_usd);
+                if (!seen.has(t) && !isNaN(t) && isFinite(v)) {
+                    seen.add(t);
+                    points.push({ time: t, value: v });
+                }
+            }
+            points.sort((a, b) => a.time - b.time);
+
+            if (points.length >= 2) {
+                const up = points[points.length - 1].value >= points[0].value;
+                _cockpitSeries.applyOptions({
+                    lineColor: up ? '#22c55e' : '#ef4444',
+                    topColor: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                });
+            }
+
+            _cockpitSeries.setData(points);
+            _cockpitChart.timeScale().fitContent();
+        } catch (e) {
+            console.error('Chart: failed to load cockpit portfolio data', e);
+        }
+    }
+
+    // Feed real-time price updates to mini charts (RAF-throttled)
+    const _pendingPrices = {};
+    const _flushPrices = Utils.throttleRAF(() => {
+        for (const [symbol, price] of Object.entries(_pendingPrices)) {
+            appendPrice(symbol, price);
+        }
+    });
     WS.on('price_update', data => {
-        appendPrice(data.symbol, data.price);
+        _pendingPrices[data.symbol] = data.price;
+        _flushPrices();
     });
 
-    return { createMiniChart, appendPrice, cleanup, createPortfolioChart, loadPortfolioData };
+    return { createMiniChart, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData };
 })();

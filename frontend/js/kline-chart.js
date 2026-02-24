@@ -20,6 +20,7 @@ const KlineChart = (() => {
     let _cycleSeries = [];
     let _cyclesCache = { symbol: null, data: null };
     let _cyclesRendered = { symbol: null, interval: null };
+    let _activeCycleRefs = []; // {area, line, offset, entryPrice}
     let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles']);
     let _loading = false;
     let _initialized = false;
@@ -29,6 +30,20 @@ const KlineChart = (() => {
     let _chartRegistry = [];
     let _seriesDataMap = {};
     let _currentPrice = null;
+    const _observers = [];
+    let _orderPriceLines = [];
+    let _levelPriceLines = [];
+    let _cachedPositions = null;
+    let _cachedAnalysis = null;
+
+    function _observeResize(el, chart) {
+        const ro = new ResizeObserver(entries => {
+            const w = entries[0].contentRect.width;
+            if (w > 0) chart.applyOptions({ width: w });
+        });
+        ro.observe(el);
+        _observers.push(ro);
+    }
 
     const C = {
         bg: 'transparent',
@@ -172,11 +187,7 @@ const KlineChart = (() => {
         });
 
         _registerChart(_mainChart, _candleSeries, 'candle');
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) _mainChart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, _mainChart);
     }
 
     function _ensureSubChart(chartRef, seriesRef, elId, height, seriesFactory) {
@@ -190,11 +201,7 @@ const KlineChart = (() => {
         seriesRef.series = seriesFactory(chartRef.chart);
 
         _syncTimeScales(_mainChart, chartRef.chart);
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) chartRef.chart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, chartRef.chart);
     }
 
     function _ensureVolChart() {
@@ -211,11 +218,7 @@ const KlineChart = (() => {
 
         _syncTimeScales(_mainChart, _volChart);
         _registerChart(_volChart, _volSeries, 'volume');
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) _volChart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, _volChart);
     }
 
     function _ensureRsiChart() {
@@ -235,11 +238,7 @@ const KlineChart = (() => {
 
         _syncTimeScales(_mainChart, _rsiChart);
         _registerChart(_rsiChart, _rsiSeries, 'rsi');
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) _rsiChart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, _rsiChart);
     }
 
     function _ensureObvChart() {
@@ -257,11 +256,7 @@ const KlineChart = (() => {
 
         _syncTimeScales(_mainChart, _obvChart);
         _registerChart(_obvChart, _obvSeries, 'obv');
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) _obvChart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, _obvChart);
     }
 
     function _ensureMacdChart() {
@@ -288,11 +283,7 @@ const KlineChart = (() => {
         _macdChart.priceScale('right').applyOptions({ autoScale: true });
         _syncTimeScales(_mainChart, _macdChart);
         _registerChart(_macdChart, _macdLineSeries, 'macd');
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) _macdChart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, _macdChart);
     }
 
     function _ensureBsChart() {
@@ -310,11 +301,7 @@ const KlineChart = (() => {
 
         _syncTimeScales(_mainChart, _bsChart);
         _registerChart(_bsChart, _bsSeries, 'bs');
-
-        new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) _bsChart.applyOptions({ width: w });
-        }).observe(el);
+        _observeResize(el, _bsChart);
     }
 
     function _syncTimeScales(master, slave) {
@@ -524,6 +511,10 @@ const KlineChart = (() => {
                 _clearCycles();
             }
 
+            // Order + Level overlay lines
+            _renderOrderLines();
+            _renderLevelLines();
+
             // Show last ~150 candles with 1/4 empty space on the right
             const total = candles.length;
             const visible = Math.min(total, 150);
@@ -562,6 +553,7 @@ const KlineChart = (() => {
     function _clearCycles() {
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
+        _activeCycleRefs = [];
         _cyclesRendered = { symbol: null, interval: null };
     }
 
@@ -573,6 +565,7 @@ const KlineChart = (() => {
 
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
+        _activeCycleRefs = [];
 
         try {
             // Only fetch from API if symbol changed
@@ -635,12 +628,12 @@ const KlineChart = (() => {
                 _cycleSeries.push(area);
 
                 // Entry price line (active cycles only)
+                let entryLine = null;
+                let entryPrice = null;
                 if (c.entry_price && c.is_active) {
-                    const entryPrice = parseFloat(c.entry_price);
-                    const pnlTxt = c.is_active
-                        ? (c.pnl_pct ? parseFloat(c.pnl_pct).toFixed(1) + '%' : c.side)
-                        : (c.realized_pnl_pct ? parseFloat(c.realized_pnl_pct).toFixed(1) + '%' : '');
-                    const line = _mainChart.addLineSeries({
+                    entryPrice = parseFloat(c.entry_price);
+                    const pnlTxt = c.pnl_pct ? parseFloat(c.pnl_pct).toFixed(1) + '%' : c.side;
+                    entryLine = _mainChart.addLineSeries({
                         color: color + '0.6)',
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
@@ -649,16 +642,89 @@ const KlineChart = (() => {
                         title: pnlTxt,
                         autoscaleInfoProvider: () => null,
                     });
-                    line.setData([
+                    entryLine.setData([
                         { time: areaData[0].time, value: entryPrice },
                         { time: areaData[areaData.length - 1].time, value: entryPrice },
                     ]);
-                    _cycleSeries.push(line);
+                    _cycleSeries.push(entryLine);
+                }
+
+                if (c.is_active) {
+                    _activeCycleRefs.push({ area, line: entryLine, offset, entryPrice });
                 }
             });
             _cyclesRendered = { symbol: _symbol, interval: _interval };
         } catch (e) {
             console.error('KlineChart: cycles failed', e);
+        }
+    }
+
+    // ── Order lines (SL/TP) ────────────────────────────────
+    function _clearOrderLines() {
+        _orderPriceLines.forEach(l => _candleSeries.removePriceLine(l));
+        _orderPriceLines = [];
+    }
+
+    function _renderOrderLines() {
+        _clearOrderLines();
+        if (!_candleSeries || !_cachedPositions || !_activeIndicators.has('orders')) return;
+        const pos = _cachedPositions.find(p => p.symbol === _symbol);
+        if (!pos) return;
+        if (pos.sl_price) {
+            _orderPriceLines.push(_candleSeries.createPriceLine({
+                price: parseFloat(pos.sl_price),
+                color: '#ef4444',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: 'SL',
+            }));
+        }
+        if (pos.tp_price) {
+            _orderPriceLines.push(_candleSeries.createPriceLine({
+                price: parseFloat(pos.tp_price),
+                color: '#22c55e',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: 'TP',
+            }));
+        }
+    }
+
+    // ── Level lines (support/resistance) ─────────────────
+    function _clearLevelLines() {
+        _levelPriceLines.forEach(l => _candleSeries.removePriceLine(l));
+        _levelPriceLines = [];
+    }
+
+    function _renderLevelLines() {
+        _clearLevelLines();
+        if (!_candleSeries || !_cachedAnalysis || !_activeIndicators.has('levels')) return;
+        const analyses = _cachedAnalysis.analyses || [];
+        const analysis = analyses.find(a => a.symbol === _symbol);
+        if (!analysis || !analysis.key_levels) return;
+
+        const levelColors = {
+            R2: 'rgba(34,197,94,0.5)', R1: 'rgba(34,197,94,0.5)',
+            SW_H: 'rgba(34,197,94,0.35)',
+            S2: 'rgba(239,68,68,0.5)', S1: 'rgba(239,68,68,0.5)',
+            SW_L: 'rgba(239,68,68,0.35)',
+            PP: 'rgba(59,130,246,0.5)',
+        };
+
+        for (const lvl of analysis.key_levels) {
+            const price = parseFloat(lvl.price);
+            if (!price) continue;
+            const color = levelColors[lvl.type] || 'rgba(156,163,175,0.4)';
+            _levelPriceLines.push(_candleSeries.createPriceLine({
+                price,
+                color,
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dotted,
+                axisLabelVisible: true,
+                title: lvl.label || lvl.type,
+            }));
         }
     }
 
@@ -680,18 +746,38 @@ const KlineChart = (() => {
                 color: parseFloat(data.close) >= parseFloat(data.open) ? C.volUp : C.volDown,
             });
         }
+
+        // Extend active cycle overlays to the current candle
+        const t = Math.floor(data.open_time / 1000);
+        for (const ref of _activeCycleRefs) {
+            ref.area.update({ time: t, value: _currentPrice + ref.offset });
+            if (ref.line && ref.entryPrice != null) {
+                ref.line.update({ time: t, value: ref.entryPrice });
+            }
+        }
     }
 
-    // Update symbol dropdown when positions change
+    // Update symbol dropdown + order lines when positions change
     function _onPositionsSnapshot(data) {
-        if (!data || !data.length) return;
-        const base = ['BTCUSDC', 'ETHUSDC'];
-        const posSymbols = data.map(p => p.symbol);
-        _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
+        if (!data) return;
+        if (data.length) {
+            const base = ['BTCUSDC', 'ETHUSDC'];
+            const posSymbols = data.map(p => p.symbol);
+            _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
+        }
+        _cachedPositions = data;
+        if (_activeIndicators.has('orders')) _renderOrderLines();
     }
 
-    WS.on('kline_update', _onKlineUpdate);
+    function _onAnalysisUpdate(data) {
+        if (!data) return;
+        _cachedAnalysis = data;
+        if (_activeIndicators.has('levels')) _renderLevelLines();
+    }
+
+    WS.on('kline_update', Utils.throttleRAF(_onKlineUpdate));
     WS.on('positions_snapshot', _onPositionsSnapshot);
+    WS.on('analysis_update', _onAnalysisUpdate);
 
     return { init, loadChart };
 })();
