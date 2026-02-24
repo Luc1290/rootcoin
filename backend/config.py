@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     port: int = 8001
     price_retention_days: int = 30
 
+    database_path: str = ""
+
     log_level: str = "INFO"
     log_format: str = "json"
 

@@ -26,6 +26,8 @@ _positions: dict[int, Position] = {}
 _recent_short_closes: dict[str, float] = {}
 _reconciled: bool = False
 _reconcile_task: asyncio.Task | None = None
+_periodic_reconcile_task: asyncio.Task | None = None
+PERIODIC_RECONCILE_INTERVAL = 1800  # 30 min
 
 
 # --- Public API ---
@@ -37,19 +39,22 @@ async def start():
     ws_manager.on(EVENT_LIST_STATUS, _handle_list_status)
     ws_manager.on(EVENT_PRICE_UPDATE, _handle_price_update)
     log.info("position_tracker_started", positions=len(_positions))
-    global _reconcile_task
+    global _reconcile_task, _periodic_reconcile_task
     _reconcile_task = asyncio.create_task(_background_reconcile())
+    _periodic_reconcile_task = asyncio.create_task(_periodic_reconcile_loop())
 
 
 async def stop():
-    global _reconcile_task, _reconciled
-    if _reconcile_task and not _reconcile_task.done():
-        _reconcile_task.cancel()
-        try:
-            await _reconcile_task
-        except asyncio.CancelledError:
-            pass
+    global _reconcile_task, _periodic_reconcile_task, _reconciled
+    for task in (_reconcile_task, _periodic_reconcile_task):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     _reconcile_task = None
+    _periodic_reconcile_task = None
     _reconciled = False
     _positions.clear()
     log.info("position_tracker_stopped")
@@ -185,6 +190,23 @@ async def _background_reconcile():
         await asyncio.sleep(30)
         if not _reconciled:
             asyncio.create_task(_background_reconcile())
+
+
+async def _periodic_reconcile_loop():
+    while not _reconciled:
+        await asyncio.sleep(5)
+    while True:
+        await asyncio.sleep(PERIODIC_RECONCILE_INTERVAL)
+        if not _positions:
+            continue
+        try:
+            log.info("periodic_reconcile_starting")
+            await _reconcile_positions()
+            log.info("periodic_reconcile_done", positions=len(_positions))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.error("periodic_reconcile_failed", exc_info=True)
 
 
 async def _fix_closed_positions():
@@ -738,6 +760,9 @@ async def _handle_sell(
     elif position and position.side == "SHORT":
         await _dca(position, qty, price, fee_usd)
     else:
+        if qty * price < MIN_MARGIN_LONG_USD:
+            log.info("ignoring_small_margin_short", symbol=symbol, notional=str(qty * price))
+            return
         await _open_position(symbol, "SHORT", qty, price, market_type, fee_usd)
 
 

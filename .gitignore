@@ -12,4 +12,7 @@ node_modules/
 log.txt
 *.bat
 doc/private/
+scripts/*.py
+*.csv
+*.pdf
 

@@ -14,7 +14,9 @@
       "WebFetch(domain:www.reuters.com)",
       "WebFetch(domain:cointelegraph.com)",
       "Bash(head:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(ssh:*)",
+      "Bash(scp E:/rootcoin/scripts/backfill_balances.py root@<tailscale-ip>:/home/rootcoin_app/scripts/ && sleep 15 && ssh root@<tailscale-ip> \"cd /home/rootcoin_app && source venv/bin/activate && PYTHONPATH=/home/rootcoin_app python3 scripts/backfill_balances.py data/rootcoin.db\" 2>&1)"
     ]
   }
 }

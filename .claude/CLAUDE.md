@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projet
 
-Application de trading Binance avec dashboard web (spot + margin cross/isolated). Voir `doc/PROJECT.md` pour le plan complet et la reference API Binance.
+Application de trading Binance avec dashboard web (spot + margin cross/isolated). Voir `doc/PROJECT.md` pour le plan complet et la reference API Binance. Voir `doc/private/VPS.md` pour les commandes VPS, DB, et scripts de maintenance.
 
 ## Commandes
 
@@ -82,7 +82,7 @@ Les positions n'existent pas nativement sur Binance spot/margin — elles sont r
 
 ## API Binance — Points critiques
 
-- **NE PAS se fier aux connaissances du modele** pour les endpoints Binance → consulter `doc/PROJECT.md` section "Reference API Binance"
+- **NE PAS se fier aux connaissances du modele** pour les endpoints Binance → consulter doc Binance en ligne
 - Signature HMAC-SHA256 : percent-encoder les params AVANT de signer (changement 15/01/2026)
 - User data stream : `POST /sapi/v1/userListenToken` (ancien listenKey retire 20/02/2026)
 - OCO spot : `POST /api/v3/orderList/oco` (ancien endpoint deprecie)
