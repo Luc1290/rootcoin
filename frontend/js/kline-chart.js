@@ -705,18 +705,15 @@ const KlineChart = (() => {
         const analysis = analyses.find(a => a.symbol === _symbol);
         if (!analysis || !analysis.key_levels) return;
 
-        const levelColors = {
-            R2: 'rgba(34,197,94,0.5)', R1: 'rgba(34,197,94,0.5)',
-            SW_H: 'rgba(34,197,94,0.35)',
-            S2: 'rgba(239,68,68,0.5)', S1: 'rgba(239,68,68,0.5)',
-            SW_L: 'rgba(239,68,68,0.35)',
-            PP: 'rgba(59,130,246,0.5)',
-        };
+        const cp = _currentPrice || parseFloat(analysis.current_price) || 0;
 
         for (const lvl of analysis.key_levels) {
             const price = parseFloat(lvl.price);
             if (!price) continue;
-            const color = levelColors[lvl.type] || 'rgba(156,163,175,0.4)';
+            const above = price >= cp;
+            const color = lvl.type === 'PP'
+                ? 'rgba(59,130,246,0.5)'
+                : above ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)';
             _levelPriceLines.push(_candleSeries.createPriceLine({
                 price,
                 color,
