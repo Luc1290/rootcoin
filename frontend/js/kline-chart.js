@@ -57,7 +57,7 @@ const KlineChart = (() => {
         ma7: '#f59e0b',
         ma25: '#3b82f6',
         ma99: '#a855f7',
-        bb: 'rgba(147, 51, 234, 0.5)',
+        bb: 'rgba(167, 139, 250, 0.7)',
         rsi: '#f59e0b',
         obv: '#06b6d4',
         macdLine: '#3b82f6',
