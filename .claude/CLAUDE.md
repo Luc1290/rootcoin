@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Projet
 
-Application de trading Binance avec dashboard web (spot + margin cross/isolated). Voir `doc/PROJECT.md` pour le plan complet et la reference API Binance. Voir `doc/private/VPS.md` pour les commandes VPS, DB, et scripts de maintenance.
+Application de trading Binance avec dashboard web (spot + margin cross/isolated). Voir `doc/private/PROJECT.md` pour le plan complet et la reference API Binance. Voir `doc/private/VPS.md` pour les commandes VPS, DB, et scripts de maintenance.
 
 ## Commandes
 
@@ -242,4 +242,4 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `logo.svg` | Logo de l'app |
 | `manifest.json` | PWA metadata (nom, icones, theme) |
 | `requirements.txt` | Dependencies Python |
-| `doc/PROJECT.md` | Documentation projet + reference API Binance |
+| `doc/private/PROJECT.md` | Documentation projet + reference API Binance |
