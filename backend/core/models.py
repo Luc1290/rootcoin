@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Numeric, String
@@ -55,7 +55,7 @@ class Trade(Base):
     is_maker: Mapped[bool | None] = mapped_column(Boolean)
     realized_pnl: Mapped[Decimal | None] = mapped_column(Numeric)
     executed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Order(Base):
@@ -76,7 +76,7 @@ class Order(Base):
     market_type: Mapped[str] = mapped_column(String, nullable=False)
     purpose: Mapped[str | None] = mapped_column(String)
     position_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("positions.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
