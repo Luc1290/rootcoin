@@ -7,6 +7,15 @@ from backend.core.database import async_session
 from backend.core.models import Order
 
 
+def format_duration(total_secs: int) -> str:
+    hours, rem = divmod(total_secs, 3600)
+    minutes = rem // 60
+    if hours > 24:
+        days = hours // 24
+        return f"{days}d {hours % 24}h"
+    return f"{hours}h {minutes}m"
+
+
 async def fetch_order_prices(pos_ids: list[int]) -> dict:
     if not pos_ids:
         return {}
@@ -40,13 +49,7 @@ def pos_to_dict(pos, order_prices=None) -> dict:
         if opened.tzinfo is None:
             opened = opened.replace(tzinfo=timezone.utc)
         delta = datetime.now(timezone.utc) - opened
-        hours, rem = divmod(int(delta.total_seconds()), 3600)
-        minutes = rem // 60
-        if hours > 24:
-            days = hours // 24
-            duration = f"{days}d {hours % 24}h"
-        else:
-            duration = f"{hours}h {minutes}m"
+        duration = format_duration(int(delta.total_seconds()))
 
     current = pos.current_price or Decimal("0")
     qty = pos.quantity or Decimal("0")

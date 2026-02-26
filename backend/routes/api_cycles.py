@@ -7,6 +7,7 @@ from sqlalchemy import select
 from backend.trading import position_tracker
 from backend.core.database import async_session
 from backend.core.models import Position
+from backend.routes.position_helpers import format_duration
 
 router = APIRouter(prefix="/api/cycles", tags=["cycles"])
 
@@ -19,14 +20,7 @@ def _cycle_to_dict(p: Position) -> dict:
         if end.tzinfo is None:
             end = end.replace(tzinfo=timezone.utc)
         delta = end - opened
-        total_secs = int(delta.total_seconds())
-        hours, rem = divmod(total_secs, 3600)
-        minutes = rem // 60
-        if hours > 24:
-            days = hours // 24
-            duration = f"{days}d {hours % 24}h"
-        else:
-            duration = f"{hours}h {minutes}m"
+        duration = format_duration(int(delta.total_seconds()))
 
     entry_fees = p.entry_fees_usd or Decimal("0")
     exit_fees = p.exit_fees_usd or Decimal("0")

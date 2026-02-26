@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from backend.core.database import async_session
 from backend.core.models import Balance, Position, TradeSnapshot
+from backend.routes.position_helpers import format_duration
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 
@@ -174,14 +175,7 @@ async def get_journal_entries(
             opened = p.opened_at if p.opened_at.tzinfo else p.opened_at.replace(tzinfo=timezone.utc)
             closed = p.closed_at if p.closed_at.tzinfo else p.closed_at.replace(tzinfo=timezone.utc)
             delta = closed - opened
-            total_secs = int(delta.total_seconds())
-            hours_val, rem = divmod(total_secs, 3600)
-            minutes = rem // 60
-            if hours_val > 24:
-                days = hours_val // 24
-                duration = f"{days}d {hours_val % 24}h"
-            else:
-                duration = f"{hours_val}h {minutes}m"
+            duration = format_duration(int(delta.total_seconds()))
 
         snapshots = snaps_by_pos.get(p.id, [])
         open_snap = next((s for s in snapshots if s.snapshot_type == "OPEN"), None)
