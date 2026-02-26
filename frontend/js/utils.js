@@ -52,7 +52,20 @@ const Utils = (() => {
         };
     }
 
-    return { timeAgo, timeAgoShort, fmtPrice, throttleRAF, throttle };
+    function escHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function safeHref(url) {
+        if (!url) return '#';
+        try {
+            const u = new URL(url);
+            if (u.protocol === 'https:' || u.protocol === 'http:') return url;
+        } catch {}
+        return '#';
+    }
+
+    return { timeAgo, timeAgoShort, fmtPrice, throttleRAF, throttle, escHtml, safeHref };
 })();
 
 const BalanceStore = (() => {

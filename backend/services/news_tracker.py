@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
-from xml.etree import ElementTree
+from defusedxml import ElementTree
 
 import aiohttp
 import structlog
@@ -163,7 +163,7 @@ async def _fetch_feed(session: aiohttp.ClientSession, name: str, feed: dict) -> 
 
 
 async def _translate_items(items: list[dict]):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     to_translate = []
 
     for it in items:

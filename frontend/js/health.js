@@ -214,10 +214,10 @@ const Health = (() => {
             return `<div class="event-row" onclick="document.getElementById('${rawId}').classList.toggle('hidden')">
                 <div class="flex items-center gap-2">
                     <span class="text-xs text-gray-600">${ts}</span>
-                    <span class="event-type ${typeClass}">${_escHtml(ev.type || '')}</span>
-                    <span class="text-xs text-gray-400">${_escHtml(summary)}</span>
+                    <span class="event-type ${typeClass}">${Utils.escHtml(ev.type || '')}</span>
+                    <span class="text-xs text-gray-400">${Utils.escHtml(summary)}</span>
                 </div>
-                <div id="${rawId}" class="event-raw hidden">${_escHtml(JSON.stringify(ev.raw, null, 2))}</div>
+                <div id="${rawId}" class="event-raw hidden">${Utils.escHtml(JSON.stringify(ev.raw, null, 2))}</div>
             </div>`;
         }).join('');
 
@@ -248,7 +248,7 @@ const Health = (() => {
                 ? ' ' + Object.entries(e.context).map(([k, v]) => k + '=' + v).join(' ')
                 : '';
             const ts = e.timestamp ? e.timestamp.substring(11, 19) : '';
-            return `<div class="log-line"><span class="log-ts">${ts}</span> <span class="${lvlClass}">${(e.level || '').toUpperCase().padEnd(5)}</span> <span class="log-event">${_escHtml(e.event || '')}</span><span class="log-ctx">${_escHtml(ctx)}</span></div>`;
+            return `<div class="log-line"><span class="log-ts">${ts}</span> <span class="${lvlClass}">${(e.level || '').toUpperCase().padEnd(5)}</span> <span class="log-event">${Utils.escHtml(e.event || '')}</span><span class="log-ctx">${Utils.escHtml(ctx)}</span></div>`;
         }).join('');
 
         if (!_logPaused) {
@@ -269,10 +269,6 @@ const Health = (() => {
         if (d > 0) return d + 'd ' + h + 'h';
         if (h > 0) return h + 'h ' + m + 'm';
         return m + 'm';
-    }
-
-    function _escHtml(s) {
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
     // WS real-time updates

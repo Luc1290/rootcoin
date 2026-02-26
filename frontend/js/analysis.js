@@ -107,7 +107,7 @@ const Analysis = (() => {
             if (!line.trim()) return '';
             const isConclusion = line.startsWith('Conclusion');
             const cls = isConclusion ? 'text-sm font-semibold text-gray-200 mt-2' : 'text-sm text-gray-400';
-            return `<div class="${cls}">${line}</div>`;
+            return `<div class="${cls}">${Utils.escHtml(line)}</div>`;
         }).join('');
 
         el.innerHTML = `
@@ -277,7 +277,7 @@ const Analysis = (() => {
                 : a.type === 'aligned' ? '\u2705'
                 : a.type === 'whale' ? '\uD83D\uDC0B'
                 : '\u2139';
-            return `<span class="${cls}" title="${a.message}">${icon} ${a.message}</span>`;
+            return `<span class="${cls}" title="${Utils.escHtml(a.message)}">${icon} ${Utils.escHtml(a.message)}</span>`;
         }).join('');
 
         el.innerHTML = `
@@ -304,12 +304,13 @@ const Analysis = (() => {
     }
 
     function _renderNewsItem(item) {
-        const title = item.title_fr || item.title;
+        const title = Utils.escHtml(item.title_fr || item.title || '');
         const ago = item.published_at ? Utils.timeAgo(item.published_at) : '';
-        const sourceLabel = item.source || '';
+        const sourceLabel = Utils.escHtml(item.source || '');
+        const href = Utils.safeHref(item.link);
 
         return `
-        <a href="${item.link}" target="_blank" rel="noopener" class="news-item">
+        <a href="${href}" target="_blank" rel="noopener" class="news-item">
             <div class="text-sm text-gray-200 font-medium leading-snug">${title}</div>
             <div class="flex items-center gap-2 mt-1">
                 <span class="text-xs text-gray-600">${sourceLabel}</span>

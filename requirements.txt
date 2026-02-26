@@ -12,3 +12,5 @@ yfinance==0.2.*
 deep-translator==1.11.*
 aiohttp==3.11.*
 psutil==6.*
+websockets==14.*
+defusedxml==0.7.*
