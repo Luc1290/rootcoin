@@ -1,3 +1,4 @@
+from binance.exceptions import BinanceAPIException
 from fastapi import APIRouter, HTTPException
 
 from backend.trading import order_manager
@@ -12,3 +13,5 @@ async def cancel_order(order_id: int):
         return {"status": "ok"}
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")

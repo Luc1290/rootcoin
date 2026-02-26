@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from binance.exceptions import BinanceAPIException
 from fastapi import APIRouter, HTTPException
@@ -49,7 +49,7 @@ async def set_stop_loss(position_id: int, body: PriceBody):
         pos = _find_position(position_id)
         result = await order_manager.place_stop_loss(pos, Decimal(body.price))
         return {"status": "ok", "order_id": str(result["orderId"])}
-    except ValueError as e:
+    except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")
@@ -61,7 +61,7 @@ async def set_take_profit(position_id: int, body: PriceBody):
         pos = _find_position(position_id)
         result = await order_manager.place_take_profit(pos, Decimal(body.price))
         return {"status": "ok", "order_id": str(result["orderId"])}
-    except ValueError as e:
+    except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")
@@ -75,7 +75,7 @@ async def set_oco(position_id: int, body: OcoBody):
             pos, Decimal(body.tp_price), Decimal(body.sl_price),
         )
         return {"status": "ok", "order_list_id": str(result.get("orderListId", ""))}
-    except ValueError as e:
+    except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")
@@ -87,7 +87,7 @@ async def cancel_orders(position_id: int):
         pos = _find_position(position_id)
         result = await order_manager.cancel_position_orders(pos)
         return result
-    except ValueError as e:
+    except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")
@@ -99,7 +99,7 @@ async def close_position(position_id: int):
         pos = _find_position(position_id)
         result = await order_manager.close_position(pos)
         return {"status": "ok", "order_id": str(result["orderId"])}
-    except ValueError as e:
+    except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")

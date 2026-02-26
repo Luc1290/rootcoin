@@ -79,7 +79,7 @@ const Cockpit = (() => {
 
         if (_prevPositionKeys === keys) {
             for (const p of _positions) {
-                const row = el.querySelector(`[data-pos="${p.symbol}"]`);
+                const row = el.querySelector(`[data-pos-id="${p.id}"]`);
                 if (!row) continue;
                 const pnl = parseFloat(p.pnl_pct) || 0;
                 const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
@@ -114,7 +114,7 @@ const Cockpit = (() => {
             const price = _fmtPrice(p.current_price);
             const pnlUsd = parseFloat(p.pnl_usd) || 0;
             const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
-            return `<div class="cockpit-position" data-pos="${p.symbol}" onclick="App.switchTab('positions')">
+            return `<div class="cockpit-position" data-pos-id="${p.id}" onclick="App.switchTab('positions')">
                 <div class="flex items-center gap-2 flex-1 min-w-0">
                     <span class="font-bold text-sm">${symbol}</span>
                     <span class="cockpit-side ${sideClass}">${p.side}</span>

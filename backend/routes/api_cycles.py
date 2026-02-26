@@ -107,7 +107,7 @@ async def get_cycle_stats(symbol: str | None = Query(None)):
             return {"total_cycles": 0, "wins": 0, "losses": 0, "win_rate": "0", "total_pnl": "0", "avg_pnl": "0"}
 
         total_fees = sum((p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0")) for p in closed)
-        total_gross = sum(p.realized_pnl for p in closed if p.realized_pnl)
+        total_gross = sum(p.realized_pnl for p in closed if p.realized_pnl is not None)
         total_net = total_gross - total_fees
         wins = [p for p in closed if p.realized_pnl_pct is not None and p.realized_pnl_pct > 0]
         losses = [p for p in closed if p.realized_pnl_pct is not None and p.realized_pnl_pct <= 0]
