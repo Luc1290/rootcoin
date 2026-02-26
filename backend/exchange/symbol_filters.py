@@ -98,6 +98,13 @@ def validate_order(symbol: str, qty: Decimal, price: Decimal):
     if max_qty and qty > max_qty:
         raise ValueError(f"{symbol}: qty {qty} above max {max_qty}")
 
+    min_price = f.get("min_price", Decimal("0"))
+    max_price = f.get("max_price", Decimal("0"))
+    if min_price and price < min_price:
+        raise ValueError(f"{symbol}: price {price} below min {min_price}")
+    if max_price and price > max_price:
+        raise ValueError(f"{symbol}: price {price} above max {max_price}")
+
     min_notional = f.get("min_notional", Decimal("0"))
     if min_notional and qty * price < min_notional:
         raise ValueError(f"{symbol}: notional {qty * price} below min {min_notional}")
