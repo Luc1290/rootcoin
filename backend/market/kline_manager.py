@@ -211,7 +211,8 @@ def compute_indicators(klines: list[dict], requested: set[str]) -> dict:
         result["atr"] = _atr(highs, lows, closes, 14)
 
     if "vwap" in requested:
-        result["vwap"] = _vwap(highs, lows, closes, volumes)
+        open_times = [k.get("open_time", "") for k in klines]
+        result["vwap"] = _vwap(highs, lows, closes, volumes, open_times)
 
     if "adx" in requested:
         result["adx"] = _adx(highs, lows, closes, 14)
@@ -399,11 +400,19 @@ def _atr(highs: list[float], lows: list[float], closes: list[float], period: int
     return result
 
 
-def _vwap(highs: list[float], lows: list[float], closes: list[float], volumes: list[float]):
+def _vwap(highs: list[float], lows: list[float], closes: list[float], volumes: list[float], open_times: list[str] | None = None):
     result: list[float | None] = []
     cum_vol = 0.0
     cum_tp_vol = 0.0
+    prev_day = ""
     for i in range(len(closes)):
+        # Reset at day boundary (open_time format: "2026-02-26T...")
+        if open_times and i < len(open_times) and open_times[i]:
+            day = open_times[i][:10]
+            if day != prev_day:
+                cum_vol = 0.0
+                cum_tp_vol = 0.0
+                prev_day = day
         tp = (highs[i] + lows[i] + closes[i]) / 3
         cum_vol += volumes[i]
         cum_tp_vol += tp * volumes[i]
