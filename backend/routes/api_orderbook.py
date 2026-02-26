@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from backend import orderbook_tracker
+from backend.market import orderbook_tracker
 
 router = APIRouter(prefix="/api/orderbook", tags=["orderbook"])
 

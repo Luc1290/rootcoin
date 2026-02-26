@@ -2,7 +2,7 @@ import structlog
 from binance import AsyncClient
 from binance.exceptions import BinanceAPIException
 
-from backend.config import settings
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

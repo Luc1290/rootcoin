@@ -6,11 +6,11 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import delete
 
-from backend import ws_manager
-from backend.config import settings
-from backend.database import async_session
-from backend.models import Price
-from backend.ws_manager import EVENT_PRICE_UPDATE
+from backend.exchange import ws_manager
+from backend.core.config import settings
+from backend.core.database import async_session
+from backend.core.models import Price
+from backend.exchange.ws_manager import EVENT_PRICE_UPDATE
 
 log = structlog.get_logger()
 

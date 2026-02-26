@@ -4,9 +4,12 @@ import json
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend import health_collector, log_buffer, market_analyzer, news_tracker, opportunity_detector, position_tracker, ws_manager
+from backend.services import health_collector, log_buffer, news_tracker
+from backend.market import market_analyzer, opportunity_detector
+from backend.trading import position_tracker
+from backend.exchange import ws_manager
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
-from backend.ws_manager import (
+from backend.exchange.ws_manager import (
     EVENT_ACCOUNT_UPDATE,
     EVENT_EXECUTION_REPORT,
     EVENT_KLINE_UPDATE,

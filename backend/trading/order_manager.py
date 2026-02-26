@@ -5,10 +5,10 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select
 
-from backend import binance_client
-from backend.database import async_session
-from backend.models import Order, Position
-from backend.utils.symbol_filters import round_price, round_quantity, validate_order
+from backend.exchange import binance_client
+from backend.core.database import async_session
+from backend.core.models import Order, Position
+from backend.exchange.symbol_filters import round_price, round_quantity, validate_order
 
 log = structlog.get_logger()
 

@@ -6,9 +6,9 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select
 
-from backend import kline_manager, macro_tracker, market_analyzer, orderbook_tracker, whale_tracker
-from backend.database import async_session
-from backend.models import Order, TradeSnapshot
+from backend.market import kline_manager, macro_tracker, market_analyzer, orderbook_tracker, whale_tracker
+from backend.core.database import async_session
+from backend.core.models import Order, TradeSnapshot
 
 log = structlog.get_logger()
 

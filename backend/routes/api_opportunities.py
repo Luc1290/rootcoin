@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from backend import opportunity_detector
+from backend.market import opportunity_detector
 
 router = APIRouter(prefix="/api/opportunities", tags=["opportunities"])
 

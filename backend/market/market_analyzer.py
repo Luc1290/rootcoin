@@ -4,8 +4,9 @@ from decimal import Decimal
 
 import structlog
 
-from backend import kline_manager, macro_tracker, orderbook_tracker, whale_tracker, position_tracker
-from backend.config import settings
+from backend.market import kline_manager, macro_tracker, orderbook_tracker, whale_tracker
+from backend.trading import position_tracker
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

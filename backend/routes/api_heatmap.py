@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from backend import heatmap_manager
+from backend.market import heatmap_manager
 
 router = APIRouter(prefix="/api/heatmap", tags=["heatmap"])
 

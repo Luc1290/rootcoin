@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
-from backend import kline_manager, position_tracker, ws_manager
-from backend.database import async_session
-from backend.models import Trade
+from backend.market import kline_manager
+from backend.trading import position_tracker
+from backend.exchange import ws_manager
+from backend.core.database import async_session
+from backend.core.models import Trade
 
 router = APIRouter(prefix="/api/klines", tags=["klines"])
 

@@ -4,8 +4,9 @@ from decimal import Decimal
 
 import structlog
 
-from backend import binance_client, position_tracker
-from backend.config import settings
+from backend.exchange import binance_client
+from backend.trading import position_tracker
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

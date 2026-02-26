@@ -11,7 +11,7 @@ import httpx
 import structlog
 import websockets
 
-from backend.config import settings
+from backend.core.config import settings
 
 log = structlog.get_logger()
 
@@ -235,7 +235,7 @@ class WSManager:
                 backoff = min(backoff * 2, MAX_BACKOFF)
 
     async def _handle_user_event(self, msg: dict):
-        from backend import event_recorder
+        from backend.services import event_recorder
 
         event_type = msg.get("e")
         if event_type == "executionReport":

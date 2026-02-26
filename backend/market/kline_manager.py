@@ -7,9 +7,9 @@ import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from backend import binance_client
-from backend.database import async_session
-from backend.models import Kline
+from backend.exchange import binance_client
+from backend.core.database import async_session
+from backend.core.models import Kline
 
 log = structlog.get_logger()
 

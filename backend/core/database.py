@@ -3,7 +3,7 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from backend.config import settings
+from backend.core.config import settings
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(settings.database_path) if settings.database_path else ROOT_DIR / "data" / "rootcoin.db"
@@ -33,7 +33,7 @@ _INDEXES = [
 
 
 async def init_db():
-    from backend.models import Base
+    from backend.core.models import Base
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:

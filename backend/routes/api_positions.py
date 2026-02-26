@@ -4,7 +4,7 @@ from binance.exceptions import BinanceAPIException
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend import order_manager, position_tracker
+from backend.trading import order_manager, position_tracker
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])

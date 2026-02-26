@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Query
 
-from backend import event_recorder, health_collector, log_buffer
+from backend.services import event_recorder, health_collector, log_buffer
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 

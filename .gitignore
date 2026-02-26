@@ -1,5 +1,6 @@
 .env
 data/*.db
+data/*.db.bak
 __pycache__/
 *.pyc
 *.pyo
@@ -13,6 +14,7 @@ frontend/css/output.css
 log.txt
 *.bat
 doc/private/
+.claude/settings.local.json
 scripts/*.py
 *.csv
 *.pdf

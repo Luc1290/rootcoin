@@ -3,8 +3,8 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from backend.database import async_session
-from backend.models import Order
+from backend.core.database import async_session
+from backend.core.models import Order
 
 
 async def fetch_order_prices(pos_ids: list[int]) -> dict:

@@ -3,8 +3,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
-from backend.database import async_session
-from backend.models import Balance
+from backend.core.database import async_session
+from backend.core.models import Balance
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 

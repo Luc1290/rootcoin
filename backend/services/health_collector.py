@@ -7,21 +7,19 @@ from datetime import datetime, timezone
 import structlog
 from sqlalchemy import text
 
-from backend import (
-    balance_tracker,
-    event_recorder,
+from backend.trading import balance_tracker, position_tracker, price_recorder
+from backend.services import event_recorder
+from backend.market import (
     heatmap_manager,
     kline_manager,
     macro_tracker,
     market_analyzer,
-    news_tracker,
     orderbook_tracker,
-    position_tracker,
-    price_recorder,
     whale_tracker,
-    ws_manager,
 )
-from backend.database import DB_PATH, async_session
+from backend.services import news_tracker
+from backend.exchange import ws_manager
+from backend.core.database import DB_PATH, async_session
 
 log = structlog.get_logger()
 

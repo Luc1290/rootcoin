@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Query
 from sqlalchemy import select, func
 
-from backend.database import async_session
-from backend.models import Balance
+from backend.core.database import async_session
+from backend.core.models import Balance
 
 router = APIRouter(prefix="/api/balances", tags=["balances"])
 

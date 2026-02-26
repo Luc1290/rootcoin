@@ -5,8 +5,9 @@ from decimal import Decimal, InvalidOperation
 
 import structlog
 
-from backend import market_analyzer, orderbook_tracker, position_tracker, whale_tracker
-from backend.config import settings
+from backend.market import market_analyzer, orderbook_tracker, whale_tracker
+from backend.trading import position_tracker
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

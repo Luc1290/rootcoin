@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from backend.database import async_session
-from backend.models import Trade
+from backend.core.database import async_session
+from backend.core.models import Trade
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 

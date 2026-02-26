@@ -5,11 +5,12 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select, func, and_
 
-from backend import binance_client, ws_manager, position_tracker
-from backend.config import settings
-from backend.database import async_session
-from backend.models import Balance, Price
-from backend.ws_manager import EVENT_ACCOUNT_UPDATE
+from backend.exchange import binance_client, ws_manager
+from backend.trading import position_tracker
+from backend.core.config import settings
+from backend.core.database import async_session
+from backend.core.models import Balance, Price
+from backend.exchange.ws_manager import EVENT_ACCOUNT_UPDATE
 
 log = structlog.get_logger()
 

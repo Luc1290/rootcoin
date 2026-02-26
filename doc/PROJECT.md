@@ -505,7 +505,7 @@ GET /api/prices/BTCUSDC → [{"price": "67599.98", ...}, ...]
 ### Phase 5 : Déploiement VPS --- DONE
 **Objectif** : Faire tourner le système 24/7 sur un VPS accessible de partout.
 
-**Déployé le 20/02/2026** : VPS VPS, Ubuntu 24.04, Tailscale sécurisé.
+**Déployé le 20/02/2026** : VPS Hetzner, Ubuntu 24.04, Tailscale sécurisé.
 ```
 Dashboard accessible via http://<tailscale-ip>:8001 (Tailscale uniquement)
 IP publique bloquée par ufw, accès SSH + Tailscale only
@@ -513,13 +513,13 @@ Service systemd actif, auto-restart on crash
 ```
 
 17. **GitHub repo** --- DONE
-    - Repo privé sur GitHub : <github-repo>
+    - Repo privé sur GitHub
     - `.gitignore` : `.env`, `data/*.db`, `__pycache__/`, `*.pyc`
     - Deploy key SSH configurée sur le VPS
     - Workflow : dev local → `git push` → `deploy-vps.bat` (un clic)
 
 18. **Setup VPS** --- DONE
-    - VPS (2 vCPU, 4 Go RAM, 80 Go SSD) — Nuremberg
+    - VPS (2 vCPU, 4 Go RAM, 80 Go SSD)
     - `scripts/setup_vps.sh` — installation automatisée
     - Python 3.11+, venv, dépendances installées
     - Tailscale installé et connecté
@@ -555,7 +555,7 @@ Service systemd actif, auto-restart on crash
 20. **Accès distant** --- DONE
     - Tailscale installé sur VPS, PC et iPhone
     - Dashboard accessible via `http://<tailscale-ip>:8001` (Tailscale)
-    - IP publique (`<public-ip>`) bloquée par firewall
+    - IP publique bloquée par firewall
     - Accès depuis iPhone via Tailscale app + Safari (ajouté sur l'écran d'accueil)
     - Accès depuis PC via Chrome (installé comme app dans la barre des tâches)
 

@@ -8,7 +8,7 @@ from decimal import Decimal
 import structlog
 import websockets
 
-from backend.config import settings
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

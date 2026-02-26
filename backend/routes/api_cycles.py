@@ -4,9 +4,9 @@ from decimal import Decimal
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from backend import position_tracker
-from backend.database import async_session
-from backend.models import Position
+from backend.trading import position_tracker
+from backend.core.database import async_session
+from backend.core.models import Position
 
 router = APIRouter(prefix="/api/cycles", tags=["cycles"])
 

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 import structlog
 
-from backend.config import settings
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

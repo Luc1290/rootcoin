@@ -5,7 +5,7 @@ from xml.etree import ElementTree
 import aiohttp
 import structlog
 
-from backend.config import settings
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from backend import news_tracker
+from backend.services import news_tracker
 
 router = APIRouter(prefix="/api/news", tags=["news"])
 

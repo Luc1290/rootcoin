@@ -5,8 +5,8 @@ from decimal import Decimal
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
 
-from backend.database import async_session
-from backend.models import Balance, Position, TradeSnapshot
+from backend.core.database import async_session
+from backend.core.models import Balance, Position, TradeSnapshot
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 

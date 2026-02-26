@@ -3,7 +3,7 @@ from decimal import Decimal, ROUND_DOWN
 
 import structlog
 
-from backend import binance_client
+from backend.exchange import binance_client
 
 log = structlog.get_logger()
 

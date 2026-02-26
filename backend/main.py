@@ -5,15 +5,16 @@ import structlog
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from backend import (
-    balance_tracker, event_recorder, health_collector, heatmap_manager,
-    kline_manager, log_buffer, macro_tracker, market_analyzer, news_tracker,
-    opportunity_detector, orderbook_tracker, position_tracker, price_recorder,
-    whale_tracker, ws_manager,
+from backend.services import log_buffer
+from backend.exchange.binance_client import close_client, init_client
+from backend.core.database import close_db, init_db
+from backend.exchange import symbol_filters, ws_manager
+from backend.services import event_recorder, health_collector, news_tracker
+from backend.trading import balance_tracker, position_tracker, price_recorder
+from backend.market import (
+    heatmap_manager, kline_manager, macro_tracker, market_analyzer,
+    opportunity_detector, orderbook_tracker, whale_tracker,
 )
-from backend.binance_client import close_client, init_client
-from backend.database import close_db, init_db
-from backend.utils import symbol_filters
 
 structlog.configure(
     processors=[

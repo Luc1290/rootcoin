@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from backend import order_manager
+from backend.trading import order_manager
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 

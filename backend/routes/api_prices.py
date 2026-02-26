@@ -3,9 +3,9 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from backend.database import async_session
-from backend.models import Price
-from backend import position_tracker
+from backend.core.database import async_session
+from backend.core.models import Price
+from backend.trading import position_tracker
 
 router = APIRouter(prefix="/api/prices", tags=["prices"])
 

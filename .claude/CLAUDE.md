@@ -132,20 +132,42 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 > **But** : eviter de re-scanner le projet a chaque conversation. Aller directement au bon fichier.
 > **Regle** : lors de toute creation, suppression ou renommage de fichier, mettre a jour cette section automatiquement (sans que l'utilisateur ait a le demander).
 
-### Backend core (`backend/`)
+### Backend entry point (`backend/`)
 
 | Fichier | Responsabilite | Exports cles |
 |---------|---------------|--------------|
 | `main.py` | Entry point FastAPI, lifespan (init/shutdown ordre) | `app` |
+
+### Core (`backend/core/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
 | `config.py` | Settings Pydantic depuis `.env` | `settings` (singleton) |
 | `database.py` | SQLAlchemy async engine, session, migrations | `engine`, `async_session`, `init_db()` |
 | `models.py` | ORM : Position, Trade, Order, Balance, Price, Kline, Setting, TradeSnapshot | 8 modeles declaratifs |
+
+### Exchange (`backend/exchange/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
 | `binance_client.py` | Wrapper AsyncClient Binance (spot+margin+OCO) | `_client` singleton, `place_order()`, `place_margin_order()`, `place_oco_order()`, `cancel_order()`, `cancel_margin_order()`, `cancel_oco_order()`, `cancel_margin_oco_order()`, `get_spot_balances()`, `get_cross/isolated_margin_balances()` |
 | `ws_manager.py` | 3 streams WS (user data, prix, token refresh) + dispatcher events + kline stream + health tracking | `_manager` singleton, `on()`, `subscribe_symbol()`, `unsubscribe_symbol()`, `subscribe_kline()`, `unsubscribe_kline()`, `get_ws_health()` |
-| `position_tracker.py` | State machine positions : scan startup, handle fills, open/DCA/reduce/close. Delegue les ops Order DB a `order_manager` (mark_order_status, mark_oco_done, ensure_order_record, cleanup_stale_orders) | `_positions` dict, `start()`, `stop()`, `get_positions()` |
+| `symbol_filters.py` | Cache LOT_SIZE/PRICE_FILTER/NOTIONAL, arrondi, validation | `init_filters()`, `round_quantity()`, `round_price()`, `validate_order()` |
+
+### Trading (`backend/trading/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
+| `position_tracker.py` | State machine positions : handle fills, open/DCA/reduce/close. Delegue les ops Order DB a `order_manager` | `_positions` dict, `start()`, `stop()`, `get_positions()` |
+| `position_reconciler.py` | Reconciliation : scan Binance au demarrage, backfill trades, verification order refs, reconciliation periodique 30min | `fast_load_from_db()`, `background_reconcile()`, `periodic_reconcile_loop()` |
 | `order_manager.py` | Placement SL/TP/OCO, close position, cancel orders (individuels + OCO), cleanup stale orders, ensure order records | `place_stop_loss()`, `place_take_profit()`, `place_oco()`, `close_position()`, `cancel_position_orders()`, `cleanup_stale_orders()`, `ensure_oco_order_record()`, `ensure_order_record()`, `mark_order_status()`, `mark_oco_done()` |
-| `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
 | `balance_tracker.py` | Snapshots balances spot/cross/isolated + conversion USD | `start()`, `stop()` |
+| `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
+
+### Market (`backend/market/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
 | `kline_manager.py` | Fetch klines Binance, stockage DB, calcul indicateurs, cleanup | `start()`, `stop()`, `fetch_and_store()`, `get_klines()`, `compute_indicators()` |
 | `macro_tracker.py` | Fetch DXY, VIX, Nasdaq, Gold, US10Y, US5Y, Oil, USD/JPY via yfinance + spread 10Y-5Y calcule, cache memoire 5 min | `start()`, `stop()`, `get_macro_data()` |
 | `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
@@ -153,17 +175,16 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `heatmap_manager.py` | Top 50 USDC par volume 24h, variation prix sur fenetre 4h glissante, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
 | `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF (15m/1h/4h) + macro, dampening oscillateurs en tendance, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
 | `opportunity_detector.py` | Detecte opportunites sur symboles sans position, scoring multi-criteres, messages FR, cooldown | `start()`, `stop()`, `get_opportunities()` |
-| `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
-| `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
-| `log_buffer.py` | Ring buffer structlog, capture processor, real-time subscribers | `capture_processor()`, `get_logs()`, `subscribe()`, `unsubscribe()` |
-| `journal_snapshotter.py` | Capture snapshot contexte marche (AT, macro, orderbook, whales) a l'ouverture/DCA/fermeture de position | `capture_snapshot()` |
-| `event_recorder.py` | Enregistre les raw WS events user data en JSONL rotatif (7j) + ring buffer memoire | `start()`, `stop()`, `record()`, `get_recent()` |
 
-### Utilitaires (`backend/utils/`)
+### Services (`backend/services/`)
 
 | Fichier | Responsabilite | Exports cles |
 |---------|---------------|--------------|
-| `symbol_filters.py` | Cache LOT_SIZE/PRICE_FILTER/NOTIONAL, arrondi, validation | `init_filters()`, `round_quantity()`, `round_price()`, `validate_order()` |
+| `event_recorder.py` | Enregistre les raw WS events user data en JSONL rotatif (7j) + ring buffer memoire | `start()`, `stop()`, `record()`, `get_recent()` |
+| `journal_snapshotter.py` | Capture snapshot contexte marche (AT, macro, orderbook, whales) a l'ouverture/DCA/fermeture de position | `capture_snapshot()` |
+| `log_buffer.py` | Ring buffer structlog, capture processor, real-time subscribers | `capture_processor()`, `get_logs()`, `subscribe()`, `unsubscribe()` |
+| `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
+| `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
 
 ### Routes API (`backend/routes/`)
 

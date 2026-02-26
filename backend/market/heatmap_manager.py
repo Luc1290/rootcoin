@@ -5,8 +5,8 @@ from decimal import Decimal
 import aiohttp
 import structlog
 
-from backend import binance_client
-from backend.config import settings
+from backend.exchange import binance_client
+from backend.core.config import settings
 
 log = structlog.get_logger()
 

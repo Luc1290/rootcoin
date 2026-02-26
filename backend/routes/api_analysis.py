@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from backend import market_analyzer
+from backend.market import market_analyzer
 
 router = APIRouter(prefix="/api/analysis", tags=["analysis"])
 
