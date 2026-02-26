@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from xml.etree.ElementTree import Element
 from defusedxml import ElementTree
 
 import aiohttp
@@ -207,7 +208,7 @@ def _sync_translate_batch(texts: list[str]) -> list[str]:
         return texts
 
 
-def _text(el: ElementTree.Element, tag: str) -> str | None:
+def _text(el: Element, tag: str) -> str | None:
     child = el.find(tag)
     return child.text if child is not None else None
 
