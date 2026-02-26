@@ -15,6 +15,8 @@ from backend.exchange.ws_manager import EVENT_ACCOUNT_UPDATE
 log = structlog.get_logger()
 
 _snapshot_task: asyncio.Task | None = None
+_debounce_task: asyncio.Task | None = None
+_DEBOUNCE_DELAY = 3
 
 
 async def start():
@@ -25,12 +27,13 @@ async def start():
 
 
 async def stop():
-    if _snapshot_task:
-        _snapshot_task.cancel()
-        try:
-            await _snapshot_task
-        except asyncio.CancelledError:
-            pass
+    for task in (_snapshot_task, _debounce_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     log.info("balance_tracker_stopped")
 
 
@@ -190,7 +193,21 @@ async def _fill_usd_values(records: list[Balance]):
 # --- Event-driven snapshot ---
 
 
+async def _debounced_snapshot():
+    await asyncio.sleep(_DEBOUNCE_DELAY)
+    try:
+        await _take_full_snapshot()
+    except Exception:
+        log.error("event_triggered_snapshot_failed", exc_info=True)
+
+
 async def _handle_account_update(msg: dict):
     balances = msg.get("B", [])
-    if balances:
-        log.debug("balance_event_received", assets=[b.get("a", "") for b in balances])
+    if not balances:
+        return
+    assets = [b.get("a", "") for b in balances]
+    log.info("balance_event_received", assets=assets)
+    global _debounce_task
+    if _debounce_task and not _debounce_task.done():
+        _debounce_task.cancel()
+    _debounce_task = asyncio.create_task(_debounced_snapshot())
