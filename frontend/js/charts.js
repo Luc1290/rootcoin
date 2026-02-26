@@ -46,14 +46,14 @@ const Charts = (() => {
             });
         }
 
-        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine };
-        _loadPriceHistory(positionId, symbol);
-
         const ro = new ResizeObserver(entries => {
             const w = entries[0].contentRect.width;
             if (w > 0) chart.applyOptions({ width: w });
         });
         ro.observe(el);
+
+        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, ro };
+        _loadPriceHistory(positionId, symbol);
     }
 
     function _isWinning(entry, currentPrice) {
@@ -155,6 +155,7 @@ const Charts = (() => {
         const active = new Set(activeIds.map(Number));
         for (const id of Object.keys(_posCharts)) {
             if (!active.has(Number(id))) {
+                if (_posCharts[id].ro) _posCharts[id].ro.disconnect();
                 _posCharts[id].chart.remove();
                 delete _posCharts[id];
             }
