@@ -173,8 +173,9 @@ async def _fill_usd_values(records: list[Balance]):
                     ),
                 )
             )
-            # Prefer USDC over USDT (first match wins since asset not yet in price_map)
-            for sym, price in result.all():
+            # Prefer USDC over USDT: sort so USDC symbols are processed first
+            rows = sorted(result.all(), key=lambda r: 0 if r[0].endswith("USDC") else 1)
+            for sym, price in rows:
                 asset = symbol_to_asset[sym]
                 if price and price > 0 and asset not in price_map:
                     price_map[asset] = price

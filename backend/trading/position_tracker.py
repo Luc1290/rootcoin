@@ -30,6 +30,13 @@ _recent_short_closes: dict[str, float] = {}
 _reconciled: bool = False
 _reconcile_task: asyncio.Task | None = None
 _periodic_reconcile_task: asyncio.Task | None = None
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro):
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 # --- Public API ---
@@ -300,9 +307,13 @@ async def _handle_buy(
         await _reduce_or_close(position, qty, price, fee_usd)
         return
 
-    # Check anti-false-LONG after SHORT close
+    # Check anti-false-LONG after SHORT close (+ cleanup expired entries)
+    now = _time.monotonic()
+    expired = [s for s, t in _recent_short_closes.items() if now - t >= SHORT_CLOSE_GRACE]
+    for s in expired:
+        del _recent_short_closes[s]
     last_close = _recent_short_closes.get(symbol, 0)
-    if _time.monotonic() - last_close < SHORT_CLOSE_GRACE:
+    if now - last_close < SHORT_CLOSE_GRACE:
         if qty * price < MIN_MARGIN_LONG_USD:
             log.info("ignoring_post_short_residual", symbol=symbol)
             return
@@ -366,7 +377,7 @@ async def _open_position(
         await session.refresh(pos)
     _positions[pos.id] = pos
     await ws_manager.subscribe_symbol(symbol)
-    asyncio.create_task(journal_snapshotter.capture_snapshot(
+    _fire_and_forget(journal_snapshotter.capture_snapshot(
         pos.id, "OPEN", symbol, side, price, qty,
     ))
     log.info("position_opened", symbol=symbol, side=side, price=str(price), qty=str(qty),
@@ -382,7 +393,7 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
     position.entry_quantity = (position.entry_quantity or Decimal("0")) + qty
     position.updated_at = _now()
     await _save_position(position)
-    asyncio.create_task(journal_snapshotter.capture_snapshot(
+    _fire_and_forget(journal_snapshotter.capture_snapshot(
         position.id, "DCA", position.symbol, position.side, price, qty,
     ))
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
@@ -413,7 +424,7 @@ async def _reduce_or_close(
         position.quantity = Decimal("0")
         position.updated_at = _now()
         await _save_position(position)
-        asyncio.create_task(journal_snapshotter.capture_snapshot(
+        _fire_and_forget(journal_snapshotter.capture_snapshot(
             position.id, "CLOSE", position.symbol, position.side, price, qty,
         ))
         del _positions[position.id]
@@ -421,7 +432,7 @@ async def _reduce_or_close(
         if position.side == "SHORT" and position.market_type != "SPOT":
             _recent_short_closes[position.symbol] = _time.monotonic()
         if position.market_type != "SPOT":
-            asyncio.create_task(
+            _fire_and_forget(
                 _sell_margin_residual(position.symbol, position.market_type, position.side)
             )
 
