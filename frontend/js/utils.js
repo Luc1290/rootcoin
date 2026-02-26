@@ -52,6 +52,14 @@ const Utils = (() => {
         };
     }
 
+    function fmtPriceCompact(val) {
+        const n = parseFloat(val);
+        if (!n) return '--';
+        if (n >= 1000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (n >= 1) return '$' + n.toFixed(2);
+        return '$' + n.toPrecision(4);
+    }
+
     function escHtml(s) {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
@@ -65,7 +73,7 @@ const Utils = (() => {
         return '#';
     }
 
-    return { timeAgo, timeAgoShort, fmtPrice, throttleRAF, throttle, escHtml, safeHref };
+    return { timeAgo, timeAgoShort, fmtPrice, fmtPriceCompact, throttleRAF, throttle, escHtml, safeHref };
 })();
 
 const BalanceStore = (() => {

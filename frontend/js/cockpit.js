@@ -91,7 +91,7 @@ const Cockpit = (() => {
                 const pctEl = row.querySelector('[data-field="pnl-pct"]');
                 const usdEl = row.querySelector('[data-field="pnl-usd"]');
 
-                if (priceEl) priceEl.textContent = _fmtPrice(p.current_price);
+                if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(p.current_price);
                 if (pctEl) {
                     pctEl.textContent = `${pnlSign}${pnl.toFixed(1)}%`;
                     pctEl.className = `text-sm font-bold tabular-nums ${pnlClass}`;
@@ -111,7 +111,7 @@ const Cockpit = (() => {
             const pnlSign = pnl >= 0 ? '+' : '';
             const sideClass = p.side === 'LONG' ? 'side-long' : 'side-short';
             const symbol = p.symbol.replace('USDC', '');
-            const price = _fmtPrice(p.current_price);
+            const price = Utils.fmtPriceCompact(p.current_price);
             const pnlUsd = parseFloat(p.pnl_usd) || 0;
             const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
             return `<div class="cockpit-position" data-pos-id="${p.id}" onclick="App.switchTab('positions')">
@@ -168,7 +168,7 @@ const Cockpit = (() => {
         const rows = _lastFills.slice(0, MAX_FILLS).map(f => {
             const symbol = f.symbol.replace('USDC', '');
             const sideClass = f.side === 'BUY' ? 'side-long' : 'side-short';
-            const price = _fmtPrice(f.price);
+            const price = Utils.fmtPriceCompact(f.price);
             return `<div class="flex items-center justify-between py-1.5">
                 <div class="flex items-center gap-2">
                     <span class="text-xs font-bold">${symbol}</span>
@@ -196,7 +196,7 @@ const Cockpit = (() => {
         const rows = alerts.slice(-3).reverse().map(w => {
             const sym = w.symbol.replace('USDC', '');
             const qty = _fmtQuoteQty(w.quote_qty);
-            const price = _fmtPrice(w.price);
+            const price = Utils.fmtPriceCompact(w.price);
             const ago = Utils.timeAgoShort(w.timestamp);
             const isBuy = w.side === 'BUY';
             const sideClass = isBuy ? 'side-long' : 'side-short';
@@ -220,14 +220,6 @@ const Cockpit = (() => {
     }
 
     // ── Helpers ──
-
-    function _fmtPrice(p) {
-        const n = parseFloat(p);
-        if (!n) return '--';
-        if (n >= 1000) return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 });
-        if (n >= 1) return '$' + n.toFixed(2);
-        return '$' + n.toPrecision(4);
-    }
 
     function _fmtQuoteQty(q) {
         const n = parseFloat(q);

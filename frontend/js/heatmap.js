@@ -83,7 +83,7 @@ const Heatmap = (() => {
         const bgColor = _changeColor(change);
         const textColor = Math.abs(change) > 3 ? '#fff' : (Math.abs(change) > 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)');
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
-        const price = _fmtPrice(asset.price);
+        const price = Utils.fmtPrice(asset.price);
 
         return `
         <div class="heatmap-tile" style="background:${bgColor}" title="${asset.symbol} — ${price}">
@@ -110,14 +110,6 @@ const Heatmap = (() => {
             const b = Math.round(20 + (68 - 20) * ratio);
             return `rgb(${r}, ${g}, ${b})`;
         }
-    }
-
-    function _fmtPrice(val) {
-        const n = parseFloat(val);
-        if (isNaN(n)) return val;
-        if (n >= 1000) return n.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
-        if (n >= 1) return n.toFixed(2);
-        return n.toFixed(4);
     }
 
     function startPolling() {
