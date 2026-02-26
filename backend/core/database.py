@@ -9,7 +9,16 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = Path(settings.database_path) if settings.database_path else ROOT_DIR / "data" / "rootcoin.db"
 DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"check_same_thread": False},
+)
+
+
+async def _set_wal_mode(conn):
+    await conn.execute(text("PRAGMA journal_mode=WAL"))
+    await conn.execute(text("PRAGMA synchronous=NORMAL"))
 
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -37,6 +46,7 @@ async def init_db():
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
+        await _set_wal_mode(conn)
         await conn.run_sync(Base.metadata.create_all)
         for table, column, col_type in _MIGRATIONS:
             try:

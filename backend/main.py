@@ -34,44 +34,64 @@ FRONTEND_DIR = ROOT_DIR / "frontend"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("rootcoin_starting")
-    await init_db()
-    await init_client()
-    await symbol_filters.init_filters()
-    await ws_manager.start()
-    await event_recorder.start()
-    await position_tracker.start()
-    await price_recorder.start()
-    await balance_tracker.start()
-    await kline_manager.start()
-    await macro_tracker.start()
-    await whale_tracker.start()
-    await orderbook_tracker.start()
-    await heatmap_manager.start()
-    await market_analyzer.start()
-    await opportunity_detector.start()
-    await news_tracker.start()
-    await health_collector.start()
+    started: list[str] = []
+    try:
+        await init_db(); started.append("db")
+        await init_client(); started.append("client")
+        await symbol_filters.init_filters(); started.append("filters")
+        await ws_manager.start(); started.append("ws")
+        await event_recorder.start(); started.append("events")
+        await position_tracker.start(); started.append("positions")
+        await price_recorder.start(); started.append("prices")
+        await balance_tracker.start(); started.append("balances")
+        await kline_manager.start(); started.append("klines")
+        await macro_tracker.start(); started.append("macro")
+        await whale_tracker.start(); started.append("whales")
+        await orderbook_tracker.start(); started.append("orderbook")
+        await heatmap_manager.start(); started.append("heatmap")
+        await market_analyzer.start(); started.append("analyzer")
+        await opportunity_detector.start(); started.append("opportunities")
+        await news_tracker.start(); started.append("news")
+        await health_collector.start(); started.append("health")
+    except Exception:
+        log.error("startup_failed", started=started, exc_info=True)
+        await _shutdown(started)
+        raise
     log.info("rootcoin_started")
     yield
     log.info("rootcoin_stopping")
-    await health_collector.stop()
-    await news_tracker.stop()
-    await opportunity_detector.stop()
-    await market_analyzer.stop()
-    await heatmap_manager.stop()
-    await orderbook_tracker.stop()
-    await whale_tracker.stop()
-    await macro_tracker.stop()
-    await kline_manager.stop()
-    await balance_tracker.stop()
-    await price_recorder.stop()
-    await position_tracker.stop()
-    await event_recorder.stop()
-    await ws_manager.stop()
-    await symbol_filters.stop()
-    await close_client()
-    await close_db()
+    await _shutdown(started)
     log.info("rootcoin_stopped")
+
+
+_SHUTDOWN_ORDER = [
+    ("health", health_collector.stop),
+    ("news", news_tracker.stop),
+    ("opportunities", opportunity_detector.stop),
+    ("analyzer", market_analyzer.stop),
+    ("heatmap", heatmap_manager.stop),
+    ("orderbook", orderbook_tracker.stop),
+    ("whales", whale_tracker.stop),
+    ("macro", macro_tracker.stop),
+    ("klines", kline_manager.stop),
+    ("balances", balance_tracker.stop),
+    ("prices", price_recorder.stop),
+    ("positions", position_tracker.stop),
+    ("events", event_recorder.stop),
+    ("ws", ws_manager.stop),
+    ("filters", symbol_filters.stop),
+    ("client", close_client),
+    ("db", close_db),
+]
+
+
+async def _shutdown(started: list[str]):
+    for name, stop_fn in _SHUTDOWN_ORDER:
+        if name in started:
+            try:
+                await stop_fn()
+            except Exception:
+                log.error("shutdown_error", module=name, exc_info=True)
 
 
 app = FastAPI(title="RootCoin", lifespan=lifespan)

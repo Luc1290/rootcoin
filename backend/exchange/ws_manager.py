@@ -288,6 +288,7 @@ class WSManager:
         while self._running:
             try:
                 streams = [f"{s.lower()}@ticker" for s in self._subscribed_symbols if s]
+                streams.extend(self._subscribed_klines)
                 if not streams:
                     await asyncio.sleep(5)
                     continue

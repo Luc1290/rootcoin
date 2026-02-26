@@ -12,6 +12,7 @@ from backend.core.config import settings
 log = structlog.get_logger()
 
 STALE_THRESHOLD = 900
+_API_SEMAPHORE = asyncio.Semaphore(5)
 
 # Signal weights
 WEIGHTS = {
@@ -95,11 +96,12 @@ async def _compute_all():
     symbols = _get_symbols()
 
     async def _safe_analyze(symbol: str) -> tuple[str, dict | None]:
-        try:
-            return symbol, await _analyze_symbol(symbol)
-        except Exception:
-            log.warning("analysis_symbol_failed", symbol=symbol, exc_info=True)
-            return symbol, None
+        async with _API_SEMAPHORE:
+            try:
+                return symbol, await _analyze_symbol(symbol)
+            except Exception:
+                log.warning("analysis_symbol_failed", symbol=symbol, exc_info=True)
+                return symbol, None
 
     results = await asyncio.gather(*[_safe_analyze(s) for s in symbols])
     for symbol, analysis in results:
