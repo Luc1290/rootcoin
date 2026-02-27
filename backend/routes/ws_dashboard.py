@@ -31,7 +31,7 @@ async def _broadcast(message: dict):
         return
     raw = json.dumps(message)
     dead = set()
-    for ws in _clients:
+    for ws in list(_clients):
         try:
             await ws.send_text(raw)
         except Exception:

@@ -114,6 +114,7 @@ async def _reconcile_positions():
         log.warning("ticker_fetch_failed_for_reconcile", exc_info=True)
 
     found_keys: set[tuple[str, str]] = set()
+    fetched_market_types: set[str] = set()
 
     # Spot
     try:
@@ -130,6 +131,7 @@ async def _reconcile_positions():
                 continue
             found_keys.add((symbol, "SPOT"))
             await _reconcile_single(symbol, "LONG", total, "SPOT")
+        fetched_market_types.add("SPOT")
     except Exception:
         log.error("reconcile_spot_failed", exc_info=True)
 
@@ -153,6 +155,7 @@ async def _reconcile_positions():
                     continue
                 found_keys.add((symbol, "CROSS_MARGIN"))
                 await _reconcile_single(symbol, "LONG", total, "CROSS_MARGIN")
+        fetched_market_types.add("CROSS_MARGIN")
     except Exception:
         log.error("reconcile_cross_margin_failed", exc_info=True)
 
@@ -176,6 +179,7 @@ async def _reconcile_positions():
                     continue
                 found_keys.add((symbol, "ISOLATED_MARGIN"))
                 await _reconcile_single(symbol, "LONG", total, "ISOLATED_MARGIN")
+        fetched_market_types.add("ISOLATED_MARGIN")
     except Exception:
         log.error("reconcile_isolated_margin_failed", exc_info=True)
 
@@ -184,6 +188,15 @@ async def _reconcile_positions():
         if pos.id not in snapshot_ids:
             continue
         if pos.is_active and (pos.symbol, pos.market_type) not in found_keys:
+            if pos.market_type not in fetched_market_types:
+                log.warning("skipping_stale_check_fetch_failed",
+                            symbol=pos.symbol, market_type=pos.market_type)
+                continue
+            still_exists = await _verify_position_on_binance(pos)
+            if still_exists:
+                log.warning("stale_position_still_exists_on_binance",
+                            symbol=pos.symbol, market_type=pos.market_type)
+                continue
             pos.is_active = False
             pos.quantity = Decimal("0")
             if not pos.closed_at:
@@ -197,6 +210,45 @@ async def _reconcile_positions():
         await ws_manager.subscribe_symbol(symbol)
 
     log.info("reconciliation_positions_done", count=len(tracker._positions))
+
+
+async def _verify_position_on_binance(pos) -> bool:
+    tracker = _tracker()
+    base_asset = tracker._extract_base_asset(pos.symbol)
+    try:
+        if pos.market_type == "SPOT":
+            for bal in await binance_client.get_spot_balances():
+                if bal["asset"] == base_asset:
+                    total = Decimal(bal["free"]) + Decimal(bal["locked"])
+                    if total > 0:
+                        price = pos.current_price or pos.entry_price
+                        if not price or not tracker._is_dust(total, price):
+                            return True
+                    break
+        elif pos.market_type == "CROSS_MARGIN":
+            for bal in await binance_client.get_cross_margin_balances():
+                if bal["asset"] == base_asset:
+                    borrowed = Decimal(bal.get("borrowed", "0"))
+                    free = Decimal(bal.get("free", "0"))
+                    locked = Decimal(bal.get("locked", "0"))
+                    if borrowed > 0 or free > 0 or locked > 0:
+                        return True
+                    break
+        elif pos.market_type == "ISOLATED_MARGIN":
+            for pair in await binance_client.get_isolated_margin_balances():
+                if pair.get("symbol") == pos.symbol:
+                    base = pair.get("baseAsset", {})
+                    borrowed = Decimal(base.get("borrowed", "0"))
+                    free = Decimal(base.get("free", "0"))
+                    locked = Decimal(base.get("locked", "0"))
+                    if borrowed > 0 or free > 0 or locked > 0:
+                        return True
+                    break
+    except Exception:
+        log.warning("verify_position_on_binance_failed", symbol=pos.symbol,
+                    market_type=pos.market_type, exc_info=True)
+        return True  # assume still exists if verification fails
+    return False
 
 
 async def _reconcile_single(
