@@ -9,6 +9,7 @@ import structlog
 import websockets
 
 from backend.core.config import settings
+from backend.exchange.binance_client import get_client
 
 log = structlog.get_logger()
 
@@ -16,13 +17,60 @@ BINANCE_WS_URL = "wss://stream.binance.com:9443"
 MAX_ALERTS = 50
 MAX_BACKOFF = 60
 STABLE_CONNECTION_RESET = 300
+BACKFILL_LIMIT = 1000
 
 _whale_alerts: deque = deque(maxlen=MAX_ALERTS)
 _stream_task: asyncio.Task | None = None
 
 
+async def _backfill():
+    """Fetch recent aggTrades via REST to recover whale alerts after restart."""
+    min_qty = Decimal(str(settings.whale_min_quote_qty))
+    symbols = settings.watchlist
+    if not symbols:
+        return
+
+    client = await get_client()
+    found = []
+
+    for symbol in symbols:
+        try:
+            trades = await client.get_aggregate_trades(
+                symbol=symbol, limit=BACKFILL_LIMIT,
+            )
+            for t in trades:
+                price = Decimal(t["p"])
+                qty = Decimal(t["q"])
+                quote_qty = price * qty
+                if quote_qty < min_qty:
+                    continue
+                side = "SELL" if t["m"] else "BUY"
+                ts = datetime.fromtimestamp(t["T"] / 1000, tz=timezone.utc)
+                found.append({
+                    "trade_id": t["a"],
+                    "symbol": symbol.upper(),
+                    "side": side,
+                    "price": str(price),
+                    "quantity": str(qty),
+                    "quote_qty": str(round(quote_qty, 2)),
+                    "timestamp": ts.isoformat(),
+                    "_ts": t["T"],
+                })
+        except Exception:
+            log.warning("whale_backfill_error", symbol=symbol, exc_info=True)
+
+    found.sort(key=lambda x: x["_ts"])
+    for alert in found:
+        del alert["_ts"]
+        _whale_alerts.appendleft(alert)
+
+    if found:
+        log.info("whale_backfill_done", count=len(found), symbols=symbols)
+
+
 async def start():
     global _stream_task
+    await _backfill()
     _stream_task = asyncio.create_task(_run_stream())
     log.info("whale_tracker_started")
 
