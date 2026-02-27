@@ -158,6 +158,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 
 | Fichier | Responsabilite | Exports cles |
 |---------|---------------|--------------|
+| `pnl.py` | Calculs PnL centralises : brut, unrealized, realized, fees, win/loss. Fonctions pures Decimal, zero dependance ORM | `gross_pnl()`, `unrealized_pnl()`, `net_realized_pnl()`, `realized_pnl_pct()`, `total_fees()`, `estimated_exit_fees()`, `is_win()`, `ESTIMATED_EXIT_FEE_RATE` |
 | `position_tracker.py` | State machine positions : handle fills, open/DCA/reduce/close. Delegue les ops Order DB a `order_manager` | `_positions` dict, `start()`, `stop()`, `get_positions()` |
 | `position_reconciler.py` | Reconciliation : scan Binance au demarrage, backfill trades, verification order refs, reconciliation periodique 30min | `fast_load_from_db()`, `background_reconcile()`, `periodic_reconcile_loop()` |
 | `order_manager.py` | Placement SL/TP/OCO, close position, cancel orders (individuels + OCO), cleanup stale orders, ensure order records | `place_stop_loss()`, `place_take_profit()`, `place_oco()`, `close_position()`, `cancel_position_orders()`, `cleanup_stale_orders()`, `ensure_oco_order_record()`, `ensure_order_record()`, `mark_order_status()`, `mark_oco_done()` |

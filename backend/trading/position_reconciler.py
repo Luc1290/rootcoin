@@ -6,7 +6,7 @@ import structlog
 from sqlalchemy import select
 
 from backend.exchange import binance_client, ws_manager
-from backend.trading import order_manager
+from backend.trading import order_manager, pnl
 from backend.core.config import settings
 from backend.core.database import async_session
 from backend.core.models import Position, Trade
@@ -88,10 +88,10 @@ async def _fix_closed_positions():
             if not pos.closed_at:
                 pos.closed_at = pos.updated_at or tracker._now()
             if pos.realized_pnl_pct is None:
-                entry_cost = (pos.entry_quantity or pos.quantity) * pos.entry_price
-                total_fees = (pos.entry_fees_usd or Decimal("0")) + (pos.exit_fees_usd or Decimal("0"))
-                net_pnl = pos.realized_pnl - total_fees
-                pos.realized_pnl_pct = (net_pnl / entry_cost * 100) if entry_cost > 0 else Decimal("0")
+                pos.realized_pnl_pct = pnl.realized_pnl_pct(
+                    pos.realized_pnl, pos.entry_fees_usd, pos.exit_fees_usd,
+                    pos.entry_quantity, pos.quantity, pos.entry_price,
+                )
             await session.merge(pos)
             log.info("fixed_closed_position", symbol=pos.symbol, id=pos.id,
                      pnl_pct=str(pos.realized_pnl_pct))

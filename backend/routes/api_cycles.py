@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
-from backend.trading import position_tracker
+from backend.trading import pnl, position_tracker
 from backend.core.database import async_session
 from backend.core.models import Position
 from backend.routes.position_helpers import format_duration
@@ -100,9 +100,10 @@ async def get_cycle_stats(symbol: str | None = Query(None)):
         if not closed:
             return {"total_cycles": 0, "wins": 0, "losses": 0, "win_rate": "0", "total_pnl": "0", "avg_pnl": "0"}
 
-        total_fees = sum((p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0")) for p in closed)
-        total_gross = sum(p.realized_pnl for p in closed if p.realized_pnl is not None)
-        total_net = total_gross - total_fees
+        total_net = sum(
+            pnl.net_realized_pnl(p.realized_pnl, p.entry_fees_usd, p.exit_fees_usd)
+            for p in closed if p.realized_pnl is not None
+        )
         wins = [p for p in closed if p.realized_pnl_pct is not None and p.realized_pnl_pct > 0]
         losses = [p for p in closed if p.realized_pnl_pct is not None and p.realized_pnl_pct <= 0]
 

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from backend.core.database import async_session
 from backend.core.models import Balance, Position, TradeSnapshot
 from backend.routes.position_helpers import format_duration
+from backend.trading import pnl
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 
@@ -46,8 +47,7 @@ async def get_calendar_data(
         day_key = (closed + offset_delta).strftime("%Y-%m-%d")
         if day_key not in daily:
             daily[day_key] = {"pnl": Decimal("0"), "trades": 0, "wins": 0}
-        fees = (p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0"))
-        net_pnl = p.realized_pnl - fees
+        net_pnl = pnl.net_realized_pnl(p.realized_pnl, p.entry_fees_usd, p.exit_fees_usd)
         daily[day_key]["pnl"] += net_pnl
         daily[day_key]["trades"] += 1
         if p.realized_pnl_pct and p.realized_pnl_pct > 0:
@@ -109,6 +109,18 @@ async def get_equity_curve(
         })
 
     current_dd = points[-1]["drawdown_pct"] if points else "0"
+
+    # Compress: keep only points where value changed by >= $1
+    if len(points) > 2:
+        compressed = [points[0]]
+        last_val = float(points[0]["total_usd"])
+        for p in points[1:-1]:
+            val = float(p["total_usd"])
+            if abs(val - last_val) >= 1.0:
+                compressed.append(p)
+                last_val = val
+        compressed.append(points[-1])
+        points = compressed
 
     max_points = 1000
     if len(points) > max_points:
@@ -208,6 +220,7 @@ async def get_journal_entries(
 @router.get("/streaks")
 async def get_streaks():
     now = datetime.now(timezone.utc)
+    cutoff_24h = now - timedelta(hours=24)
     cutoff_30d = now - timedelta(days=30)
 
     async with async_session() as session:
@@ -242,6 +255,8 @@ async def get_streaks():
         return {
             "current_streak": 0,
             "current_streak_type": "win",
+            "day_pnl": "0",
+            "day_trades": 0,
             "month_win_rate": 0,
             "month_trades": 0,
             "month_wins": 0,
@@ -252,8 +267,7 @@ async def get_streaks():
         }
 
     def _is_win(p: Position) -> bool:
-        fees = (p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0"))
-        return (p.realized_pnl - fees) > 0
+        return pnl.is_win(p.realized_pnl, p.entry_fees_usd, p.exit_fees_usd)
 
     # Current streak (positions already sorted DESC)
     current_type = _is_win(all_positions[0])
@@ -264,7 +278,9 @@ async def get_streaks():
         else:
             break
 
-    # Last 30 days stats
+    # Last 24h + 30 days stats
+    day_trades = 0
+    day_pnl = Decimal("0")
     month_trades = 0
     month_wins = 0
     month_pnl = Decimal("0")
@@ -274,12 +290,14 @@ async def get_streaks():
             closed = closed.replace(tzinfo=timezone.utc)
         if closed < cutoff_30d:
             break
+        net = pnl.net_realized_pnl(p.realized_pnl, p.entry_fees_usd, p.exit_fees_usd)
         month_trades += 1
-        fees = (p.entry_fees_usd or Decimal("0")) + (p.exit_fees_usd or Decimal("0"))
-        net = p.realized_pnl - fees
         month_pnl += net
         if net > 0:
             month_wins += 1
+        if closed >= cutoff_24h:
+            day_trades += 1
+            day_pnl += net
 
     month_win_rate = round(month_wins / month_trades * 100, 1) if month_trades > 0 else 0
 
@@ -320,6 +338,8 @@ async def get_streaks():
     return {
         "current_streak": current_streak,
         "current_streak_type": "win" if current_type else "loss",
+        "day_pnl": str(round(day_pnl, 2)),
+        "day_trades": day_trades,
         "month_win_rate": month_win_rate,
         "month_trades": month_trades,
         "month_wins": month_wins,

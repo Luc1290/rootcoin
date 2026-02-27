@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from backend.core.config import settings
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 DB_PATH = Path(settings.database_path) if settings.database_path else ROOT_DIR / "data" / "rootcoin.db"
 DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 

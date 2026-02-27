@@ -3,14 +3,17 @@ const Cockpit = (() => {
     let _analysis = null;
     let _lastFills = [];
     let _prevPositionKeys = null;
+    let _dayPnl = null;
+    let _dayTrades = 0;
     const MAX_FILLS = 3;
 
     async function load() {
         try {
-            const [, anaResp, oppResp] = await Promise.all([
+            const [, anaResp, oppResp, streaksResp] = await Promise.all([
                 BalanceStore.load(),
                 fetch('/api/analysis'),
                 fetch('/api/opportunities'),
+                fetch('/api/journal/streaks'),
             ]);
             if (anaResp.ok) {
                 _analysis = await anaResp.json();
@@ -18,6 +21,11 @@ const Cockpit = (() => {
             if (oppResp.ok) {
                 const oppData = await oppResp.json();
                 Opportunities.update(oppData.opportunities || [], true);
+            }
+            if (streaksResp.ok) {
+                const s = await streaksResp.json();
+                _dayPnl = parseFloat(s.day_pnl) || 0;
+                _dayTrades = s.day_trades || 0;
             }
             render();
             Charts.createCockpitChart('cockpit-portfolio-chart');
@@ -44,12 +52,22 @@ const Cockpit = (() => {
         const portfolioTotal = BalanceStore.getTotal();
         const portfolioStr = portfolioTotal !== null ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
+        const dayPnlClass = _dayPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const dayPnlSign = _dayPnl >= 0 ? '+' : '';
+        const dayLabel = _dayPnl !== null ? `${dayPnlSign}$${Math.abs(_dayPnl).toFixed(2)}` : '--';
+        const dayTradesLabel = _dayTrades > 0 ? ` (${_dayTrades})` : '';
+
         const totalSpan = el.querySelector('[data-field="total"]');
         const pnlSpan = el.querySelector('[data-field="pnl"]');
         if (totalSpan && pnlSpan) {
             totalSpan.textContent = portfolioStr;
             pnlSpan.textContent = `${pnlSign}$${Math.abs(totalPnl).toFixed(2)}`;
             pnlSpan.className = `text-base font-bold tabular-nums ${pnlClass}`;
+            const daySpan = el.querySelector('[data-field="day-pnl"]');
+            if (daySpan) {
+                daySpan.textContent = dayLabel + dayTradesLabel;
+                daySpan.className = `text-base font-bold tabular-nums ${dayPnlClass}`;
+            }
             return;
         }
 
@@ -62,6 +80,10 @@ const Cockpit = (() => {
             <div class="flex items-center justify-between mt-1">
                 <span class="text-sm text-gray-400">PnL ouvert</span>
                 <span class="text-base font-bold tabular-nums ${pnlClass}" data-field="pnl">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+                <span class="text-sm text-gray-400">PnL 24h</span>
+                <span class="text-base font-bold tabular-nums ${dayPnlClass}" data-field="day-pnl">${dayLabel}${dayTradesLabel}</span>
             </div>
             <div id="cockpit-portfolio-chart" style="height:80px;width:100%;margin-top:8px"></div>
         </div>`;

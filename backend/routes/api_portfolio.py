@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Query
 from sqlalchemy import func, select
@@ -7,6 +8,23 @@ from backend.core.database import async_session
 from backend.core.models import Balance
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
+
+CHANGE_THRESHOLD = Decimal("1")  # min $1 change to keep a point
+
+
+def _compress(rows, threshold=CHANGE_THRESHOLD):
+    """Keep only points where total_usd changed significantly."""
+    if len(rows) <= 2:
+        return rows
+    out = [rows[0]]
+    last_val = rows[0].total_usd or Decimal("0")
+    for row in rows[1:-1]:
+        val = row.total_usd or Decimal("0")
+        if abs(val - last_val) >= threshold:
+            out.append(row)
+            last_val = val
+    out.append(rows[-1])
+    return out
 
 
 @router.get("/history")
@@ -27,6 +45,8 @@ async def get_portfolio_history(
             .order_by(Balance.snapshot_at.asc())
         )
         rows = result.all()
+
+    rows = _compress(rows)
 
     if len(rows) > limit:
         step = len(rows) / limit

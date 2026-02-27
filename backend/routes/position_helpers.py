@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from backend.core.database import async_session
 from backend.core.models import Order
+from backend.trading.pnl import estimated_exit_fees
 
 
 def format_duration(total_secs: int) -> str:
@@ -54,7 +55,7 @@ def pos_to_dict(pos, order_prices=None) -> dict:
     current = pos.current_price or Decimal("0")
     qty = pos.quantity or Decimal("0")
     entry_fees = pos.entry_fees_usd or Decimal("0")
-    exit_fees_est = qty * current * Decimal("0.001")
+    exit_fees_est = estimated_exit_fees(qty, current)
     prices = (order_prices or {}).get(pos.id, {})
 
     return {

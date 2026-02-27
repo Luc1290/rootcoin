@@ -7,7 +7,7 @@ import structlog
 from sqlalchemy import select
 
 from backend.exchange import binance_client, ws_manager
-from backend.trading import order_manager
+from backend.trading import order_manager, pnl
 from backend.trading import position_reconciler
 from backend.services import journal_snapshotter
 from backend.core.config import settings
@@ -20,7 +20,6 @@ log = structlog.get_logger()
 DUST_THRESHOLD_USD = Decimal("5")
 MIN_MARGIN_LONG_USD = Decimal("50")
 SHORT_CLOSE_GRACE = 300
-ESTIMATED_EXIT_FEE_RATE = Decimal("0.001")  # 0.1% taker fee
 RESIDUAL_SELL_THRESHOLD_USD = Decimal("15")
 RESIDUAL_SELL_RETRIES = 3
 RESIDUAL_SELL_DELAY = 2
@@ -99,23 +98,6 @@ async def _save_position(position: Position):
     async with async_session() as session:
         await session.merge(position)
         await session.commit()
-
-
-def _compute_pnl(pos: Position, price: Decimal) -> tuple[Decimal, Decimal]:
-    if pos.entry_price <= 0:
-        return Decimal("0"), Decimal("0")
-    if pos.side == "LONG":
-        gross = (price - pos.entry_price) * pos.quantity
-    else:
-        gross = (pos.entry_price - price) * pos.quantity
-
-    entry_fees = pos.entry_fees_usd or Decimal("0")
-    exit_fees_est = pos.quantity * price * ESTIMATED_EXIT_FEE_RATE
-    pnl_usd = gross - entry_fees - exit_fees_est
-
-    cost = pos.entry_price * pos.quantity
-    pnl_pct = (pnl_usd / cost * 100) if cost > 0 else Decimal("0")
-    return pnl_usd, pnl_pct
 
 
 async def _commission_to_usd(commission: Decimal, commission_asset: str, fill_price: Decimal, symbol: str) -> Decimal:
@@ -403,10 +385,7 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
 async def _reduce_or_close(
     position: Position, qty: Decimal, price: Decimal, fee_usd: Decimal = Decimal("0"),
 ):
-    if position.side == "LONG":
-        realized = (price - position.entry_price) * qty
-    else:
-        realized = (position.entry_price - price) * qty
+    realized = pnl.gross_pnl(position.side, position.entry_price, price, qty)
 
     position.realized_pnl = (position.realized_pnl or Decimal("0")) + realized
     position.exit_fees_usd = (position.exit_fees_usd or Decimal("0")) + fee_usd
@@ -415,10 +394,14 @@ async def _reduce_or_close(
     new_qty = position.quantity - qty
 
     if _is_dust(new_qty, price):
-        entry_cost = (position.entry_quantity or position.quantity) * position.entry_price
-        total_fees = (position.entry_fees_usd or Decimal("0")) + position.exit_fees_usd
-        net_pnl = position.realized_pnl - total_fees
-        position.realized_pnl_pct = (net_pnl / entry_cost * 100) if entry_cost > 0 else Decimal("0")
+        position.realized_pnl_pct = pnl.realized_pnl_pct(
+            position.realized_pnl, position.entry_fees_usd,
+            position.exit_fees_usd, position.entry_quantity,
+            position.quantity, position.entry_price,
+        )
+        net_pnl = pnl.net_realized_pnl(
+            position.realized_pnl, position.entry_fees_usd, position.exit_fees_usd,
+        )
         position.closed_at = _now()
         position.is_active = False
         position.quantity = Decimal("0")
@@ -544,7 +527,9 @@ async def _handle_price_update(msg: dict):
     for pos in _positions.values():
         if pos.symbol == symbol and pos.is_active:
             pos.current_price = price
-            pos.pnl_usd, pos.pnl_pct = _compute_pnl(pos, price)
+            pos.pnl_usd, pos.pnl_pct = pnl.unrealized_pnl(
+                pos.side, pos.entry_price, price, pos.quantity, pos.entry_fees_usd,
+            )
 
 
 # --- Record trade to DB ---
