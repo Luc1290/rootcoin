@@ -30,6 +30,7 @@ const Analysis = (() => {
             document.getElementById('analysis-levels').innerHTML = '';
             document.getElementById('analysis-macro').innerHTML = '';
             document.getElementById('analysis-alerts').innerHTML = '';
+            document.getElementById('analysis-whale').innerHTML = '';
             return;
         }
         document.getElementById('analysis-empty').classList.add('hidden');
@@ -46,6 +47,7 @@ const Analysis = (() => {
         _renderLevels(analysis);
         _renderMacro(_data.macro);
         _renderAlerts(analysis);
+        _renderWhales();
         _renderNews();
     }
 
@@ -264,7 +266,7 @@ const Analysis = (() => {
 
     function _renderAlerts(analysis) {
         const el = document.getElementById('analysis-alerts');
-        const alerts = analysis.alerts || [];
+        const alerts = (analysis.alerts || []).filter(a => a.type !== 'whale');
 
         if (!alerts.length) {
             el.innerHTML = '';
@@ -275,7 +277,6 @@ const Analysis = (() => {
             const cls = `alert-chip alert-chip-${a.type}`;
             const icon = a.type === 'conflict' ? '\u26A0'
                 : a.type === 'aligned' ? '\u2705'
-                : a.type === 'whale' ? '\uD83D\uDC0B'
                 : '\u2139';
             return `<span class="${cls}" title="${Utils.escHtml(a.message)}">${icon} ${Utils.escHtml(a.message)}</span>`;
         }).join('');
@@ -284,6 +285,43 @@ const Analysis = (() => {
         <div class="card">
             <div class="metric-label mb-2">Alertes</div>
             <div class="flex flex-wrap gap-1.5">${chips}</div>
+        </div>`;
+    }
+
+    // ── Block 4b: Whales ──────────────────────────────────
+
+    function _renderWhales() {
+        const el = document.getElementById('analysis-whale');
+        const allWhales = _data && _data.whale_alerts ? _data.whale_alerts : [];
+        const whales = allWhales.filter(w => w.symbol === _currentSymbol).slice(-10).reverse();
+
+        if (!whales.length) {
+            el.innerHTML = '';
+            return;
+        }
+
+        const rows = whales.map(w => {
+            const sym = w.symbol.replace('USDC', '');
+            const qty = Utils.fmtQuoteQty(w.quote_qty);
+            const price = Utils.fmtPriceCompact(w.price);
+            const ago = Utils.timeAgoShort(w.timestamp);
+            const isBuy = w.side === 'BUY';
+            const sideClass = isBuy ? 'side-long' : 'side-short';
+            const label = isBuy ? 'Achat massif' : 'Vente massive';
+            return `<div class="flex items-center justify-between py-1.5">
+                <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="text-xs">\uD83D\uDC0B</span>
+                    <span class="cockpit-side ${sideClass}">${label}</span>
+                    <span class="text-xs text-gray-300"><b>${qty}</b> de ${sym} \u00e0 ${price}</span>
+                </div>
+                <span class="text-xs text-gray-500 shrink-0 ml-2">${ago}</span>
+            </div>`;
+        }).join('');
+
+        el.innerHTML = `
+        <div class="card">
+            <div class="metric-label mb-2">Whale alerts</div>
+            ${rows}
         </div>`;
     }
 

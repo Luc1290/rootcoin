@@ -73,7 +73,15 @@ const Utils = (() => {
         return '#';
     }
 
-    return { timeAgo, timeAgoShort, fmtPrice, fmtPriceCompact, throttleRAF, throttle, escHtml, safeHref };
+    function fmtQuoteQty(q) {
+        const n = parseFloat(q);
+        if (!n) return '--';
+        if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K';
+        return '$' + n.toFixed(0);
+    }
+
+    return { timeAgo, timeAgoShort, fmtPrice, fmtPriceCompact, throttleRAF, throttle, escHtml, safeHref, fmtQuoteQty };
 })();
 
 const BalanceStore = (() => {

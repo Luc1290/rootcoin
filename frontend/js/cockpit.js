@@ -215,9 +215,9 @@ const Cockpit = (() => {
             return;
         }
 
-        const rows = alerts.slice(-3).reverse().map(w => {
+        const rows = alerts.slice(-10).reverse().map(w => {
             const sym = w.symbol.replace('USDC', '');
-            const qty = _fmtQuoteQty(w.quote_qty);
+            const qty = Utils.fmtQuoteQty(w.quote_qty);
             const price = Utils.fmtPriceCompact(w.price);
             const ago = Utils.timeAgoShort(w.timestamp);
             const isBuy = w.side === 'BUY';
@@ -242,14 +242,6 @@ const Cockpit = (() => {
     }
 
     // ── Helpers ──
-
-    function _fmtQuoteQty(q) {
-        const n = parseFloat(q);
-        if (!n) return '--';
-        if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
-        if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K';
-        return '$' + n.toFixed(0);
-    }
 
     // ── WS real-time updates ──
 
