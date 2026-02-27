@@ -18,46 +18,81 @@ MAX_ALERTS = 50
 MAX_BACKOFF = 60
 STABLE_CONNECTION_RESET = 300
 BACKFILL_LIMIT = 1000
+BACKFILL_MAX_PAGES = 20
+BACKFILL_LOOKBACK_MS = 4 * 3600 * 1000
 
 _whale_alerts: deque = deque(maxlen=MAX_ALERTS)
 _stream_task: asyncio.Task | None = None
 
 
+async def _backfill_symbol(client, symbol, min_qty, cutoff_ms):
+    found = []
+    seen_ids = set()
+    oldest_id = None
+
+    for _ in range(BACKFILL_MAX_PAGES):
+        kwargs = {"symbol": symbol, "limit": BACKFILL_LIMIT}
+        if oldest_id is not None:
+            kwargs["fromId"] = max(1, oldest_id - BACKFILL_LIMIT)
+
+        trades = await client.get_aggregate_trades(**kwargs)
+        if not trades:
+            break
+
+        for t in trades:
+            tid = t["a"]
+            if tid in seen_ids or t["T"] < cutoff_ms:
+                continue
+            seen_ids.add(tid)
+            price = Decimal(t["p"])
+            qty = Decimal(t["q"])
+            quote_qty = price * qty
+            if quote_qty < min_qty:
+                continue
+            side = "SELL" if t["m"] else "BUY"
+            ts = datetime.fromtimestamp(t["T"] / 1000, tz=timezone.utc)
+            found.append({
+                "trade_id": tid,
+                "symbol": symbol.upper(),
+                "side": side,
+                "price": str(price),
+                "quantity": str(qty),
+                "quote_qty": str(round(quote_qty, 2)),
+                "timestamp": ts.isoformat(),
+                "_ts": t["T"],
+            })
+
+        new_oldest = trades[0]["a"]
+        if new_oldest == oldest_id:
+            break
+        oldest_id = new_oldest
+
+        if trades[0]["T"] <= cutoff_ms:
+            break
+
+    return found
+
+
 async def _backfill():
-    """Fetch recent aggTrades via REST to recover whale alerts after restart."""
     min_qty = Decimal(str(settings.whale_min_quote_qty))
     symbols = settings.watchlist
     if not symbols:
         return
 
     client = await get_client()
-    found = []
+    cutoff_ms = int(time.time() * 1000) - BACKFILL_LOOKBACK_MS
 
-    for symbol in symbols:
-        try:
-            trades = await client.get_aggregate_trades(
-                symbol=symbol, limit=BACKFILL_LIMIT,
-            )
-            for t in trades:
-                price = Decimal(t["p"])
-                qty = Decimal(t["q"])
-                quote_qty = price * qty
-                if quote_qty < min_qty:
-                    continue
-                side = "SELL" if t["m"] else "BUY"
-                ts = datetime.fromtimestamp(t["T"] / 1000, tz=timezone.utc)
-                found.append({
-                    "trade_id": t["a"],
-                    "symbol": symbol.upper(),
-                    "side": side,
-                    "price": str(price),
-                    "quantity": str(qty),
-                    "quote_qty": str(round(quote_qty, 2)),
-                    "timestamp": ts.isoformat(),
-                    "_ts": t["T"],
-                })
-        except Exception:
-            log.warning("whale_backfill_error", symbol=symbol, exc_info=True)
+    results = await asyncio.gather(
+        *[_backfill_symbol(client, s, min_qty, cutoff_ms) for s in symbols],
+        return_exceptions=True,
+    )
+
+    found = []
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            log.warning("whale_backfill_error", symbol=symbols[i], error=str(r))
+        else:
+            found.extend(r)
 
     found.sort(key=lambda x: x["_ts"])
     for alert in found:
@@ -65,7 +100,7 @@ async def _backfill():
         _whale_alerts.appendleft(alert)
 
     if found:
-        log.info("whale_backfill_done", count=len(found), symbols=symbols)
+        log.info("whale_backfill_done", count=len(found))
 
 
 async def start():
