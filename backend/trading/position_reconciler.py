@@ -139,11 +139,14 @@ async def _reconcile_positions():
     try:
         for bal in await binance_client.get_cross_margin_balances():
             asset = bal["asset"]
-            if asset in stables or asset in ignored:
+            if asset in stables:
                 continue
             free = Decimal(bal.get("free", "0"))
             locked = Decimal(bal.get("locked", "0"))
             borrowed = Decimal(bal.get("borrowed", "0"))
+            # Never ignore assets with debt (active SHORT)
+            if asset in ignored and borrowed <= 0:
+                continue
             symbol = tracker._asset_to_symbol(asset)
             if borrowed > 0:
                 found_keys.add((symbol, "CROSS_MARGIN"))
@@ -164,11 +167,12 @@ async def _reconcile_positions():
         for pair in await binance_client.get_isolated_margin_balances():
             symbol = pair.get("symbol", "")
             base = pair.get("baseAsset", {})
-            if tracker._extract_base_asset(symbol) in ignored:
-                continue
             base_borrowed = Decimal(base.get("borrowed", "0"))
             base_free = Decimal(base.get("free", "0"))
             base_locked = Decimal(base.get("locked", "0"))
+            # Never ignore assets with debt (active SHORT)
+            if tracker._extract_base_asset(symbol) in ignored and base_borrowed <= 0:
+                continue
             if base_borrowed > 0:
                 found_keys.add((symbol, "ISOLATED_MARGIN"))
                 await _reconcile_single(symbol, "SHORT", base_borrowed, "ISOLATED_MARGIN")
