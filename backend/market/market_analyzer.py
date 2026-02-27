@@ -175,6 +175,7 @@ async def _analyze_symbol(symbol: str) -> dict:
         "key_levels": [l for l in key_levels if l.get("type") != "current"],
         "alerts": alerts,
         "current_price": str(current_price) if current_price else None,
+        "atr_15m": signals_15m.get("atr"),
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
 

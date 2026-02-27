@@ -144,6 +144,121 @@ def _extract_details(analysis: dict) -> dict:
     return details
 
 
+# ── Entry / TP / SL computation ───────────────────────────────
+
+ATR_SL_BUFFER = Decimal("0.3")  # SL = level ± 0.3×ATR
+ATR_FALLBACK_SL = Decimal("1.5")  # SL = entry ± 1.5×ATR if no level
+RR_MIN = Decimal("1.5")  # Minimum R:R for TP1
+RR_TP2 = Decimal("2.0")  # R:R for TP2 fallback
+
+
+def _compute_levels(analysis: dict, direction: str) -> dict:
+    try:
+        entry = Decimal(analysis.get("current_price", "0"))
+    except InvalidOperation:
+        return {}
+    if entry <= 0:
+        return {}
+
+    atr_raw = analysis.get("atr_15m")
+    atr = Decimal(str(atr_raw)) if atr_raw and atr_raw > 0 else None
+    key_levels = analysis.get("key_levels", [])
+
+    # Collect supports (below price) and resistances (above price)
+    supports = []
+    resistances = []
+    for level in key_levels:
+        try:
+            price = Decimal(level["price"])
+            dist = Decimal(level.get("distance_pct", "99"))
+        except (InvalidOperation, KeyError, TypeError):
+            continue
+        if dist < 0:
+            supports.append(price)
+        elif dist > 0:
+            resistances.append(price)
+
+    supports.sort(reverse=True)  # Closest support first
+    resistances.sort()  # Closest resistance first
+
+    if direction == "LONG":
+        sl = _pick_sl_long(entry, supports, atr)
+        tp1 = _pick_tp_long(entry, sl, resistances, atr)
+    else:
+        sl = _pick_sl_short(entry, resistances, atr)
+        tp1 = _pick_tp_short(entry, sl, supports, atr)
+
+    risk = abs(entry - sl)
+    if risk == 0:
+        return {}
+
+    reward = abs(tp1 - entry)
+    rr = reward / risk
+
+    # TP2 if TP1 R:R is modest
+    tp2 = None
+    if direction == "LONG":
+        if rr < RR_MIN and len(resistances) >= 2:
+            tp2 = resistances[1]
+        elif rr < RR_MIN:
+            tp2 = entry + risk * RR_TP2
+    else:
+        if rr < RR_MIN and len(supports) >= 2:
+            tp2 = supports[1]
+        elif rr < RR_MIN:
+            tp2 = entry - risk * RR_TP2
+
+    result = {
+        "entry": str(round(entry, _price_precision(entry))),
+        "sl": str(round(sl, _price_precision(sl))),
+        "tp1": str(round(tp1, _price_precision(tp1))),
+        "rr": str(round(rr, 2)),
+    }
+    if tp2 is not None:
+        result["tp2"] = str(round(tp2, _price_precision(tp2)))
+    return result
+
+
+def _pick_sl_long(entry: Decimal, supports: list[Decimal], atr: Decimal | None) -> Decimal:
+    if supports:
+        buffer = atr * ATR_SL_BUFFER if atr else supports[0] * Decimal("0.002")
+        return supports[0] - buffer
+    if atr:
+        return entry - atr * ATR_FALLBACK_SL
+    return entry * Decimal("0.985")  # 1.5% fallback
+
+
+def _pick_tp_long(entry: Decimal, sl: Decimal, resistances: list[Decimal], atr: Decimal | None) -> Decimal:
+    risk = entry - sl
+    if resistances:
+        return resistances[0]
+    return entry + risk * RR_MIN
+
+
+def _pick_sl_short(entry: Decimal, resistances: list[Decimal], atr: Decimal | None) -> Decimal:
+    if resistances:
+        buffer = atr * ATR_SL_BUFFER if atr else resistances[0] * Decimal("0.002")
+        return resistances[0] + buffer
+    if atr:
+        return entry + atr * ATR_FALLBACK_SL
+    return entry * Decimal("1.015")
+
+
+def _pick_tp_short(entry: Decimal, sl: Decimal, supports: list[Decimal], atr: Decimal | None) -> Decimal:
+    risk = sl - entry
+    if supports:
+        return supports[0]
+    return entry - risk * RR_MIN
+
+
+def _price_precision(price: Decimal) -> int:
+    if price >= 1000:
+        return 2
+    if price >= 1:
+        return 4
+    return 6
+
+
 # ── Message generation ────────────────────────────────────────
 
 def _build_opportunity(analysis: dict, score: float, details: dict, now: datetime) -> dict:
@@ -155,6 +270,8 @@ def _build_opportunity(analysis: dict, score: float, details: dict, now: datetim
     key_signals = _extract_key_signals(direction, confidence, details)
     ts = int(now.timestamp())
 
+    levels = _compute_levels(analysis, direction)
+
     return {
         "id": f"{symbol}_{ts}",
         "symbol": symbol,
@@ -165,6 +282,7 @@ def _build_opportunity(analysis: dict, score: float, details: dict, now: datetim
         "message": message,
         "key_signals": key_signals,
         "nearest_level": details.get("nearest_level"),
+        "levels": levels,
         "detected_at": now.isoformat(),
     }
 

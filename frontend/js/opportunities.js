@@ -38,6 +38,15 @@ const Opportunities = (() => {
             }).join('');
             const ago = Utils.timeAgoShort(o.detected_at);
 
+            const lvl = o.levels || {};
+            const levelsHtml = lvl.entry ? `<div class="opp-levels">
+                <span class="opp-lvl"><span class="text-gray-400">Entry</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
+                <span class="opp-lvl"><span class="opp-sl">SL</span> ${Utils.fmtPriceCompact(lvl.sl)}</span>
+                <span class="opp-lvl"><span class="opp-tp">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)}</span>
+                ${lvl.tp2 ? `<span class="opp-lvl"><span class="opp-tp">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)}</span>` : ''}
+                <span class="opp-rr">R:R ${lvl.rr}</span>
+            </div>` : '';
+
             return `<div class="opp-card ${dirClass}">
                 <div class="flex items-center justify-between mb-1.5">
                     <div class="flex items-center gap-2">
@@ -51,6 +60,7 @@ const Opportunities = (() => {
                     </div>
                 </div>
                 <p class="text-xs text-gray-300 leading-relaxed mb-1.5">${o.message}</p>
+                ${levelsHtml}
                 <div class="flex flex-wrap gap-1">${signals}</div>
             </div>`;
         }).join('');

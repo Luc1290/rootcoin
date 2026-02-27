@@ -11,7 +11,7 @@ from decimal import Decimal
 
 from backend.market import kline_manager
 
-INDICATORS_SET = {"rsi", "macd", "ma", "bb", "mfi", "stoch_rsi", "buy_sell", "obv", "adx", "ema"}
+INDICATORS_SET = {"rsi", "macd", "ma", "bb", "mfi", "stoch_rsi", "buy_sell", "obv", "adx", "ema", "atr"}
 
 STRUCTURE_LOOKBACK = 16  # ~4h on 15m candles
 LEVEL_TOLERANCE = 0.003  # 0.3% proximity for level detection
@@ -52,6 +52,7 @@ async def extract_signals(
         "structure": {"score": structure_pts, "signals": structure_signals},
         "raw_direction": raw_direction,
         "adx": _last_valid(indicators.get("adx", [])),
+        "atr": _last_valid(indicators.get("atr", [])),
         "bs_score": bs_score,
         "all_signals": all_signals,
     }
@@ -64,6 +65,7 @@ def _empty_result() -> dict:
         "structure": {"score": 0, "signals": []},
         "raw_direction": 0,
         "adx": None,
+        "atr": None,
         "bs_score": 0,
         "all_signals": [],
     }

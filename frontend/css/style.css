@@ -806,6 +806,20 @@ select {
 }
 .opp-dismiss:hover { opacity: 1; }
 
+.opp-levels {
+    display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+    margin: 0.375rem 0; padding: 0.375rem 0.5rem;
+    background: rgba(255,255,255,0.03); border-radius: 0.25rem;
+    font-size: 0.7rem; font-family: ui-monospace, monospace;
+}
+.opp-lvl { display: flex; gap: 0.25rem; align-items: center; }
+.opp-sl { color: #ef4444; font-weight: 600; }
+.opp-tp { color: #22c55e; font-weight: 600; }
+.opp-rr {
+    margin-left: auto; color: #a78bfa; font-weight: 600;
+    font-size: 0.7rem;
+}
+
 /* ===== Journal ===== */
 
 /* Streak tracker */
