@@ -73,15 +73,15 @@ const Cockpit = (() => {
 
         el.innerHTML = `
         <div class="cockpit-card">
-            <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2 justify-end">
                 <span class="text-sm text-gray-400">Portfolio</span>
                 <span class="text-lg font-bold tabular-nums" data-field="total">${portfolioStr}</span>
             </div>
-            <div class="flex items-center justify-between mt-1">
+            <div class="flex items-center gap-2 justify-end mt-1">
                 <span class="text-sm text-gray-400">PnL ouvert</span>
                 <span class="text-base font-bold tabular-nums ${pnlClass}" data-field="pnl">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}</span>
             </div>
-            <div class="flex items-center justify-between mt-1">
+            <div class="flex items-center gap-2 justify-end mt-1">
                 <span class="text-sm text-gray-400">PnL 24h</span>
                 <span class="text-base font-bold tabular-nums ${dayPnlClass}" data-field="day-pnl">${dayLabel}${dayTradesLabel}</span>
             </div>
