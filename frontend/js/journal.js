@@ -211,49 +211,62 @@ const Journal = (() => {
         const year = data.year;
         const jan1 = new Date(year, 0, 1);
         const dec31 = new Date(year, 11, 31);
-        const startDay = jan1.getDay(); // 0=Sun
+        // Monday-based index: Mon=0, Tue=1, ..., Sun=6
+        const monIdx = d => (d.getDay() + 6) % 7;
+        const startDay = monIdx(jan1);
 
-        // Build weeks grid: 7 rows x ~53 cols
+        // Build weeks grid: 7 rows (Mon-Sun) x ~53 cols
         const weeks = [];
         const dt = new Date(jan1);
-        // Rewind to start of week
         dt.setDate(dt.getDate() - startDay);
 
-        while (dt <= dec31 || dt.getDay() !== 0) {
-            const weekIdx = weeks.length === 0 ? 0 : weeks.length;
-            if (dt.getDay() === 0) weeks.push([]);
+        while (dt <= dec31 || monIdx(dt) !== 0) {
+            if (monIdx(dt) === 0) weeks.push([]);
             const dateStr = _fmtDate(dt);
             const inYear = dt.getFullYear() === year;
-            weeks[weeks.length - 1].push({ date: dateStr, inYear });
+            weeks[weeks.length - 1].push({ date: dateStr, inYear, month: dt.getMonth() });
             dt.setDate(dt.getDate() + 1);
-            if (weeks[weeks.length - 1].length === 7 && (dt > dec31 && dt.getDay() === 0)) break;
+            if (weeks[weeks.length - 1].length === 7 && dt > dec31 && monIdx(dt) === 0) break;
         }
 
         // Pad last week
         while (weeks.length > 0 && weeks[weeks.length - 1].length < 7) {
-            const d2 = new Date(dt);
-            weeks[weeks.length - 1].push({ date: _fmtDate(d2), inYear: false });
+            weeks[weeks.length - 1].push({ date: _fmtDate(dt), inYear: false, month: dt.getMonth() });
             dt.setDate(dt.getDate() + 1);
         }
 
-        // Month labels
+        // Detect month boundary weeks
+        const monthGapWeeks = new Set();
         const months = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
-        let monthHtml = '<div class="flex" style="padding-left:28px;gap:3px;margin-bottom:2px">';
         let lastMonth = -1;
+        const weekMonths = [];
         for (let w = 0; w < weeks.length; w++) {
-            const firstDay = weeks[w].find(d => d.inYear);
-            const m = firstDay ? new Date(firstDay.date).getMonth() : -1;
+            const firstInYear = weeks[w].find(d => d.inYear);
+            const m = firstInYear ? firstInYear.month : -1;
+            weekMonths.push(m);
             if (m !== lastMonth && m >= 0) {
-                monthHtml += `<span class="journal-cal-month" style="width:${w === 0 ? 14 : 14}px">${months[m]}</span>`;
+                if (lastMonth >= 0) monthGapWeeks.add(w);
+                lastMonth = m;
+            }
+        }
+
+        // Month labels
+        let monthHtml = '<div class="journal-cal-months">';
+        lastMonth = -1;
+        for (let w = 0; w < weeks.length; w++) {
+            const gap = monthGapWeeks.has(w) ? ' cal-month-gap' : '';
+            const m = weekMonths[w];
+            if (m !== lastMonth && m >= 0) {
+                monthHtml += `<span class="journal-cal-month${gap}">${months[m]}</span>`;
                 lastMonth = m;
             } else {
-                monthHtml += `<span style="width:14px"></span>`;
+                monthHtml += `<span class="${gap}"></span>`;
             }
         }
         monthHtml += '</div>';
 
-        // Day rows
-        const dayLabels = ['', 'L', '', 'M', '', 'V', ''];
+        // Day rows (Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6)
+        const dayLabels = ['L', '', 'M', '', 'V', '', ''];
         let gridHtml = '';
         for (let row = 0; row < 7; row++) {
             gridHtml += '<div class="journal-cal-row">';
@@ -263,10 +276,11 @@ const Journal = (() => {
                     const cell = weeks[w][row];
                     const d = dayMap[cell.date];
                     const color = cell.inYear ? _dayColor(d) : 'transparent';
+                    const gap = monthGapWeeks.has(w) ? ' cal-month-gap' : '';
                     const title = d
                         ? `${cell.date}: ${parseFloat(d.pnl) >= 0 ? '+' : ''}$${d.pnl} (${d.trades} trade${d.trades > 1 ? 's' : ''})`
                         : cell.inYear ? `${cell.date}: pas de trade` : '';
-                    gridHtml += `<div class="journal-cal-cell" style="background:${color}" data-date="${cell.date}" title="${title}"></div>`;
+                    gridHtml += `<div class="journal-cal-cell${gap}" style="background:${color}" data-date="${cell.date}" title="${title}"></div>`;
                 }
             }
             gridHtml += '</div>';

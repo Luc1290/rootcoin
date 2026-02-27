@@ -18,11 +18,12 @@
 
     <!-- Header + Navigation -->
     <header class="app-header shrink-0 px-4 py-2.5 flex items-center gap-3">
-        <button id="burger-btn" class="burger-btn sm:hidden" aria-label="Menu">
+        <button id="burger-btn" class="burger-btn lg:hidden flex items-center gap-1.5" aria-label="Menu">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            <span class="text-xs font-medium">Menu</span>
         </button>
         <img src="/static/logo.svg" alt="RootCoin" style="height:36px;width:auto" class="shrink-0">
-        <nav id="nav-desktop" class="hidden sm:flex gap-1.5 flex-1 justify-center overflow-x-auto scrollbar-hide">
+        <nav id="nav-desktop" class="hidden lg:flex gap-1.5 flex-1 justify-center overflow-x-auto scrollbar-hide">
             <a class="tab-btn active px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=cockpit" data-tab="cockpit">Accueil</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=positions" data-tab="positions">Positions</a>
             <a class="tab-btn px-4 py-2 text-sm font-medium whitespace-nowrap" href="/?tab=trades" data-tab="trades">Cycles</a>
@@ -42,8 +43,8 @@
     </header>
 
     <!-- Mobile drawer -->
-    <div id="nav-drawer-overlay" class="nav-drawer-overlay sm:hidden hidden"></div>
-    <nav id="nav-drawer" class="nav-drawer sm:hidden">
+    <div id="nav-drawer-overlay" class="nav-drawer-overlay lg:hidden hidden"></div>
+    <nav id="nav-drawer" class="nav-drawer lg:hidden">
         <a class="tab-btn active" href="/?tab=cockpit" data-tab="cockpit">Accueil</a>
         <a class="tab-btn" href="/?tab=positions" data-tab="positions">Positions</a>
         <a class="tab-btn" href="/?tab=trades" data-tab="trades">Cycles</a>
@@ -190,8 +191,8 @@
                 <div class="flex gap-1" id="chart-intervals">
                     <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1m">1m</button>
                     <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="5m">5m</button>
-                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="15m">15m</button>
-                    <button class="chart-interval-btn active text-xs px-2.5 py-1.5 font-medium" data-interval="1h">1h</button>
+                    <button class="chart-interval-btn active text-xs px-2.5 py-1.5 font-medium" data-interval="15m">15m</button>
+                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1h">1h</button>
                     <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="4h">4h</button>
                     <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1d">1d</button>
                 </div>

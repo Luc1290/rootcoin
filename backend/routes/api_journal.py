@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from backend.core.database import async_session
 from backend.core.models import Balance, Position, TradeSnapshot
 from backend.routes.position_helpers import format_duration
-from backend.trading import pnl
+from backend.trading import pnl, position_tracker
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
 
@@ -298,6 +298,8 @@ async def get_streaks():
         if closed >= cutoff_24h:
             day_trades += 1
             day_pnl += net
+
+    day_trades += len(position_tracker.get_positions())
 
     month_win_rate = round(month_wins / month_trades * 100, 1) if month_trades > 0 else 0
 

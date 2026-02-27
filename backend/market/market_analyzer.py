@@ -305,13 +305,16 @@ def _macro_direction(macro_data: dict) -> str:
 async def _compute_key_levels(symbol: str) -> list[dict]:
     await kline_manager.fetch_and_store(symbol, "1d", limit=30)
     klines = await kline_manager.get_klines(symbol, "1d", limit=30)
-    if not klines:
+    if not klines or len(klines) < 2:
         return []
 
-    last = klines[-1]
-    high = Decimal(last["high"])
-    low = Decimal(last["low"])
-    close = Decimal(last["close"])
+    # Use last CLOSED daily candle for stable pivots (skip current forming candle)
+    prev_day = klines[-2]
+    high = Decimal(prev_day["high"])
+    low = Decimal(prev_day["low"])
+    close = Decimal(prev_day["close"])
+    # Current price from the forming candle for above/below comparisons
+    current_price = Decimal(klines[-1]["close"])
 
     pivot = (high + low + close) / 3
     s1 = 2 * pivot - high
@@ -329,14 +332,16 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
 
     await kline_manager.fetch_and_store(symbol, "4h", limit=30)
     klines_4h = await kline_manager.get_klines(symbol, "4h", limit=30)
-    if klines_4h and len(klines_4h) >= 5:
-        for i in range(1, len(klines_4h) - 1):
-            h = float(klines_4h[i]["high"])
-            l = float(klines_4h[i]["low"])
-            prev_h = float(klines_4h[i - 1]["high"])
-            next_h = float(klines_4h[i + 1]["high"])
-            prev_l = float(klines_4h[i - 1]["low"])
-            next_l = float(klines_4h[i + 1]["low"])
+    if klines_4h and len(klines_4h) >= 6:
+        # Exclude last candle (still forming) — use only closed candles
+        closed_4h = klines_4h[:-1]
+        for i in range(1, len(closed_4h) - 1):
+            h = float(closed_4h[i]["high"])
+            l = float(closed_4h[i]["low"])
+            prev_h = float(closed_4h[i - 1]["high"])
+            next_h = float(closed_4h[i + 1]["high"])
+            prev_l = float(closed_4h[i - 1]["low"])
+            next_l = float(closed_4h[i + 1]["low"])
 
             if h > prev_h and h > next_h:
                 levels.append({"price": str(round(Decimal(str(h)), 2)),
@@ -349,11 +354,11 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
 
     pivots = [l for l in levels if l["type"] not in ("SW_H", "SW_L")]
     swings_above = sorted(
-        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) >= close],
+        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) >= current_price],
         key=lambda x: Decimal(x["price"]),
     )[:2]
     swings_below = sorted(
-        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) < close],
+        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) < current_price],
         key=lambda x: Decimal(x["price"]),
         reverse=True,
     )[:2]
@@ -367,14 +372,14 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
         if lvl["type"] not in ("SW_H", "SW_L"):
             continue
         price = Decimal(lvl["price"])
-        if price >= close:
+        if price >= current_price:
             res_idx += 1
             lvl["label"] = f"Plafond recent {res_idx}"
         else:
             sup_idx += 1
             lvl["label"] = f"Plancher recent {sup_idx}"
 
-    levels.insert(0, {"current_price": close, "type": "current"})
+    levels.insert(0, {"current_price": current_price, "type": "current"})
     return levels
 
 
@@ -389,7 +394,7 @@ def _deduplicate_levels(levels: list[dict]) -> list[dict]:
         price = Decimal(level["price"])
         too_close = False
         for seen in prices_seen:
-            if seen != 0 and abs((price - seen) / seen) < Decimal("0.003"):
+            if seen != 0 and abs((price - seen) / seen) < Decimal("0.005"):
                 too_close = True
                 break
         if not too_close:

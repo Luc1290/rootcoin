@@ -52,9 +52,10 @@ const Cockpit = (() => {
         const portfolioTotal = BalanceStore.getTotal();
         const portfolioStr = portfolioTotal !== null ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
-        const dayPnlClass = _dayPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const dayPnlSign = _dayPnl >= 0 ? '+' : '';
-        const dayLabel = _dayPnl !== null ? `${dayPnlSign}$${Math.abs(_dayPnl).toFixed(2)}` : '--';
+        const dayTotal = (_dayPnl || 0) + totalPnl;
+        const dayPnlClass = dayTotal >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const dayPnlSign = dayTotal >= 0 ? '+' : '';
+        const dayLabel = _dayPnl !== null ? `${dayPnlSign}$${Math.abs(dayTotal).toFixed(2)}` : '--';
         const dayTradesLabel = _dayTrades > 0 ? ` (${_dayTrades})` : '';
 
         const totalSpan = el.querySelector('[data-field="total"]');

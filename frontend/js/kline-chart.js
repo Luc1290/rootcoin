@@ -1,6 +1,6 @@
 const KlineChart = (() => {
     let _symbol = 'BTCUSDC';
-    let _interval = '1h';
+    let _interval = '15m';
     let _mainChart = null;
     let _candleSeries = null;
     let _maSeries = {};
