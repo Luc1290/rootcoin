@@ -723,8 +723,12 @@ select {
 }
 @media (min-width: 1280px) {
     .cockpit-grid {
-        grid-template-columns: 1fr 1fr 1fr;
-        max-width: 1200px;
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+@media (min-width: 1920px) {
+    .cockpit-grid {
+        grid-template-columns: repeat(4, 1fr);
     }
 }
 .cockpit-card {
