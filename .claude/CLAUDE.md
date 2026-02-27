@@ -39,8 +39,8 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 10. `whale_tracker.start()` — poll Binance aggTrades pour gros mouvements
 11. `orderbook_tracker.start()` — poll Binance depth, calcul imbalance/walls/spread
 12. `heatmap_manager.start()` — fetch top 50 USDC par volume 24h, variation sur fenetre 4h glissante
-13. `market_analyzer.start()` — calcule le biais du jour, niveaux cles, signaux, alertes
-14. `opportunity_detector.start()` — evalue les opportunites sur symboles sans position, scoring multi-criteres, message FR
+13. `market_analyzer.start()` — orchestrateur analyse : delegue a `scoring/signal_engine` + `scoring/scorer` pour scoring unifie par confluence
+14. `opportunity_detector.start()` — filtre symboles sans position avec score unifie > seuil, messages FR, cooldown
 15. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
 16. `health_collector.start()` — collecte sante modules, DB stats, memoire, WS heartbeat toutes les 10s
 
@@ -165,6 +165,13 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `balance_tracker.py` | Snapshots balances spot/cross/isolated + conversion USD | `start()`, `stop()` |
 | `price_recorder.py` | Enregistre prix ticker en DB periodiquement + cleanup | `start()`, `stop()` |
 
+### Scoring (`backend/scoring/`)
+
+| Fichier | Responsabilite | Exports cles |
+|---------|---------------|--------------|
+| `signal_engine.py` | Extraction signaux par timeframe + detection structure (rejets, tests niveaux, break-retest) | `extract_signals()` |
+| `scorer.py` | Scoring unifie par confluence a couches : 15m(40) + 1h(25) + 4h(20) + flux(15) + macro(-10/+5) | `compute_unified_score()`, `TOTAL_MAX` |
+
 ### Market (`backend/market/`)
 
 | Fichier | Responsabilite | Exports cles |
@@ -174,9 +181,9 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `whale_tracker.py` | Poll Binance aggTrades, detecte gros trades > seuil, deque 50 items | `start()`, `stop()`, `get_whale_alerts()` |
 | `orderbook_tracker.py` | Poll Binance depth, calcul imbalance bid/ask, detection murs, spread, cache memoire | `start()`, `stop()`, `get_orderbook_data()`, `get_imbalance()` |
 | `heatmap_manager.py` | Top 50 USDC par volume 24h, variation prix sur fenetre 4h glissante, cache memoire | `start()`, `stop()`, `get_heatmap_data()` |
-| `market_analyzer.py` | Cerveau analyse : biais du jour, niveaux cles, scoring AT multi-TF (15m/1h/4h) + macro, dampening oscillateurs en tendance, conflits | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
-| `analysis_formatter.py` | Formatage justification FR des signaux AT/macro, descriptions textuelles, conversion signal→dict | `build_justification()`, `signal_to_dict()`, `format_qty()`, `TIMEFRAMES` |
-| `opportunity_detector.py` | Detecte opportunites sur symboles sans position, scoring multi-criteres, messages FR, cooldown | `start()`, `stop()`, `get_opportunities()` |
+| `market_analyzer.py` | Orchestrateur analyse : delegue scoring a `scoring/`, garde niveaux cles, alertes, justification | `start()`, `stop()`, `get_analysis()`, `get_all_analyses()` |
+| `analysis_formatter.py` | Formatage justification FR des signaux AT/macro/structure, descriptions textuelles, conversion signal→dict | `build_justification()`, `signal_to_dict()`, `format_qty()`, `TIMEFRAMES` |
+| `opportunity_detector.py` | Filtre symboles sans position avec score unifie > seuil, messages FR, cooldown | `start()`, `stop()`, `get_opportunities()` |
 
 ### Services (`backend/services/`)
 

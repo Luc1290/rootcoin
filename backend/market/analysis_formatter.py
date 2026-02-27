@@ -12,6 +12,9 @@ SIGNAL_DESCRIPTIONS = {
     "B/S": lambda v, sc: f"pression acheteuse ({v:+.0f}%)" if sc > 0 else f"pression vendeuse ({v:+.0f}%)" if sc < 0 else "pression neutre",
     "OBV": lambda v, sc: "OBV divergence haussiere" if sc > 0.5 else "OBV confirme la hausse" if sc > 0 else "OBV divergence baissiere" if sc < -0.5 else "OBV confirme la baisse" if sc < 0 else "OBV neutre",
     "OB_Imbalance": lambda v, sc: f"carnet d'ordres desequilibre {'acheteur' if sc > 0 else 'vendeur'} ({v:+.1%})" if abs(sc) > 0.1 else "carnet d'ordres equilibre",
+    "Rejection": lambda v, sc: f"rejet haussier (meche {v:.1f}x corps)" if sc > 0 else f"rejet baissier (meche {v:.1f}x corps)",
+    "LevelTest": lambda v, sc: f"{int(v)} tests du support valides" if sc > 0 else f"{int(v)} tests de la resistance valides",
+    "Retest": lambda v, sc: "break-and-retest haussier" if sc > 0 else "break-and-retest baissier",
 }
 
 MACRO_DESC = {

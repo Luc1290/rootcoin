@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 
 import structlog
 
-from backend.market import market_analyzer, orderbook_tracker, whale_tracker
+from backend.market import market_analyzer
 from backend.trading import position_tracker
 from backend.core.config import settings
 
@@ -70,177 +70,78 @@ def _evaluate():
             if elapsed < settings.opportunity_cooldown_minutes * 60:
                 continue
 
-        score, details = _score_opportunity(analysis, symbol, now)
-        if score >= settings.opportunity_min_score:
-            opp = _build_opportunity(analysis, score, details, now)
-            _opportunities.appendleft(opp)
-            _cooldowns[symbol] = now
-            log.info(
-                "opportunity_detected",
-                symbol=symbol,
-                score=score,
-                direction=analysis["bias"]["direction"],
-            )
+        # Use unified score directly
+        score = analysis.get("bias", {}).get("confidence", 0)
+        if score < settings.opportunity_min_score:
+            continue
+
+        details = _extract_details(analysis)
+        opp = _build_opportunity(analysis, score, details, now)
+        _opportunities.appendleft(opp)
+        _cooldowns[symbol] = now
+        log.info(
+            "opportunity_detected",
+            symbol=symbol,
+            score=score,
+            direction=analysis["bias"]["direction"],
+        )
 
 
-# ── Scoring ───────────────────────────────────────────────────
+# ── Details extraction (display only, no scoring) ────────────
 
-def _score_opportunity(analysis: dict, symbol: str, now: datetime) -> tuple[float, dict]:
+def _extract_details(analysis: dict) -> dict:
     bias = analysis.get("bias", {})
-    direction = bias.get("direction", "")
-    confidence = bias.get("confidence", 0)
+    direction = bias.get("direction", "LONG")
     details: dict = {}
 
-    # Hard gate: skip if confidence < 30
-    if confidence < 30:
-        return 0, details
-
-    # 1. Bias confidence = anchor (max 50)
-    #    30% -> 0 pts, 60% -> 21 pts, 80% -> 36 pts, 100% -> 50 pts
-    bias_pts = min((confidence - 30) / 70 * 50, 50)
-
-    # 2. Signal agreement (max 15) — what % of TA signals agree with direction
+    # Signal agreement for display
     ta_signals = analysis.get("signals", {}).get("technical", [])
     agree = 0
-    disagree = 0
+    total = 0
     for sig in ta_signals:
         sc = sig.get("score", 0)
-        if direction == "LONG":
-            if sc > 0.15:
-                agree += 1
-            elif sc < -0.15:
-                disagree += 1
-        elif direction == "SHORT":
-            if sc < -0.15:
-                agree += 1
-            elif sc > 0.15:
-                disagree += 1
-    total_opinionated = agree + disagree
-    if total_opinionated > 0:
-        agreement_ratio = agree / total_opinionated
-        agreement_pts = agreement_ratio * 15
-    else:
-        agreement_pts = 0.0
-    details["signal_agreement"] = round(agreement_ratio * 100) if total_opinionated else 0
+        if abs(sc) <= 0.15:
+            continue
+        total += 1
+        if (direction == "LONG" and sc > 0.15) or (direction == "SHORT" and sc < -0.15):
+            agree += 1
+    details["signal_agreement"] = round(agree / total * 100) if total else 0
 
-    # 3. RSI extreme — bonus (max 10)
-    rsi_pts = 0.0
+    # Best RSI
     best_rsi = None
     for sig in ta_signals:
-        name = sig.get("name", "")
-        if not name.startswith("RSI"):
-            continue
-        val = sig.get("value")
-        if val is None:
-            continue
-        pts = 0.0
-        if direction == "LONG":
-            if val < 30:
-                pts = 10
-            elif val < 40:
-                pts = 6
-            elif val < 45:
-                pts = 3
-        elif direction == "SHORT":
-            if val > 70:
-                pts = 10
-            elif val > 60:
-                pts = 6
-            elif val > 55:
-                pts = 3
-        if pts > rsi_pts:
-            rsi_pts = pts
-            best_rsi = val
+        if sig.get("name", "").startswith("RSI"):
+            best_rsi = sig.get("value")
+            break
     details["best_rsi"] = best_rsi
 
-    # 4. Proximity to key level — bonus (max 10)
-    # LONG → look for levels BELOW price (negative distance_pct = support)
-    # SHORT → look for levels ABOVE price (positive distance_pct = resistance)
-    level_pts = 0.0
-    nearest_level = None
+    # Nearest level
+    nearest = None
+    best_dist = Decimal("99")
     for level in analysis.get("key_levels", []):
         try:
             raw_dist = Decimal(level.get("distance_pct", "99"))
         except (InvalidOperation, TypeError):
             continue
-        # For LONG: we want levels below (raw_dist < 0), for SHORT: above (raw_dist > 0)
         if direction == "LONG" and raw_dist > Decimal("0"):
             continue
         if direction == "SHORT" and raw_dist < Decimal("0"):
             continue
         abs_dist = abs(raw_dist)
-        if abs_dist >= Decimal("3"):
-            continue
-        pts = 0.0
-        if abs_dist < Decimal("0.5"):
-            pts = 10
-        elif abs_dist < Decimal("1"):
-            pts = 8
-        elif abs_dist < Decimal("2"):
-            pts = 5
-        else:
-            pts = 2
-        if pts > level_pts:
-            level_pts = pts
-            nearest_level = level
-    details["nearest_level"] = nearest_level
+        if abs_dist < best_dist and abs_dist < Decimal("3"):
+            best_dist = abs_dist
+            nearest = level
+    details["nearest_level"] = nearest
 
-    # 5. Volume / orderbook / whale — combined bonus (max 10)
-    extra_pts = 0.0
-    has_buy = False
-    has_sell = False
-    for sig in ta_signals:
-        name = sig.get("name", "")
-        sc = sig.get("score", 0)
-        if "B/S" in name or "OBV" in name:
-            if direction == "LONG" and sc > 0.2:
-                extra_pts += 2
-                has_buy = True
-            elif direction == "SHORT" and sc < -0.2:
-                extra_pts += 2
-                has_sell = True
-    details["has_buy_pressure"] = has_buy
-    details["has_sell_pressure"] = has_sell
+    # Flow details from layer scores
+    layer_scores = bias.get("layer_scores", {})
+    flow = layer_scores.get("flow", 0)
+    details["has_buy_pressure"] = direction == "LONG" and flow > 3
+    details["has_sell_pressure"] = direction == "SHORT" and flow > 3
+    details["ob_confirming"] = flow > 8
+    details["whale_confirming"] = flow >= 13
 
-    ob_confirming = False
-    imbalance = orderbook_tracker.get_imbalance(symbol)
-    if imbalance is not None:
-        if (direction == "LONG" and imbalance > 0.1) or (direction == "SHORT" and imbalance < -0.1):
-            extra_pts += 3
-            ob_confirming = True
-    details["ob_confirming"] = ob_confirming
-
-    whale_confirming = False
-    whales = whale_tracker.get_whale_alerts()
-    for w in whales:
-        ts = w.get("timestamp")
-        if not ts:
-            continue
-        try:
-            age = (now - datetime.fromisoformat(ts)).total_seconds()
-        except (ValueError, TypeError):
-            continue
-        if age > 600 or w.get("symbol") != symbol:
-            continue
-        if (direction == "LONG" and w.get("side") == "BUY") or (direction == "SHORT" and w.get("side") == "SELL"):
-            extra_pts += 3
-            whale_confirming = True
-            break
-    details["whale_confirming"] = whale_confirming
-    extra_pts = min(extra_pts, 10)
-
-    # 6. Conflict penalty / alignment bonus
-    conflict_pts = 0.0
-    alerts = analysis.get("alerts", [])
-    has_conflict = any(a.get("type") == "conflict" for a in alerts)
-    has_aligned = any(a.get("type") == "aligned" for a in alerts)
-    if has_conflict:
-        conflict_pts = -15
-    elif has_aligned:
-        conflict_pts = 5
-
-    total = bias_pts + agreement_pts + rsi_pts + level_pts + extra_pts + conflict_pts
-    return max(0, min(total, 100)), details
+    return details
 
 
 # ── Message generation ────────────────────────────────────────
