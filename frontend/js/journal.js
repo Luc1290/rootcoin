@@ -235,17 +235,31 @@ const Journal = (() => {
             dt.setDate(dt.getDate() + 1);
         }
 
-        // Detect month boundary weeks
-        const monthGapWeeks = new Set();
+        // Split boundary weeks (two months in same week) into two partial columns
+        const cols = [];
+        for (const week of weeks) {
+            const inYearMonths = new Set(week.filter(d => d.inYear).map(d => d.month));
+            if (inYearMonths.size <= 1) {
+                cols.push(week);
+            } else {
+                const sorted = [...inYearMonths].sort((a, b) => a - b);
+                const firstM = sorted[0];
+                cols.push(week.map(d => d.inYear && d.month === firstM ? d : { ...d, inYear: false }));
+                cols.push(week.map(d => d.inYear && d.month !== firstM ? d : { ...d, inYear: false }));
+            }
+        }
+
+        // Detect month boundaries and assign month per column
+        const monthGapCols = new Set();
         const months = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aou', 'Sep', 'Oct', 'Nov', 'Dec'];
         let lastMonth = -1;
-        const weekMonths = [];
-        for (let w = 0; w < weeks.length; w++) {
-            const firstInYear = weeks[w].find(d => d.inYear);
+        const colMonths = [];
+        for (let c = 0; c < cols.length; c++) {
+            const firstInYear = cols[c].find(d => d.inYear);
             const m = firstInYear ? firstInYear.month : -1;
-            weekMonths.push(m);
+            colMonths.push(m);
             if (m !== lastMonth && m >= 0) {
-                if (lastMonth >= 0) monthGapWeeks.add(w);
+                if (lastMonth >= 0) monthGapCols.add(c);
                 lastMonth = m;
             }
         }
@@ -253,9 +267,9 @@ const Journal = (() => {
         // Month labels
         let monthHtml = '<div class="journal-cal-months">';
         lastMonth = -1;
-        for (let w = 0; w < weeks.length; w++) {
-            const gap = monthGapWeeks.has(w) ? ' cal-month-gap' : '';
-            const m = weekMonths[w];
+        for (let c = 0; c < cols.length; c++) {
+            const gap = monthGapCols.has(c) ? ' cal-month-gap' : '';
+            const m = colMonths[c];
             if (m !== lastMonth && m >= 0) {
                 monthHtml += `<span class="journal-cal-month${gap}">${months[m]}</span>`;
                 lastMonth = m;
@@ -271,13 +285,13 @@ const Journal = (() => {
         for (let row = 0; row < 7; row++) {
             gridHtml += '<div class="journal-cal-row">';
             gridHtml += `<span class="journal-cal-label">${dayLabels[row]}</span>`;
-            for (let w = 0; w < weeks.length; w++) {
-                if (row < weeks[w].length) {
-                    const cell = weeks[w][row];
+            for (let c = 0; c < cols.length; c++) {
+                if (row < cols[c].length) {
+                    const cell = cols[c][row];
                     const d = dayMap[cell.date];
                     const color = cell.inYear ? _dayColor(d) : 'transparent';
-                    const gap = monthGapWeeks.has(w) ? ' cal-month-gap' : '';
-                    const title = d
+                    const gap = monthGapCols.has(c) ? ' cal-month-gap' : '';
+                    const title = d && cell.inYear
                         ? `${cell.date}: ${parseFloat(d.pnl) >= 0 ? '+' : ''}$${d.pnl} (${d.trades} trade${d.trades > 1 ? 's' : ''})`
                         : cell.inYear ? `${cell.date}: pas de trade` : '';
                     gridHtml += `<div class="journal-cal-cell${gap}" style="background:${color}" data-date="${cell.date}" title="${title}"></div>`;
