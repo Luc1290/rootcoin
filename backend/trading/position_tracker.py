@@ -359,9 +359,12 @@ async def _open_position(
         await session.refresh(pos)
     _positions[pos.id] = pos
     await ws_manager.subscribe_symbol(symbol)
-    _fire_and_forget(journal_snapshotter.capture_snapshot(
-        pos.id, "OPEN", symbol, side, price, qty,
-    ))
+    try:
+        await journal_snapshotter.capture_snapshot(
+            pos.id, "OPEN", symbol, side, price, qty,
+        )
+    except Exception:
+        log.warning("open_snapshot_failed", position_id=pos.id, exc_info=True)
     log.info("position_opened", symbol=symbol, side=side, price=str(price), qty=str(qty),
              market_type=market_type)
 
@@ -375,9 +378,12 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
     position.entry_quantity = (position.entry_quantity or Decimal("0")) + qty
     position.updated_at = _now()
     await _save_position(position)
-    _fire_and_forget(journal_snapshotter.capture_snapshot(
-        position.id, "DCA", position.symbol, position.side, price, qty,
-    ))
+    try:
+        await journal_snapshotter.capture_snapshot(
+            position.id, "DCA", position.symbol, position.side, price, qty,
+        )
+    except Exception:
+        log.warning("dca_snapshot_failed", position_id=position.id, exc_info=True)
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
              qty=str(position.quantity))
 
@@ -407,9 +413,12 @@ async def _reduce_or_close(
         position.quantity = Decimal("0")
         position.updated_at = _now()
         await _save_position(position)
-        _fire_and_forget(journal_snapshotter.capture_snapshot(
-            position.id, "CLOSE", position.symbol, position.side, price, qty,
-        ))
+        try:
+            await journal_snapshotter.capture_snapshot(
+                position.id, "CLOSE", position.symbol, position.side, price, qty,
+            )
+        except Exception:
+            log.warning("close_snapshot_failed", position_id=position.id, exc_info=True)
         del _positions[position.id]
 
         if position.side == "SHORT" and position.market_type != "SPOT":

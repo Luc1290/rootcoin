@@ -758,9 +758,20 @@ const KlineChart = (() => {
     function _onPositionsSnapshot(data) {
         if (!data) return;
         if (data.length) {
-            const base = ['BTCUSDC', 'ETHUSDC'];
+            const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
             const posSymbols = data.map(p => p.symbol);
             _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
+        }
+        // Detect position closed for current symbol → invalidate cycles cache
+        const prev = _cachedPositions;
+        if (prev && _activeIndicators.has('cycles')) {
+            const hadSymbol = prev.some(p => p.symbol === _symbol && p.is_active);
+            const hasSymbol = data.some(p => p.symbol === _symbol && p.is_active);
+            if (hadSymbol && !hasSymbol) {
+                _cyclesCache = { symbol: null, data: null };
+                _cyclesRendered = { symbol: null, interval: null };
+                loadChart();
+            }
         }
         _cachedPositions = data;
         if (_activeIndicators.has('orders')) _renderOrderLines();

@@ -1,19 +1,20 @@
 const Cockpit = (() => {
     let _positions = [];
     let _analysis = null;
-    let _lastFills = [];
+    let _recentCycles = [];
     let _prevPositionKeys = null;
     let _dayPnl = null;
     let _dayTrades = 0;
-    const MAX_FILLS = 3;
+    const MAX_CYCLES = 5;
 
     async function load() {
         try {
-            const [, anaResp, oppResp, streaksResp] = await Promise.all([
+            const [, anaResp, oppResp, streaksResp, cyclesResp] = await Promise.all([
                 BalanceStore.load(),
                 fetch('/api/analysis'),
                 fetch('/api/opportunities'),
                 fetch('/api/journal/streaks'),
+                fetch('/api/cycles?status=closed&limit=5'),
             ]);
             if (anaResp.ok) {
                 _analysis = await anaResp.json();
@@ -27,6 +28,9 @@ const Cockpit = (() => {
                 _dayPnl = parseFloat(s.day_pnl) || 0;
                 _dayTrades = s.day_trades || 0;
             }
+            if (cyclesResp.ok) {
+                _recentCycles = await cyclesResp.json();
+            }
             render();
             Charts.createCockpitChart('cockpit-portfolio-chart');
             Charts.loadCockpitData();
@@ -39,7 +43,7 @@ const Cockpit = (() => {
         _renderPortfolio();
         _renderPositions();
         _renderBias();
-        _renderLastFill();
+        _renderRecentCycles();
         _renderWhale();
         _renderOpportunities();
     }
@@ -181,31 +185,38 @@ const Cockpit = (() => {
         el.innerHTML = rows ? `<div class="cockpit-card">${rows}</div>` : '';
     }
 
-    function _renderLastFill() {
+    function _renderRecentCycles() {
         const el = document.getElementById('cockpit-lastfill');
-        if (!_lastFills.length) {
-            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucun fill recent</span></div>';
+        if (!_recentCycles.length) {
+            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucun cycle recent</span></div>';
             return;
         }
 
-        const rows = _lastFills.slice(0, MAX_FILLS).map(f => {
-            const symbol = f.symbol.replace('USDC', '');
-            const sideClass = f.side === 'BUY' ? 'side-long' : 'side-short';
-            const price = Utils.fmtPriceCompact(f.price);
-            return `<div class="flex items-center justify-between py-1.5">
-                <div class="flex items-center gap-2">
+        const rows = _recentCycles.slice(0, MAX_CYCLES).map(c => {
+            const symbol = c.symbol.replace('USDC', '');
+            const sideClass = c.side === 'LONG' ? 'side-long' : 'side-short';
+            const pnlPct = parseFloat(c.realized_pnl_pct) || 0;
+            const pnlClass = pnlPct >= 0 ? 'pnl-positive' : 'pnl-negative';
+            const pnlSign = pnlPct >= 0 ? '+' : '';
+            const pnlUsd = parseFloat(c.realized_pnl) || 0;
+            const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
+            const ago = c.closed_at ? Utils.timeAgoShort(c.closed_at) : '';
+            const dur = c.duration || '';
+            return `<div class="flex items-center justify-between py-1.5" onclick="App.switchTab('cycles')" style="cursor:pointer">
+                <div class="flex items-center gap-2 min-w-0">
                     <span class="text-xs font-bold">${symbol}</span>
-                    <span class="cockpit-side ${sideClass}">${f.side}</span>
-                    <span class="text-xs text-gray-400">${f.filled_qty}</span>
+                    <span class="cockpit-side ${sideClass}">${c.side}</span>
+                    <span class="text-xs text-gray-500">${dur}</span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-xs tabular-nums text-gray-300">${price}</span>
-                    <span class="text-xs ${f.status === 'FILLED' ? 'pnl-positive' : 'text-gray-500'}">${f.status}</span>
+                    <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlSign}${pnlPct.toFixed(1)}%</span>
+                    <span class="text-xs tabular-nums ${pnlClass}">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
+                    <span class="text-xs text-gray-500 shrink-0">${ago}</span>
                 </div>
             </div>`;
         }).join('');
 
-        el.innerHTML = `<div class="cockpit-card"><div class="text-xs text-gray-500 mb-1">Last fills</div>${rows}</div>`;
+        el.innerHTML = `<div class="cockpit-card"><div class="text-xs text-gray-500 mb-1">Derniers cycles</div>${rows}</div>`;
     }
 
     function _renderWhale() {
@@ -216,7 +227,7 @@ const Cockpit = (() => {
             return;
         }
 
-        const rows = alerts.slice(-10).reverse().map(w => {
+        const rows = alerts.slice(0, 10).map(w => {
             const sym = w.symbol.replace('USDC', '');
             const qty = Utils.fmtQuoteQty(w.quote_qty);
             const price = Utils.fmtPriceCompact(w.price);
@@ -247,10 +258,17 @@ const Cockpit = (() => {
     // ── WS real-time updates ──
 
     WS.on('positions_snapshot', (data) => {
+        const prev = _positions;
         _positions = data || [];
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         _renderPortfolio();
         _renderPositions();
+        // Position closed → refresh recent cycles
+        if (prev.length > _positions.length) {
+            fetch('/api/cycles?status=closed&limit=5')
+                .then(r => r.ok ? r.json() : [])
+                .then(c => { _recentCycles = c; _renderRecentCycles(); });
+        }
     });
 
     WS.on('analysis_update', (data) => {
@@ -260,14 +278,6 @@ const Cockpit = (() => {
         _renderBias();
         _renderWhale();
         _renderOpportunities();
-    });
-
-    WS.on('order_update', (data) => {
-        if (!data || !data.symbol) return;
-        _lastFills.unshift(data);
-        if (_lastFills.length > 10) _lastFills.length = 10;
-        if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
-        _renderLastFill();
     });
 
     BalanceStore.onChange(() => {
