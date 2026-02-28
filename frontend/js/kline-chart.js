@@ -107,9 +107,10 @@ const KlineChart = (() => {
 
     async function _loadSymbols() {
         try {
+            const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
             const resp = await fetch('/api/klines/symbols');
             const symbols = await resp.json();
-            _updateSymbolSelect(symbols);
+            _updateSymbolSelect([...new Set([...base, ...symbols])]);
         } catch (e) { /* ignore */ }
     }
 
@@ -757,11 +758,9 @@ const KlineChart = (() => {
     // Update symbol dropdown + order lines when positions change
     function _onPositionsSnapshot(data) {
         if (!data) return;
-        if (data.length) {
-            const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
-            const posSymbols = data.map(p => p.symbol);
-            _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
-        }
+        const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
+        const posSymbols = data.map(p => p.symbol);
+        _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
         // Detect position closed for current symbol → invalidate cycles cache
         const prev = _cachedPositions;
         if (prev && _activeIndicators.has('cycles')) {
