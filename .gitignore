@@ -19,3 +19,5 @@ scripts/*.py
 *.csv
 *.pdf
 
+data/rootcoin_vps.db-wal
+data/rootcoin_vps.db-shm
