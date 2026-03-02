@@ -3,16 +3,8 @@ const Opportunities = (() => {
     let _knownIds = new Set();
     let _dismissedIds = _loadDismissed();
 
-    function update(list, silent) {
+    function update(list) {
         if (!Array.isArray(list)) return;
-        if (!silent) {
-            for (const o of list) {
-                if (!_knownIds.has(o.id) && !_dismissedIds.has(o.id)) {
-                    const sym = o.symbol.replace('USDC', '');
-                    App.toast('warning', `Opportunit\u00e9 ${sym} ${o.direction} (${o.confidence}%)`);
-                }
-            }
-        }
         _opportunities = list;
         _knownIds = new Set(list.map(o => o.id));
     }

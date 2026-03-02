@@ -23,7 +23,7 @@ const Cockpit = (() => {
             }
             if (oppResp.ok) {
                 const oppData = await oppResp.json();
-                Opportunities.update(oppData.opportunities || [], true);
+                Opportunities.update(oppData.opportunities || []);
             }
             if (streaksResp.ok) {
                 const s = await streaksResp.json();
