@@ -569,9 +569,11 @@ const KlineChart = (() => {
         _activeCycleRefs = [];
 
         try {
-            // Only fetch from API if symbol changed
+            // Refetch if symbol changed or cache has active cycles (may have closed)
             let cycles;
-            if (_cyclesCache.symbol === _symbol) {
+            const hasActiveCached = _cyclesCache.symbol === _symbol
+                && _cyclesCache.data?.some(c => c.is_active);
+            if (_cyclesCache.symbol === _symbol && !hasActiveCached) {
                 cycles = _cyclesCache.data;
             } else {
                 const resp = await fetch(`/api/cycles?symbol=${_symbol}&limit=50`);
@@ -763,13 +765,13 @@ const KlineChart = (() => {
         _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
         // Detect position closed for current symbol → invalidate cycles cache
         const prev = _cachedPositions;
-        if (prev && _activeIndicators.has('cycles')) {
+        if (prev) {
             const hadSymbol = prev.some(p => p.symbol === _symbol && p.is_active);
             const hasSymbol = data.some(p => p.symbol === _symbol && p.is_active);
             if (hadSymbol && !hasSymbol) {
                 _cyclesCache = { symbol: null, data: null };
                 _cyclesRendered = { symbol: null, interval: null };
-                loadChart();
+                if (_activeIndicators.has('cycles')) loadChart();
             }
         }
         _cachedPositions = data;
