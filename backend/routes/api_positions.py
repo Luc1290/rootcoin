@@ -103,3 +103,15 @@ async def close_position(position_id: int):
         raise HTTPException(400, str(e))
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")
+
+
+@router.post("/{position_id}/secure")
+async def secure_position(position_id: int):
+    try:
+        pos = _find_position(position_id)
+        result = await order_manager.secure_position(pos)
+        return {"status": "ok", **result}
+    except (ValueError, InvalidOperation) as e:
+        raise HTTPException(400, str(e))
+    except BinanceAPIException as e:
+        raise HTTPException(400, f"Binance: {e.message}")

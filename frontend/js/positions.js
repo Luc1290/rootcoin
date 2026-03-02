@@ -80,6 +80,7 @@ const Positions = (() => {
             const card = existing[p.id];
             if (card) {
                 PositionCards.updateCardData(card, p);
+                Charts.updateOrderLines(p.id, p.sl_price, p.tp_price);
             } else {
                 const tmp = document.createElement('div');
                 tmp.innerHTML = PositionCards.buildCardHtml(p);
@@ -89,6 +90,8 @@ const Positions = (() => {
                     entryPrice: parseFloat(p.entry_price) || 0,
                     openedAt: p.opened_at,
                     side: p.side,
+                    slPrice: parseFloat(p.sl_price) || 0,
+                    tpPrice: parseFloat(p.tp_price) || 0,
                 });
             }
         });
@@ -325,6 +328,51 @@ const Positions = (() => {
         `);
     }
 
+    function confirmSecure(id) {
+        const pos = _getPos(id);
+        if (!pos) return;
+        const label = `${pos.symbol} ${pos.side}`;
+        const entry = parseFloat(pos.entry_price) || 0;
+        const current = parseFloat(pos.current_price) || 0;
+        const qty = parseFloat(pos.quantity) || 0;
+        const halfQty = qty / 2;
+        const remaining = qty - halfQty;
+
+        const slPrice = pos.side === 'LONG' ? entry * 1.002 : entry * 0.998;
+        const inProfit = pos.side === 'LONG' ? current > slPrice : current < slPrice;
+        const warning = !inProfit
+            ? '<p class="text-red-400 text-sm mb-2">Position pas assez en profit pour securiser.</p>'
+            : '';
+
+        showModal('Securiser la position', `
+            <p class="text-gray-400 mb-3">Securiser <strong>${label}</strong> :</p>
+            <div class="text-sm space-y-1 mb-4">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Vente marche (50%)</span>
+                    <span class="font-medium">${halfQty.toFixed(6)}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">SL breakeven +0.2%</span>
+                    <span class="font-medium">${Utils.fmtPrice(slPrice)}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Quantite restante</span>
+                    <span class="font-medium">${remaining.toFixed(6)}</span>
+                </div>
+            </div>
+            ${warning}
+            <div class="flex gap-2">
+                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button onclick="Positions.submitSecure(${id})" class="action-btn bg-cyan-600 flex-1"
+                    ${!inProfit ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>Securiser</button>
+            </div>
+        `);
+    }
+
+    async function submitSecure(id) {
+        await apiPost(`/api/positions/${id}/secure`, {}, 'Position securisee');
+    }
+
     async function apiPost(url, body, successMsg = 'Ordre place') {
         try {
             const resp = await fetch(url, {
@@ -420,8 +468,8 @@ const Positions = (() => {
     });
 
     return {
-        load, render, showSL, showTP, showOCO, confirmClose,
-        submitSL, submitTP, submitOCO, submitClose, hideModal,
+        load, render, showSL, showTP, showOCO, confirmClose, confirmSecure,
+        submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
         confirmCancelOrders, submitCancelOrders,
         _setMode, _updateRisk, _updateRR,
     };

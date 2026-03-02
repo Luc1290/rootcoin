@@ -5,6 +5,10 @@ const Charts = (() => {
     let _portfolioSeries = null;
     let _cockpitChart = null;
     let _cockpitSeries = null;
+    let _marketChart = null;
+    let _marketSeries = null;
+    let _marketSymbol = null;
+    let _marketLastTs = 0;
 
     // --- Mini position charts ---
 
@@ -46,14 +50,81 @@ const Charts = (() => {
             });
         }
 
+        // SL price line (red)
+        let slLine = null;
+        if (entryInfo && entryInfo.slPrice > 0) {
+            slLine = series.createPriceLine({
+                price: entryInfo.slPrice,
+                color: 'rgba(239, 68, 68, 0.5)',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: false,
+            });
+        }
+
+        // TP price line (green)
+        let tpLine = null;
+        if (entryInfo && entryInfo.tpPrice > 0) {
+            tpLine = series.createPriceLine({
+                price: entryInfo.tpPrice,
+                color: 'rgba(34, 197, 94, 0.5)',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: false,
+            });
+        }
+
         const ro = new ResizeObserver(entries => {
             const w = entries[0].contentRect.width;
             if (w > 0) chart.applyOptions({ width: w });
         });
         ro.observe(el);
 
-        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, ro };
+        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro };
         _loadPriceHistory(positionId, symbol);
+    }
+
+    function updateOrderLines(positionId, slPrice, tpPrice) {
+        const entry = _posCharts[positionId];
+        if (!entry) return;
+        const sl = parseFloat(slPrice) || 0;
+        const tp = parseFloat(tpPrice) || 0;
+
+        // Update or create SL line
+        if (sl > 0) {
+            if (entry.slLine) {
+                entry.slLine.applyOptions({ price: sl });
+            } else {
+                entry.slLine = entry.series.createPriceLine({
+                    price: sl,
+                    color: 'rgba(239, 68, 68, 0.5)',
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    axisLabelVisible: false,
+                });
+            }
+        } else if (entry.slLine) {
+            entry.series.removePriceLine(entry.slLine);
+            entry.slLine = null;
+        }
+
+        // Update or create TP line
+        if (tp > 0) {
+            if (entry.tpLine) {
+                entry.tpLine.applyOptions({ price: tp });
+            } else {
+                entry.tpLine = entry.series.createPriceLine({
+                    price: tp,
+                    color: 'rgba(34, 197, 94, 0.5)',
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    axisLabelVisible: false,
+                });
+            }
+        } else if (entry.tpLine) {
+            entry.series.removePriceLine(entry.tpLine);
+            entry.tpLine = null;
+        }
     }
 
     function _isWinning(entry, currentPrice) {
@@ -308,11 +379,115 @@ const Charts = (() => {
         }
     }
 
+    // --- Cockpit market chart (BTC / active position symbol) ---
+
+    function createCockpitMarketChart(containerId) {
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        if (_marketChart) {
+            _marketChart.remove();
+            _marketChart = null;
+            _marketSeries = null;
+        }
+
+        _marketChart = LightweightCharts.createChart(el, {
+            width: el.clientWidth,
+            height: 120,
+            layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
+            grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+            rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af' },
+            timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            handleScroll: false,
+            handleScale: false,
+        });
+
+        _marketSeries = _marketChart.addAreaSeries({
+            lineColor: '#f59e0b',
+            topColor: 'rgba(245,158,11,0.12)',
+            bottomColor: 'rgba(245,158,11,0)',
+            lineWidth: 1.5,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: false,
+        });
+
+        const ro = new ResizeObserver(entries => {
+            const w = entries[0].contentRect.width;
+            if (w > 0) _marketChart.applyOptions({ width: w });
+        });
+        ro.observe(el);
+    }
+
+    async function loadCockpitMarketData(symbol) {
+        _marketSymbol = symbol;
+        _marketLastTs = 0;
+        if (!_marketSeries) return null;
+
+        try {
+            const resp = await fetch(`/api/klines/${symbol}?interval=15m&limit=96&indicators=`);
+            const data = await resp.json();
+            const klines = data.klines || [];
+
+            const points = [];
+            for (const k of klines) {
+                const t = Math.floor(new Date(k.open_time + 'Z').getTime() / 1000);
+                const v = parseFloat(k.close);
+                if (isFinite(t) && isFinite(v) && v > 0) {
+                    if (!points.length || t > points[points.length - 1].time) {
+                        points.push({ time: t, value: v });
+                    }
+                }
+            }
+
+            if (points.length >= 2) {
+                const up = points[points.length - 1].value >= points[0].value;
+                _marketSeries.applyOptions({
+                    lineColor: up ? '#22c55e' : '#ef4444',
+                    topColor: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+                });
+            }
+
+            _marketSeries.setData(points);
+            if (points.length) _marketLastTs = points[points.length - 1].time;
+            _marketChart.timeScale().fitContent();
+
+            if (points.length >= 2) {
+                const first = points[0].value;
+                const last = points[points.length - 1].value;
+                return { price: last, change: ((last - first) / first) * 100 };
+            }
+            return points.length ? { price: points[points.length - 1].value, change: 0 } : null;
+        } catch (e) {
+            console.error('Chart: failed to load market data for', symbol, e);
+            return null;
+        }
+    }
+
+    function _updateMarketChartPrice(symbol, priceStr) {
+        if (!_marketChart || !_marketSeries || _marketSymbol !== symbol) return;
+        const now = Math.floor(Date.now() / 1000);
+        const value = parseFloat(priceStr);
+        if (!value || !isFinite(value)) return;
+        try {
+            if (now - _marketLastTs >= 60) {
+                _marketSeries.update({ time: now, value });
+                _marketLastTs = now;
+            } else if (_marketLastTs) {
+                _marketSeries.update({ time: _marketLastTs, value });
+            }
+        } catch (_) { /* chart not ready */ }
+    }
+
+    function getCockpitMarketSymbol() {
+        return _marketSymbol;
+    }
+
     // Feed real-time price updates to mini charts (RAF-throttled)
     const _pendingPrices = {};
     const _flushPrices = Utils.throttleRAF(() => {
         for (const [symbol, price] of Object.entries(_pendingPrices)) {
             appendPrice(symbol, price);
+            _updateMarketChartPrice(symbol, price);
         }
     });
     WS.on('price_update', data => {
@@ -320,5 +495,5 @@ const Charts = (() => {
         _flushPrices();
     });
 
-    return { createMiniChart, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData };
+    return { createMiniChart, updateOrderLines, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData, createCockpitMarketChart, loadCockpitMarketData, getCockpitMarketSymbol };
 })();

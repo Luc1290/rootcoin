@@ -83,9 +83,14 @@ async def _update_position_order_ref(position: Position, **kwargs):
 # --- Public API ---
 
 
-async def place_stop_loss(pos: Position, stop_price: Decimal) -> dict:
+async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | None = None) -> dict:
     side = _close_side(pos)
-    qty = _close_qty(pos)
+    if qty is not None:
+        qty = round_quantity(pos.symbol, qty)
+        if pos.side == "SHORT" and _is_margin(pos):
+            qty = round_quantity(pos.symbol, qty * (1 + SHORT_CLOSE_FEE_BUFFER))
+    else:
+        qty = _close_qty(pos)
 
     if pos.side == "LONG":
         limit_price = round_price(pos.symbol, stop_price * (1 - SL_PRICE_OFFSET))
@@ -284,6 +289,83 @@ async def close_position(pos: Position) -> dict:
 
     log.info("close_placed", symbol=pos.symbol, side=side, qty=str(qty), order_id=order_id)
     return result
+
+
+SECURE_FEE_BUFFER = Decimal("0.002")  # 0.2% above breakeven to cover fees
+
+
+async def secure_position(pos: Position) -> dict:
+    """Sell half at market, cancel existing orders, place SL at breakeven +0.2%."""
+    full_qty = pos.quantity
+    half_qty = round_quantity(pos.symbol, full_qty / 2)
+    remaining_qty = round_quantity(pos.symbol, full_qty - half_qty)
+
+    current_price = pos.current_price or Decimal("0")
+    if current_price <= 0:
+        raise ValueError("Prix actuel indisponible")
+
+    if pos.side == "LONG":
+        sl_price = round_price(pos.symbol, pos.entry_price * (1 + SECURE_FEE_BUFFER))
+    else:
+        sl_price = round_price(pos.symbol, pos.entry_price * (1 - SECURE_FEE_BUFFER))
+
+    if pos.side == "LONG" and current_price <= sl_price:
+        raise ValueError(
+            f"Position pas assez en profit. Prix actuel ({current_price}) "
+            f"doit etre > SL breakeven ({sl_price})"
+        )
+    if pos.side == "SHORT" and current_price >= sl_price:
+        raise ValueError(
+            f"Position pas assez en profit. Prix actuel ({current_price}) "
+            f"doit etre < SL breakeven ({sl_price})"
+        )
+
+    validate_order(pos.symbol, half_qty, current_price)
+    validate_order(pos.symbol, remaining_qty, sl_price)
+
+    # Step 1: cancel existing SL/TP/OCO to free locked funds
+    try:
+        await cancel_position_orders(pos)
+    except Exception:
+        log.warning("secure_cancel_orders_failed", symbol=pos.symbol, exc_info=True)
+
+    # Step 2: market sell/buy half
+    side = _close_side(pos)
+    kwargs = dict(
+        symbol=pos.symbol, side=side, type="MARKET",
+        quantity=str(half_qty),
+        newClientOrderId=_client_order_id("secure", pos.id),
+    )
+    if _is_margin(pos):
+        if _is_isolated(pos):
+            kwargs["isIsolated"] = "TRUE"
+        kwargs["sideEffectType"] = "AUTO_REPAY"
+        market_result = await binance_client.place_margin_order(**kwargs)
+    else:
+        market_result = await binance_client.place_order(**kwargs)
+
+    market_order_id = str(market_result["orderId"])
+    await _save_order(
+        binance_order_id=market_order_id, symbol=pos.symbol, side=side,
+        order_type="MARKET", status="NEW", quantity=half_qty,
+        market_type=pos.market_type, purpose="SECURE_SELL", position_id=pos.id,
+    )
+    log.info("secure_half_sold", symbol=pos.symbol, qty=str(half_qty),
+             order_id=market_order_id)
+
+    # Step 3: SL at breakeven +0.2% for remaining half
+    sl_result = await place_stop_loss(pos, sl_price, qty=remaining_qty)
+
+    log.info("position_secured", symbol=pos.symbol, half_sold=str(half_qty),
+             sl_price=str(sl_price), remaining=str(remaining_qty))
+
+    return {
+        "market_order_id": market_order_id,
+        "sl_order_id": str(sl_result["orderId"]),
+        "half_qty": str(half_qty),
+        "remaining_qty": str(remaining_qty),
+        "sl_price": str(sl_price),
+    }
 
 
 async def cancel_order(order_db_id: int) -> dict:

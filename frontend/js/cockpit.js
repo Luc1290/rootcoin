@@ -5,6 +5,8 @@ const Cockpit = (() => {
     let _prevPositionKeys = null;
     let _dayPnl = null;
     let _dayTrades = 0;
+    let _marketSymbol = null;
+    let _marketFirstPrice = null;
     const MAX_CYCLES = 5;
 
     async function load() {
@@ -34,6 +36,7 @@ const Cockpit = (() => {
             render();
             Charts.createCockpitChart('cockpit-portfolio-chart');
             Charts.loadCockpitData();
+            _initMarketChart();
         } catch (e) {
             console.error('Cockpit load failed', e);
         }
@@ -41,6 +44,7 @@ const Cockpit = (() => {
 
     function render() {
         _renderPortfolio();
+        _renderMarketChart();
         _renderPositions();
         _renderBias();
         _renderRecentCycles();
@@ -60,7 +64,7 @@ const Cockpit = (() => {
         const dayPnlClass = dayTotal >= 0 ? 'pnl-positive' : 'pnl-negative';
         const dayPnlSign = dayTotal >= 0 ? '+' : '';
         const dayLabel = _dayPnl !== null ? `${dayPnlSign}$${Math.abs(dayTotal).toFixed(2)}` : '--';
-        const dayTradesLabel = _dayTrades > 0 ? ` (${_dayTrades})` : '';
+        const dayTradesLabel = _dayTrades > 0 ? ` (${_dayTrades} trade${_dayTrades > 1 ? 's' : ''})` : '';
 
         const totalSpan = el.querySelector('[data-field="total"]');
         const pnlSpan = el.querySelector('[data-field="pnl"]');
@@ -253,7 +257,58 @@ const Cockpit = (() => {
         if (el) Opportunities.render(el);
     }
 
-    // ── Helpers ──
+    // ── Market chart ──
+
+    function _getMarketSymbol() {
+        if (_positions.length) return _positions[0].symbol;
+        return 'BTCUSDC';
+    }
+
+    function _renderMarketChart() {
+        const el = document.getElementById('cockpit-market-chart');
+        if (!el) return;
+        const symbol = _getMarketSymbol();
+        const displaySymbol = symbol.replace('USDC', '');
+        // Skip re-render if symbol unchanged and card already built
+        if (_marketSymbol === symbol && el.querySelector('.cockpit-card')) return;
+        _marketSymbol = symbol;
+        _marketFirstPrice = null;
+        el.innerHTML = `
+        <div class="cockpit-card">
+            <div class="flex items-center justify-between mb-1">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold">${displaySymbol}</span>
+                    <span class="text-xs text-gray-500">24h</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold tabular-nums" id="market-chart-price">--</span>
+                    <span class="text-xs tabular-nums" id="market-chart-change">--</span>
+                </div>
+            </div>
+            <div id="cockpit-market-chart-container" style="height:120px;width:100%"></div>
+        </div>`;
+    }
+
+    async function _initMarketChart() {
+        _renderMarketChart();
+        Charts.createCockpitMarketChart('cockpit-market-chart-container');
+        const info = await Charts.loadCockpitMarketData(_marketSymbol);
+        if (info) {
+            _marketFirstPrice = info.price / (1 + info.change / 100);
+            _updateMarketHeader(info.price, info.change);
+        }
+    }
+
+    function _updateMarketHeader(price, changePct) {
+        const priceEl = document.getElementById('market-chart-price');
+        const changeEl = document.getElementById('market-chart-change');
+        if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(price);
+        if (changeEl) {
+            const sign = changePct >= 0 ? '+' : '';
+            changeEl.textContent = `${sign}${changePct.toFixed(1)}%`;
+            changeEl.className = `text-xs tabular-nums ${changePct >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+        }
+    }
 
     // ── WS real-time updates ──
 
@@ -263,11 +318,28 @@ const Cockpit = (() => {
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         _renderPortfolio();
         _renderPositions();
+        // Market chart: switch symbol if needed
+        const newSymbol = _getMarketSymbol();
+        if (newSymbol !== _marketSymbol) _initMarketChart();
         // Position closed → refresh recent cycles
         if (prev.length > _positions.length) {
             fetch('/api/cycles?status=closed&limit=5')
                 .then(r => r.ok ? r.json() : [])
                 .then(c => { _recentCycles = c; _renderRecentCycles(); });
+        }
+    });
+
+    WS.on('price_update', (data) => {
+        if (!_marketSymbol || data.symbol !== _marketSymbol) return;
+        if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
+        const price = parseFloat(data.price);
+        if (!price || !isFinite(price)) return;
+        if (_marketFirstPrice) {
+            const changePct = ((price - _marketFirstPrice) / _marketFirstPrice) * 100;
+            _updateMarketHeader(price, changePct);
+        } else {
+            const priceEl = document.getElementById('market-chart-price');
+            if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(price);
         }
     });
 

@@ -61,6 +61,7 @@ const PositionCards = (() => {
                 <button class="action-btn bg-yellow-600" onclick="Positions.showSL(${p.id})">SL</button>
                 <button class="action-btn bg-emerald-600" onclick="Positions.showTP(${p.id})">TP</button>
                 <button class="action-btn bg-blue-600" onclick="Positions.showOCO(${p.id})">OCO</button>
+                <button class="action-btn bg-cyan-600" onclick="Positions.confirmSecure(${p.id})">Secure</button>
                 <button class="action-btn bg-red-600" onclick="Positions.confirmClose(${p.id})">Close</button>
             </div>
         </div>`;
@@ -79,13 +80,19 @@ const PositionCards = (() => {
         const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
 
         if (p.sl_order_id || (p.oco_order_list_id && p.sl_price)) {
+            const price = parseFloat(p.sl_price);
             const dist = _distancePct(p.sl_price, p.entry_price);
-            const label = dist !== null ? `SL ${dist > 0 ? '+' : ''}${dist}%` : 'SL';
+            const priceStr = price ? formatPrice(price) : '';
+            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${dist}%)` : '';
+            const label = priceStr ? `SL ${priceStr}${distStr}` : 'SL';
             badges.push(`<span class="badge bg-red-900/40 text-red-400 tabular-nums">${label}</span>`);
         }
         if (p.tp_order_id || (p.oco_order_list_id && p.tp_price)) {
+            const price = parseFloat(p.tp_price);
             const dist = _distancePct(p.tp_price, p.entry_price);
-            const label = dist !== null ? `TP ${dist > 0 ? '+' : ''}${dist}%` : 'TP';
+            const priceStr = price ? formatPrice(price) : '';
+            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${dist}%)` : '';
+            const label = priceStr ? `TP ${priceStr}${distStr}` : 'TP';
             badges.push(`<span class="badge bg-emerald-900/40 text-emerald-400 tabular-nums">${label}</span>`);
         }
         if (p.oco_order_list_id && !p.sl_price && !p.tp_price) {
@@ -142,6 +149,7 @@ const PositionCards = (() => {
                 <button class="action-btn bg-yellow-600" onclick="Positions.showSL(${p.id})">SL</button>
                 <button class="action-btn bg-emerald-600" onclick="Positions.showTP(${p.id})">TP</button>
                 <button class="action-btn bg-blue-600" onclick="Positions.showOCO(${p.id})">OCO</button>
+                <button class="action-btn bg-cyan-600" onclick="Positions.confirmSecure(${p.id})">Secure</button>
                 <button class="action-btn bg-red-600" onclick="Positions.confirmClose(${p.id})">Close</button>
             `;
         }
