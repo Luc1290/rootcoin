@@ -53,11 +53,17 @@ class WSManager:
         self._callbacks[event_type].append(callback)
 
     async def _dispatch(self, event_type: str, data: dict):
-        for cb in self._callbacks.get(event_type, []):
+        callbacks = self._callbacks.get(event_type, [])
+        if not callbacks:
+            return
+
+        async def _safe_call(cb: Callback):
             try:
                 await cb(data)
             except Exception:
                 log.error("callback_error", event_type=event_type, exc_info=True)
+
+        await asyncio.gather(*(_safe_call(cb) for cb in callbacks))
 
     async def start(self):
         self._running = True
@@ -148,7 +154,7 @@ class WSManager:
     def _sign_params(self, params: dict) -> dict:
         query = urllib.parse.urlencode(params)
         signature = hmac.new(
-            settings.binance_secret_key.encode(),
+            settings.binance_secret_key.get_secret_value().encode(),
             query.encode(),
             hashlib.sha256,
         ).hexdigest()
@@ -156,7 +162,7 @@ class WSManager:
         return params
 
     async def _obtain_listen_token(self) -> str:
-        headers = {"X-MBX-APIKEY": settings.binance_api_key}
+        headers = {"X-MBX-APIKEY": settings.binance_api_key.get_secret_value()}
         params = {"timestamp": str(int(time.time() * 1000))}
         params = self._sign_params(params)
         async with httpx.AsyncClient() as http:

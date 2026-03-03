@@ -2,9 +2,9 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Query
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
-from backend.trading import pnl, position_tracker
+from backend.trading import position_tracker
 from backend.core.database import async_session
 from backend.core.models import Position
 from backend.routes.position_helpers import format_duration
@@ -88,30 +88,32 @@ async def get_cycles(
 @router.get("/stats")
 async def get_cycle_stats(symbol: str | None = Query(None)):
     async with async_session() as session:
-        q = select(Position).where(
+        q = select(
+            func.count().label("total"),
+            func.sum(case((Position.realized_pnl_pct > 0, 1), else_=0)).label("wins"),
+            func.sum(func.coalesce(Position.realized_pnl, 0)).label("sum_pnl"),
+            func.sum(func.coalesce(Position.entry_fees_usd, 0)).label("sum_entry_fees"),
+            func.sum(func.coalesce(Position.exit_fees_usd, 0)).label("sum_exit_fees"),
+        ).where(
             Position.is_active == False,
             Position.realized_pnl.isnot(None),
         )
         if symbol:
             q = q.where(Position.symbol == symbol)
-        result = await session.execute(q)
-        closed = result.scalars().all()
+        row = (await session.execute(q)).one()
 
-        if not closed:
-            return {"total_cycles": 0, "wins": 0, "losses": 0, "win_rate": "0", "total_pnl": "0", "avg_pnl": "0"}
+    total = row.total or 0
+    if total == 0:
+        return {"total_cycles": 0, "wins": 0, "losses": 0, "win_rate": "0", "total_pnl": "0", "avg_pnl": "0"}
 
-        total_net = sum(
-            pnl.net_realized_pnl(p.realized_pnl, p.entry_fees_usd, p.exit_fees_usd)
-            for p in closed if p.realized_pnl is not None
-        )
-        wins = [p for p in closed if p.realized_pnl_pct is not None and p.realized_pnl_pct > 0]
-        losses = [p for p in closed if p.realized_pnl_pct is not None and p.realized_pnl_pct <= 0]
+    wins = row.wins or 0
+    total_net = (row.sum_pnl or Decimal("0")) - (row.sum_entry_fees or Decimal("0")) - (row.sum_exit_fees or Decimal("0"))
 
-        return {
-            "total_cycles": len(closed),
-            "wins": len(wins),
-            "losses": len(losses),
-            "win_rate": str(round(Decimal(len(wins)) / Decimal(len(closed)) * 100, 1)),
-            "total_pnl": str(round(total_net, 2)),
-            "avg_pnl": str(round(total_net / len(closed), 2)),
-        }
+    return {
+        "total_cycles": total,
+        "wins": wins,
+        "losses": total - wins,
+        "win_rate": str(round(Decimal(wins) / Decimal(total) * 100, 1)),
+        "total_pnl": str(round(total_net, 2)),
+        "avg_pnl": str(round(total_net / total, 2)),
+    }

@@ -141,17 +141,22 @@ const Positions = (() => {
     }
 
     function _pctToPrice(pct, entryPrice, side, orderType) {
-        // SL LONG: entry * (1 - pct/100), SL SHORT: entry * (1 + pct/100)
-        // TP LONG: entry * (1 + pct/100), TP SHORT: entry * (1 - pct/100)
         const isBelow = (orderType === 'SL' && side === 'LONG') || (orderType === 'TP' && side === 'SHORT');
         return isBelow ? entryPrice * (1 - pct / 100) : entryPrice * (1 + pct / 100);
+    }
+
+    function _usdToPrice(usd, entryPrice, qty, side, orderType) {
+        const delta = usd / qty;
+        const isBelow = (orderType === 'SL' && side === 'LONG') || (orderType === 'TP' && side === 'SHORT');
+        return isBelow ? entryPrice - delta : entryPrice + delta;
     }
 
     function _toggleHtml(prefix) {
         return `
             <div class="flex gap-1 mb-3" id="${prefix}-mode-toggle">
-                <button type="button" class="mode-btn active flex-1 text-sm py-1.5 rounded font-medium" data-mode="price" onclick="Positions._setMode('${prefix}','price')">Prix $</button>
+                <button type="button" class="mode-btn active flex-1 text-sm py-1.5 rounded font-medium" data-mode="price" onclick="Positions._setMode('${prefix}','price')">Prix</button>
                 <button type="button" class="mode-btn flex-1 text-sm py-1.5 rounded font-medium" data-mode="pct" onclick="Positions._setMode('${prefix}','pct')">%</button>
+                <button type="button" class="mode-btn flex-1 text-sm py-1.5 rounded font-medium" data-mode="usd" onclick="Positions._setMode('${prefix}','usd')">USD</button>
             </div>`;
     }
 
@@ -165,13 +170,21 @@ const Positions = (() => {
         const input = document.getElementById(`${prefix}-input`);
         if (input) {
             input.value = '';
-            input.placeholder = mode === 'pct' ? 'Distance %' : `Prix ${prefix.toUpperCase()}`;
+            if (mode === 'pct') input.placeholder = 'Distance %';
+            else if (mode === 'usd') input.placeholder = prefix === 'sl' ? 'Perte $' : 'Gain $';
+            else input.placeholder = `Prix ${prefix.toUpperCase()}`;
         }
         // Dual inputs (OCO)
         const tpInput = document.getElementById(`${prefix}-tp-input`);
         const slInput = document.getElementById(`${prefix}-sl-input`);
-        if (tpInput) { tpInput.value = ''; tpInput.placeholder = mode === 'pct' ? 'TP %' : 'Prix TP'; }
-        if (slInput) { slInput.value = ''; slInput.placeholder = mode === 'pct' ? 'SL %' : 'Prix SL'; }
+        if (tpInput) {
+            tpInput.value = '';
+            tpInput.placeholder = mode === 'pct' ? 'TP %' : mode === 'usd' ? 'Gain $' : 'Prix TP';
+        }
+        if (slInput) {
+            slInput.value = '';
+            slInput.placeholder = mode === 'pct' ? 'SL %' : mode === 'usd' ? 'Perte $' : 'Prix SL';
+        }
     }
 
     function _getMode(prefix) {
@@ -184,12 +197,76 @@ const Positions = (() => {
     function _resolvePrice(inputId, prefix, pos, orderType) {
         const raw = parseFloat(document.getElementById(inputId).value);
         if (!raw || isNaN(raw)) return null;
-        if (_getMode(prefix) === 'pct') {
+        const mode = _getMode(prefix);
+        if (mode === 'pct') {
             const entry = parseFloat(pos.entry_price) || 0;
             if (!entry) return null;
             return _pctToPrice(raw, entry, pos.side, orderType);
         }
+        if (mode === 'usd') {
+            const entry = parseFloat(pos.entry_price) || 0;
+            const qty = parseFloat(pos.quantity) || 0;
+            if (!entry || !qty) return null;
+            return _usdToPrice(raw, entry, qty, pos.side, orderType);
+        }
         return raw;
+    }
+
+    // --- Key levels ---
+
+    async function _loadLevels(symbol, entryPrice, qty, side, prefix, posId) {
+        const el = document.getElementById(`${prefix}-levels`);
+        if (!el) return;
+        try {
+            const resp = await fetch(`/api/analysis/${symbol}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const levels = data.key_levels || [];
+            if (!levels.length) return;
+
+            const chips = levels.map(l => {
+                const price = parseFloat(l.price);
+                const gainPct = side === 'LONG'
+                    ? ((price - entryPrice) / entryPrice * 100)
+                    : ((entryPrice - price) / entryPrice * 100);
+                const gainUsd = side === 'LONG'
+                    ? (price - entryPrice) * qty
+                    : (entryPrice - price) * qty;
+                const sign = gainPct >= 0 ? '+' : '';
+                const color = gainPct >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const usdStr = Math.abs(gainUsd) >= 100
+                    ? Math.abs(gainUsd).toFixed(0)
+                    : Math.abs(gainUsd).toFixed(2);
+                return `<button type="button" class="level-chip text-xs px-2 py-1 rounded bg-gray-700/50 border border-gray-600 hover:border-gray-400"
+                    onclick="Positions._fillLevel('${prefix}',${price},${posId})">
+                    <span class="text-gray-400">${l.type}</span>
+                    <span class="text-white">${Utils.fmtPrice(price)}</span>
+                    <span class="${color}">${sign}${gainPct.toFixed(1)}%</span>
+                    <span class="${color}">${sign}$${usdStr}</span>
+                </button>`;
+            }).join('');
+
+            el.innerHTML = `<div class="text-xs text-gray-500 mb-1">Niveaux cles</div>`
+                + `<div class="flex flex-wrap gap-1">${chips}</div>`;
+            el.classList.remove('hidden');
+        } catch (e) { /* analysis not available */ }
+    }
+
+    function _fillLevel(prefix, price, posId) {
+        _setMode(prefix, 'price');
+        if (prefix === 'oco') {
+            const pos = _getPos(posId);
+            if (!pos) return;
+            const entry = parseFloat(pos.entry_price) || 0;
+            const isAbove = price >= entry;
+            const isTPAbove = pos.side === 'LONG';
+            const inputId = (isAbove === isTPAbove) ? 'oco-tp-input' : 'oco-sl-input';
+            document.getElementById(inputId).value = price;
+            _updateRR(posId);
+        } else {
+            document.getElementById(`${prefix}-input`).value = price;
+            _updateRisk(posId, prefix);
+        }
     }
 
     // --- Modals ---
@@ -199,12 +276,15 @@ const Positions = (() => {
             ${_toggleHtml('sl')}
             <input id="sl-input" type="number" step="any" placeholder="Prix SL"
                 class="w-full rounded px-3 py-3 mb-3 text-base" oninput="Positions._updateRisk(${id},'sl')">
+            <div id="sl-levels" class="mb-3 hidden"></div>
             <div id="sl-risk" class="text-center text-sm text-gray-400 mb-4">Risque --</div>
             <div class="flex gap-2">
                 <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitSL(${id})" class="action-btn bg-yellow-600 flex-1">Placer SL</button>
             </div>
         `);
+        const pos = _getPos(id);
+        if (pos) _loadLevels(pos.symbol, parseFloat(pos.entry_price) || 0, parseFloat(pos.quantity) || 0, pos.side, 'sl', id);
     }
 
     function showTP(id) {
@@ -212,12 +292,15 @@ const Positions = (() => {
             ${_toggleHtml('tp')}
             <input id="tp-input" type="number" step="any" placeholder="Prix TP"
                 class="w-full rounded px-3 py-3 mb-3 text-base" oninput="Positions._updateRisk(${id},'tp')">
+            <div id="tp-levels" class="mb-3 hidden"></div>
             <div id="tp-risk" class="text-center text-sm text-gray-400 mb-4">Gain --</div>
             <div class="flex gap-2">
                 <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitTP(${id})" class="action-btn bg-emerald-600 flex-1">Placer TP</button>
             </div>
         `);
+        const pos = _getPos(id);
+        if (pos) _loadLevels(pos.symbol, parseFloat(pos.entry_price) || 0, parseFloat(pos.quantity) || 0, pos.side, 'tp', id);
     }
 
     function showOCO(id) {
@@ -228,12 +311,14 @@ const Positions = (() => {
                 class="w-full rounded px-3 py-3 mb-3 text-base" oninput="Positions._updateRR(${id})">
             <input id="oco-sl-input" type="number" step="any" placeholder="Prix SL"
                 class="w-full rounded px-3 py-3 mb-3 text-base" oninput="Positions._updateRR(${id})">
+            <div id="oco-levels" class="mb-3 hidden"></div>
             <div id="oco-rr" class="text-center text-sm text-gray-400 mb-4">R:R --</div>
             <div class="flex gap-2">
                 <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitOCO(${id})" class="action-btn bg-blue-600 flex-1">Placer OCO</button>
             </div>
         `);
+        if (pos) _loadLevels(pos.symbol, parseFloat(pos.entry_price) || 0, parseFloat(pos.quantity) || 0, pos.side, 'oco', id);
     }
 
     function _updateRisk(id, type) {
@@ -253,7 +338,10 @@ const Positions = (() => {
         }
 
         const mode = _getMode(type);
-        const price = mode === 'pct' ? _pctToPrice(raw, entry, pos.side, type.toUpperCase()) : raw;
+        let price;
+        if (mode === 'pct') price = _pctToPrice(raw, entry, pos.side, type.toUpperCase());
+        else if (mode === 'usd') price = _usdToPrice(raw, entry, qty, pos.side, type.toUpperCase());
+        else price = raw;
 
         let delta;
         if (pos.side === 'LONG') {
@@ -264,9 +352,14 @@ const Positions = (() => {
         const pct = ((price - entry) / entry * 100);
         const absPct = Math.abs(pct).toFixed(2);
 
-        const mirror = mode === 'pct'
-            ? `<div class="text-xs text-gray-500 mt-0.5">Prix: ${Utils.fmtPrice(price)}</div>`
-            : `<div class="text-xs text-gray-500 mt-0.5">${absPct}% depuis l'entree</div>`;
+        let mirror;
+        if (mode === 'price') {
+            mirror = `<div class="text-xs text-gray-500 mt-0.5">${absPct}% depuis l'entree</div>`;
+        } else if (mode === 'pct') {
+            mirror = `<div class="text-xs text-gray-500 mt-0.5">Prix: ${Utils.fmtPrice(price)}</div>`;
+        } else {
+            mirror = `<div class="text-xs text-gray-500 mt-0.5">Prix: ${Utils.fmtPrice(price)} (${absPct}%)</div>`;
+        }
 
         if (type === 'sl') {
             const loss = Math.abs(delta);
@@ -291,10 +384,15 @@ const Positions = (() => {
         if (!tpRaw || !slRaw || !entry) { rrEl.textContent = 'R:R --'; return; }
 
         const mode = _getMode('oco');
+        const qty = parseFloat(pos.quantity) || 0;
         let tpPrice, slPrice;
         if (mode === 'pct') {
             tpPrice = _pctToPrice(tpRaw, entry, pos.side, 'TP');
             slPrice = _pctToPrice(slRaw, entry, pos.side, 'SL');
+        } else if (mode === 'usd') {
+            if (!qty) { rrEl.textContent = 'R:R --'; return; }
+            tpPrice = _usdToPrice(tpRaw, entry, qty, pos.side, 'TP');
+            slPrice = _usdToPrice(slRaw, entry, qty, pos.side, 'SL');
         } else {
             tpPrice = tpRaw;
             slPrice = slRaw;
@@ -309,7 +407,6 @@ const Positions = (() => {
             risk = slPrice - entry;
         }
 
-        const qty = parseFloat(pos.quantity) || 0;
         const riskUsd = Math.abs(risk * qty).toFixed(2);
         const rewardUsd = Math.abs(reward * qty).toFixed(2);
         const tpPct = Math.abs((tpPrice - entry) / entry * 100).toFixed(2);
@@ -321,9 +418,9 @@ const Positions = (() => {
             return;
         }
         const ratio = (reward / risk).toFixed(1);
-        const mirror = mode === 'pct'
-            ? `<div class="text-xs text-gray-500 mt-0.5">TP: ${Utils.fmtPrice(tpPrice)} | SL: ${Utils.fmtPrice(slPrice)}</div>`
-            : `<div class="text-xs text-gray-500 mt-0.5">TP: ${tpPct}% | SL: ${slPct}%</div>`;
+        const mirror = mode === 'price'
+            ? `<div class="text-xs text-gray-500 mt-0.5">TP: ${tpPct}% | SL: ${slPct}%</div>`
+            : `<div class="text-xs text-gray-500 mt-0.5">TP: ${Utils.fmtPrice(tpPrice)} | SL: ${Utils.fmtPrice(slPrice)}</div>`;
         rrEl.innerHTML = `<div><span class="text-blue-400 font-semibold">R:R 1:${ratio}</span>`
             + `<span class="text-gray-500 mx-2">|</span>`
             + `<span class="text-red-400">-$${riskUsd}</span>`
@@ -333,16 +430,38 @@ const Positions = (() => {
         rrEl.className = 'text-center text-sm font-semibold mb-4';
     }
 
+    let _closePct = 100;
+
     function confirmClose(id) {
+        _closePct = 100;
         const pos = _getPos(id);
         const label = pos ? `${pos.symbol} ${pos.side}` : `#${id}`;
+        const qty = pos ? parseFloat(pos.quantity) || 0 : 0;
         showModal('Fermer la position', `
-            <p class="text-gray-400 mb-4">Fermer <strong>${label}</strong> au marche ?</p>
+            <p class="text-gray-400 mb-3">Fermer <strong>${label}</strong> au marche</p>
+            <div class="flex gap-2 mb-3">
+                ${[25, 50, 75, 100].map(p =>
+                    `<button class="close-pct-btn action-btn flex-1 ${p === 100 ? 'bg-red-600' : 'bg-gray-700'}"
+                        onclick="Positions.selectClosePct(${p}, ${qty})">${p}%</button>`
+                ).join('')}
+            </div>
+            <div class="text-sm text-gray-500 text-center mb-4">
+                Quantite: <span id="close-qty-display">${qty.toFixed(6)}</span>
+            </div>
             <div class="flex gap-2">
                 <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitClose(${id})" class="action-btn bg-red-600 flex-1">Fermer</button>
             </div>
         `);
+    }
+
+    function selectClosePct(pct, totalQty) {
+        _closePct = pct;
+        document.querySelectorAll('.close-pct-btn').forEach(btn => {
+            const active = btn.textContent.trim() === pct + '%';
+            btn.className = `close-pct-btn action-btn flex-1 ${active ? 'bg-red-600' : 'bg-gray-700'}`;
+        });
+        document.getElementById('close-qty-display').textContent = (totalQty * pct / 100).toFixed(6);
     }
 
     function confirmSecure(id) {
@@ -435,13 +554,19 @@ const Positions = (() => {
         if (mode === 'pct') {
             tpPrice = _pctToPrice(tpPrice, entry, pos.side, 'TP');
             slPrice = _pctToPrice(slPrice, entry, pos.side, 'SL');
+        } else if (mode === 'usd') {
+            const qty = parseFloat(pos.quantity) || 0;
+            if (!qty) return;
+            tpPrice = _usdToPrice(tpPrice, entry, qty, pos.side, 'TP');
+            slPrice = _usdToPrice(slPrice, entry, qty, pos.side, 'SL');
         }
 
         await apiPost(`/api/positions/${id}/oco`, { tp_price: String(tpPrice), sl_price: String(slPrice) });
     }
 
     async function submitClose(id) {
-        await apiPost(`/api/positions/${id}/close`, {});
+        const msg = _closePct < 100 ? `${_closePct}% ferme` : 'Position fermee';
+        await apiPost(`/api/positions/${id}/close`, { pct: _closePct }, msg);
     }
 
     function confirmCancelOrders(id) {
@@ -493,7 +618,7 @@ const Positions = (() => {
     return {
         load, render, showSL, showTP, showOCO, confirmClose, confirmSecure,
         submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
-        confirmCancelOrders, submitCancelOrders,
-        _setMode, _updateRisk, _updateRR,
+        confirmCancelOrders, submitCancelOrders, selectClosePct,
+        _setMode, _updateRisk, _updateRR, _fillLevel,
     };
 })();

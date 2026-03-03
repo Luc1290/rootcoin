@@ -26,6 +26,10 @@ class OcoBody(BaseModel):
     sl_price: str
 
 
+class CloseBody(BaseModel):
+    pct: int = 100
+
+
 @router.get("")
 async def list_positions():
     positions = position_tracker.get_positions()
@@ -94,10 +98,11 @@ async def cancel_orders(position_id: int):
 
 
 @router.post("/{position_id}/close")
-async def close_position(position_id: int):
+async def close_position(position_id: int, body: CloseBody = CloseBody()):
     try:
+        pct = max(1, min(body.pct, 100))
         pos = _find_position(position_id)
-        result = await order_manager.close_position(pos)
+        result = await order_manager.close_position(pos, pct=pct)
         return {"status": "ok", "order_id": str(result["orderId"])}
     except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))

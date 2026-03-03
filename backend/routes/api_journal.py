@@ -229,7 +229,7 @@ async def get_streaks():
                 Position.is_active == False,
                 Position.closed_at.isnot(None),
                 Position.realized_pnl.isnot(None),
-            ).order_by(Position.closed_at.desc())
+            ).order_by(Position.closed_at.desc()).limit(5000)
         )
         all_positions = result.scalars().all()
 

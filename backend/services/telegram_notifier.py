@@ -56,7 +56,10 @@ async def stop():
 
 
 def is_configured() -> bool:
-    return bool(settings.telegram_bot_token and settings.telegram_chat_id)
+    return bool(
+        settings.telegram_bot_token.get_secret_value()
+        and settings.telegram_chat_id.get_secret_value()
+    )
 
 
 def is_enabled() -> bool:
@@ -120,11 +123,11 @@ async def set_category_enabled(key: str, enabled: bool):
 async def notify(message: str, parse_mode: str = "HTML", retries: int = 0) -> bool:
     if not is_enabled() or not _http:
         return False
-    url = f"{_BASE_URL.format(token=settings.telegram_bot_token)}/sendMessage"
+    url = f"{_BASE_URL.format(token=settings.telegram_bot_token.get_secret_value())}/sendMessage"
     for attempt in range(1 + retries):
         try:
             resp = await _http.post(url, json={
-                "chat_id": settings.telegram_chat_id,
+                "chat_id": settings.telegram_chat_id.get_secret_value(),
                 "text": message,
                 "parse_mode": parse_mode,
                 "disable_web_page_preview": True,
@@ -147,9 +150,9 @@ async def test_connection() -> bool:
     if not is_configured() or not _http:
         return False
     try:
-        url = f"{_BASE_URL.format(token=settings.telegram_bot_token)}/sendMessage"
+        url = f"{_BASE_URL.format(token=settings.telegram_bot_token.get_secret_value())}/sendMessage"
         resp = await _http.post(url, json={
-            "chat_id": settings.telegram_chat_id,
+            "chat_id": settings.telegram_chat_id.get_secret_value(),
             "text": "\u2705 RootCoin \u2014 Connexion Telegram OK !",
             "parse_mode": "HTML",
         })

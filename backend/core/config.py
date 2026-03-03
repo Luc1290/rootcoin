@@ -1,11 +1,12 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
-    binance_api_key: str = ""
-    binance_secret_key: str = ""
+    binance_api_key: SecretStr = SecretStr("")
+    binance_secret_key: SecretStr = SecretStr("")
 
     stablecoins: str = "USDT,USDC,BUSD,DAI,TUSD,FDUSD"
     ignored_assets: str = "BNB"
@@ -21,8 +22,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
-    telegram_bot_token: str = ""
-    telegram_chat_id: str = ""
+    telegram_bot_token: SecretStr = SecretStr("")
+    telegram_chat_id: SecretStr = SecretStr("")
 
     # Market analysis
     analysis_refresh_interval: int = 60

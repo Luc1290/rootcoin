@@ -260,14 +260,23 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict
     return result
 
 
-async def close_position(pos: Position) -> dict:
-    await cancel_position_orders(pos)
+async def close_position(pos: Position, pct: int = 100) -> dict:
+    is_full = pct >= 100
+    if is_full:
+        await cancel_position_orders(pos)
+        qty = _close_qty(pos)
+    else:
+        partial = pos.quantity * Decimal(pct) / Decimal(100)
+        if pos.side == "SHORT" and _is_margin(pos):
+            partial = partial * (1 + SHORT_CLOSE_FEE_BUFFER)
+        qty = round_quantity(pos.symbol, partial)
+
     side = _close_side(pos)
-    qty = _close_qty(pos)
+    purpose = "close" if is_full else f"pclose{pct}"
 
     kwargs = dict(
         symbol=pos.symbol, side=side, type="MARKET",
-        quantity=str(qty), newClientOrderId=_client_order_id("close", pos.id),
+        quantity=str(qty), newClientOrderId=_client_order_id(purpose, pos.id),
     )
 
     if _is_margin(pos):
@@ -285,7 +294,8 @@ async def close_position(pos: Position) -> dict:
         market_type=pos.market_type, purpose="CLOSE", position_id=pos.id,
     )
 
-    log.info("close_placed", symbol=pos.symbol, side=side, qty=str(qty), order_id=order_id)
+    log.info("close_placed", symbol=pos.symbol, side=side, qty=str(qty),
+             pct=pct, order_id=order_id)
     return result
 
 

@@ -13,8 +13,8 @@ async def init_client() -> AsyncClient:
     global _client
     if _client is None:
         _client = await AsyncClient.create(
-            api_key=settings.binance_api_key,
-            api_secret=settings.binance_secret_key,
+            api_key=settings.binance_api_key.get_secret_value(),
+            api_secret=settings.binance_secret_key.get_secret_value(),
         )
         log.info("binance_client_initialized")
     return _client
