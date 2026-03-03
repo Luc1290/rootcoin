@@ -632,7 +632,6 @@ const KlineChart = (() => {
                     priceLineVisible: false,
                     crosshairMarkerVisible: false,
                     autoscaleInfoProvider: () => null,
-                    priceScaleId: '',
                 });
                 area.setData(areaData);
                 _cycleSeries.push(area);
