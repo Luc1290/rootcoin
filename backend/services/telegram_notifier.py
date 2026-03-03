@@ -117,24 +117,30 @@ async def set_category_enabled(key: str, enabled: bool):
 # ── Core send ────────────────────────────────────────────────
 
 
-async def notify(message: str, parse_mode: str = "HTML") -> bool:
+async def notify(message: str, parse_mode: str = "HTML", retries: int = 0) -> bool:
     if not is_enabled() or not _http:
         return False
-    try:
-        url = f"{_BASE_URL.format(token=settings.telegram_bot_token)}/sendMessage"
-        resp = await _http.post(url, json={
-            "chat_id": settings.telegram_chat_id,
-            "text": message,
-            "parse_mode": parse_mode,
-            "disable_web_page_preview": True,
-        })
-        if resp.status_code == 200:
-            return True
-        log.warning("telegram_send_failed", status=resp.status_code, body=resp.text[:200])
-        return False
-    except Exception:
-        log.error("telegram_send_error", exc_info=True)
-        return False
+    url = f"{_BASE_URL.format(token=settings.telegram_bot_token)}/sendMessage"
+    for attempt in range(1 + retries):
+        try:
+            resp = await _http.post(url, json={
+                "chat_id": settings.telegram_chat_id,
+                "text": message,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": True,
+            })
+            if resp.status_code == 200:
+                return True
+            if resp.status_code == 429 and attempt < retries:
+                retry_after = int(resp.json().get("parameters", {}).get("retry_after", 2))
+                await asyncio.sleep(retry_after)
+                continue
+            log.warning("telegram_send_failed", status=resp.status_code, body=resp.text[:200])
+            return False
+        except Exception:
+            log.error("telegram_send_error", exc_info=True)
+            return False
+    return False
 
 
 async def test_connection() -> bool:
@@ -200,7 +206,7 @@ async def notify_position_closed(
         f"PnL net: {sign}{_fp(net_pnl)} ({sign}{_fq(pnl_pct)}%)\n"
         f"Duree: {duration}"
     )
-    await notify(msg)
+    await notify(msg, retries=2)
 
 
 async def notify_position_dca(

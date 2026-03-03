@@ -462,9 +462,6 @@ async def _reduce_or_close(
         await _save_position(position)
         log.info("position_reduced", symbol=position.symbol, remaining=str(new_qty),
                  realized_pnl=str(realized))
-        asyncio.create_task(telegram_notifier.notify_position_reduced(
-            position.symbol, position.side, price, qty, new_qty, realized,
-        ))
 
 
 async def _sell_margin_residual(symbol: str, market_type: str, side: str = "LONG"):
