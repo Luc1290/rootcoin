@@ -59,6 +59,7 @@ const Health = (() => {
         _renderFreshness();
         _renderWS();
         _renderModules();
+        _renderNotifications();
         _renderDB();
         _renderSystem();
         _renderEvents();
@@ -256,6 +257,119 @@ const Health = (() => {
         }
     }
 
+    function _renderNotifications() {
+        const el = document.getElementById('health-notifications');
+        const tg = _data && _data.telegram;
+        if (!tg) { el.innerHTML = ''; return; }
+
+        const configured = tg.configured;
+        const enabled = tg.enabled;
+        const cats = tg.categories || {};
+        const dotClass = !configured ? 'health-dot-red' : enabled ? 'health-dot-green' : 'health-dot-yellow';
+        const statusText = !configured ? 'Non configure' : enabled ? 'Actif' : 'Desactive';
+        const statusClass = !configured ? 'text-red-400' : enabled ? 'pnl-positive' : 'text-yellow-400';
+
+        const catLabels = {
+            notify_positions: 'Positions',
+            notify_orders: 'Ordres (SL/TP/OCO)',
+            notify_levels: 'Niveaux cles',
+            notify_pnl: 'Seuils PnL',
+        };
+
+        const catToggles = enabled ? Object.entries(catLabels).map(([key, label]) => {
+            const on = cats[key] !== false;
+            return `
+            <div class="flex items-center justify-between py-1.5">
+                <span class="text-xs text-gray-400">${label}</span>
+                <label class="toggle-switch" style="transform:scale(0.8)">
+                    <input type="checkbox" data-cat-key="${key}" ${on ? 'checked' : ''}>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>`;
+        }).join('') : '';
+
+        el.innerHTML = `
+        <div class="card">
+            <div class="metric-label mb-3">Notifications</div>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="health-dot ${dotClass}"></span>
+                    <div>
+                        <div class="text-sm font-semibold">Telegram</div>
+                        <div class="text-xs ${statusClass}">${statusText}</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    ${configured ? `<button id="tg-test-btn" class="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 border border-gray-700 rounded">Test</button>` : ''}
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="tg-toggle" ${enabled ? 'checked' : ''} ${!configured ? 'disabled' : ''}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+            ${catToggles ? `<div class="mt-3 pt-3 border-t border-gray-800/40">${catToggles}</div>` : ''}
+        </div>`;
+
+        _bindNotificationEvents(configured);
+    }
+
+    function _bindNotificationEvents(configured) {
+        const toggle = document.getElementById('tg-toggle');
+        if (toggle && configured) {
+            toggle.onchange = async () => {
+                try {
+                    const resp = await fetch('/api/settings/telegram/toggle', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: toggle.checked }),
+                    });
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        App.toast(data.enabled ? 'success' : 'info',
+                            data.enabled ? 'Notifications Telegram activees' : 'Notifications Telegram desactivees');
+                        load();
+                    }
+                } catch (e) {
+                    console.error('Toggle telegram failed', e);
+                    toggle.checked = !toggle.checked;
+                }
+            };
+        }
+
+        document.querySelectorAll('[data-cat-key]').forEach(input => {
+            input.onchange = async () => {
+                try {
+                    await fetch('/api/settings/telegram/category', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: input.dataset.catKey, enabled: input.checked }),
+                    });
+                } catch (e) {
+                    console.error('Toggle category failed', e);
+                    input.checked = !input.checked;
+                }
+            };
+        });
+
+        const testBtn = document.getElementById('tg-test-btn');
+        if (testBtn) {
+            testBtn.onclick = async () => {
+                testBtn.disabled = true;
+                testBtn.textContent = '...';
+                try {
+                    const resp = await fetch('/api/settings/telegram/test', { method: 'POST' });
+                    const data = await resp.json();
+                    App.toast(data.ok ? 'success' : 'error',
+                        data.ok ? 'Message test envoye !' : (data.error || 'Echec du test'));
+                } catch (e) {
+                    App.toast('error', 'Erreur connexion');
+                }
+                testBtn.disabled = false;
+                testBtn.textContent = 'Test';
+            };
+        }
+    }
+
     function _statusDotClass(status) {
         if (status === 'healthy') return 'health-dot-green';
         if (status === 'degraded') return 'health-dot-yellow';
@@ -278,6 +392,7 @@ const Health = (() => {
         _renderFreshness();
         _renderWS();
         _renderModules();
+        _renderNotifications();
         _renderDB();
         _renderSystem();
     });

@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -6,6 +7,7 @@ import structlog
 from sqlalchemy import select
 
 from backend.exchange import binance_client
+from backend.services import telegram_notifier
 from backend.core.database import async_session
 from backend.core.models import Order, Position
 from backend.exchange.symbol_filters import round_price, round_quantity, validate_order
@@ -124,6 +126,9 @@ async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | Non
     await _update_position_order_ref(pos, sl_order_id=order_id)
 
     log.info("sl_placed", symbol=pos.symbol, stop_price=str(stop_price), order_id=order_id)
+    asyncio.create_task(telegram_notifier.notify_sl_placed(
+        pos.symbol, pos.side, stop_price, qty, pos.entry_price,
+    ))
     return result
 
 
@@ -163,6 +168,9 @@ async def place_take_profit(pos: Position, tp_price: Decimal) -> dict:
     await _update_position_order_ref(pos, tp_order_id=order_id)
 
     log.info("tp_placed", symbol=pos.symbol, tp_price=str(tp_price), order_id=order_id)
+    asyncio.create_task(telegram_notifier.notify_tp_placed(
+        pos.symbol, pos.side, tp_price, qty, pos.entry_price,
+    ))
     return result
 
 
@@ -260,6 +268,9 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict
     )
 
     log.info("oco_placed", symbol=pos.symbol, tp=str(tp_price), sl=str(sl_price))
+    asyncio.create_task(telegram_notifier.notify_oco_placed(
+        pos.symbol, pos.side, tp_price, sl_price, qty, pos.entry_price,
+    ))
     return result
 
 
@@ -358,6 +369,9 @@ async def secure_position(pos: Position) -> dict:
 
     log.info("position_secured", symbol=pos.symbol, half_sold=str(half_qty),
              sl_price=str(sl_price), remaining=str(remaining_qty))
+    asyncio.create_task(telegram_notifier.notify_position_secured(
+        pos.symbol, pos.side, half_qty, sl_price, remaining_qty,
+    ))
 
     return {
         "market_order_id": market_order_id,

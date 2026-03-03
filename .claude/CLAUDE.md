@@ -43,6 +43,8 @@ Le demarrage (`main.py` lifespan) initialise dans cet ordre :
 14. `opportunity_detector.start()` — filtre symboles sans position avec score unifie > seuil, messages FR, cooldown
 15. `news_tracker.start()` — fetch RSS CoinDesk + Google News, traduction EN→FR, cache memoire
 16. `health_collector.start()` — collecte sante modules, DB stats, memoire, WS heartbeat toutes les 10s
+17. `telegram_notifier.start()` — init httpx client, charge enabled depuis DB, pret a envoyer
+18. `level_alert.start()` — s'abonne aux prix WS, detecte croisement niveaux cles, notif Telegram
 
 L'arret se fait en ordre inverse. Chaque module expose `start()`/`stop()`.
 
@@ -194,6 +196,8 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `log_buffer.py` | Ring buffer structlog, capture processor, real-time subscribers | `capture_processor()`, `get_logs()`, `subscribe()`, `unsubscribe()` |
 | `news_tracker.py` | Fetch RSS CoinDesk + Google News (crypto FR + macro FR), traduction EN→FR via deep-translator, cache memoire | `start()`, `stop()`, `get_news()` |
 | `health_collector.py` | Aggrege la sante de tous les modules, DB stats, memoire, uptime | `start()`, `stop()`, `get_health()` |
+| `telegram_notifier.py` | Envoi notifications Telegram via Bot API (httpx), toggle on/off persiste en DB, 3 categories (positions, ordres, niveaux) | `start()`, `stop()`, `notify()`, `is_enabled()`, `is_configured()`, `set_enabled()`, `test_connection()`, `notify_level_reached()` |
+| `level_alert.py` | Detecte croisement prix/niveaux cles (pivots, supports, resistances), notif Telegram avec cooldown 30min | `start()`, `stop()` |
 
 ### Routes API (`backend/routes/`)
 
@@ -217,6 +221,7 @@ Les indicateurs "Non" affiches sont prets a l'emploi pour une future page d'anal
 | `api_news.py` | `GET /api/news` | News RSS : CoinDesk + Google News |
 | `api_journal.py` | `GET /api/journal/calendar`, `GET /api/journal/equity`, `GET /api/journal/entries` | Journal trading : calendrier PnL, equity curve + drawdowns, timeline trades avec snapshots |
 | `api_health.py` | `GET /api/health`, `GET /api/health/logs`, `GET /api/health/events`, `GET /api/health/db` | Health systeme, logs recents, raw WS events, stats DB |
+| `api_settings.py` | `GET /api/settings`, `GET /api/settings/{key}`, `PUT /api/settings/{key}`, `POST /api/settings/telegram/toggle`, `POST /api/settings/telegram/category`, `POST /api/settings/telegram/test` | CRUD settings DB + toggle/test/categories Telegram |
 
 ### Frontend (`frontend/`)
 

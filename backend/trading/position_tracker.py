@@ -9,7 +9,7 @@ from sqlalchemy import select
 from backend.exchange import binance_client, ws_manager
 from backend.trading import order_manager, pnl
 from backend.trading import position_reconciler
-from backend.services import journal_snapshotter
+from backend.services import journal_snapshotter, telegram_notifier
 from backend.core.config import settings
 from backend.core.database import async_session
 from backend.core.models import Position, Trade
@@ -268,14 +268,15 @@ async def _handle_execution_report(msg: dict):
     fee_usd = await _commission_to_usd(commission, commission_asset, fill_price, symbol)
 
     if side == "BUY":
-        await _handle_buy(symbol, effective_qty, fill_price, market_type, position, fee_usd)
+        await _handle_buy(symbol, effective_qty, fill_price, market_type, position, fee_usd, order_id)
     else:
-        await _handle_sell(symbol, effective_qty, fill_price, market_type, position, fee_usd)
+        await _handle_sell(symbol, effective_qty, fill_price, market_type, position, fee_usd, order_id)
 
 
 async def _handle_buy(
     symbol: str, qty: Decimal, price: Decimal, market_type: str,
     position: Position | None, fee_usd: Decimal = Decimal("0"),
+    order_id: str = "",
 ):
     if market_type == "SPOT":
         if position and position.side == "LONG":
@@ -286,7 +287,7 @@ async def _handle_buy(
 
     # Margin BUY: close SHORT or open LONG?
     if position and position.side == "SHORT":
-        await _reduce_or_close(position, qty, price, fee_usd)
+        await _reduce_or_close(position, qty, price, fee_usd, order_id)
         return
 
     # Check anti-false-LONG after SHORT close (+ cleanup expired entries)
@@ -312,17 +313,18 @@ async def _handle_buy(
 async def _handle_sell(
     symbol: str, qty: Decimal, price: Decimal, market_type: str,
     position: Position | None, fee_usd: Decimal = Decimal("0"),
+    order_id: str = "",
 ):
     if market_type == "SPOT":
         if position and position.side == "LONG":
-            await _reduce_or_close(position, qty, price, fee_usd)
+            await _reduce_or_close(position, qty, price, fee_usd, order_id)
         else:
             log.warning("spot_sell_no_position", symbol=symbol)
         return
 
     # Margin SELL: close LONG or open SHORT?
     if position and position.side == "LONG":
-        await _reduce_or_close(position, qty, price, fee_usd)
+        await _reduce_or_close(position, qty, price, fee_usd, order_id)
     elif position and position.side == "SHORT":
         await _dca(position, qty, price, fee_usd)
     else:
@@ -367,6 +369,7 @@ async def _open_position(
         log.warning("open_snapshot_failed", position_id=pos.id, exc_info=True)
     log.info("position_opened", symbol=symbol, side=side, price=str(price), qty=str(qty),
              market_type=market_type)
+    asyncio.create_task(telegram_notifier.notify_position_opened(symbol, side, price, qty, market_type))
 
 
 async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decimal = Decimal("0")):
@@ -386,10 +389,26 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
         log.warning("dca_snapshot_failed", position_id=position.id, exc_info=True)
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
              qty=str(position.quantity))
+    asyncio.create_task(telegram_notifier.notify_position_dca(
+        position.symbol, position.side, price, qty, position.entry_price, position.quantity,
+    ))
+
+
+def _exit_reason(position: Position, order_id: str) -> str:
+    if not order_id:
+        return ""
+    if position.sl_order_id and order_id == position.sl_order_id:
+        return "SL"
+    if position.tp_order_id and order_id == position.tp_order_id:
+        return "TP"
+    if position.oco_order_list_id:
+        return "OCO"
+    return ""
 
 
 async def _reduce_or_close(
-    position: Position, qty: Decimal, price: Decimal, fee_usd: Decimal = Decimal("0"),
+    position: Position, qty: Decimal, price: Decimal,
+    fee_usd: Decimal = Decimal("0"), order_id: str = "",
 ):
     realized = pnl.gross_pnl(position.side, position.entry_price, price, qty)
 
@@ -420,6 +439,7 @@ async def _reduce_or_close(
         except Exception:
             log.warning("close_snapshot_failed", position_id=position.id, exc_info=True)
         del _positions[position.id]
+        clear_pnl_alerts(position.id)
 
         if position.side == "SHORT" and position.market_type != "SPOT":
             _recent_short_closes[position.symbol] = _time.monotonic()
@@ -428,14 +448,23 @@ async def _reduce_or_close(
                 _sell_margin_residual(position.symbol, position.market_type, position.side)
             )
 
+        reason = _exit_reason(position, order_id)
         log.info("position_closed", symbol=position.symbol, side=position.side,
-                 pnl=str(realized), net_pnl=str(net_pnl))
+                 pnl=str(realized), net_pnl=str(net_pnl), exit_reason=reason)
+        asyncio.create_task(telegram_notifier.notify_position_closed(
+            position.symbol, position.side, position.entry_price, price,
+            position.realized_pnl, net_pnl, position.realized_pnl_pct,
+            position.opened_at, position.closed_at, reason,
+        ))
     else:
         position.quantity = new_qty
         position.updated_at = _now()
         await _save_position(position)
         log.info("position_reduced", symbol=position.symbol, remaining=str(new_qty),
                  realized_pnl=str(realized))
+        asyncio.create_task(telegram_notifier.notify_position_reduced(
+            position.symbol, position.side, price, qty, new_qty, realized,
+        ))
 
 
 async def _sell_margin_residual(symbol: str, market_type: str, side: str = "LONG"):
@@ -523,7 +552,11 @@ async def _handle_list_status(msg: dict):
         await order_manager.mark_oco_done(order_list_id)
 
 
-# --- Price updates ---
+# --- Price updates & PnL threshold alerts ---
+
+_PNL_THRESHOLDS = [-2.0, -1.7, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.7, 2.0]
+_PNL_COOLDOWN = 600  # 10 min cooldown per (position, threshold)
+_pnl_cooldowns: dict[tuple[int, float], float] = {}  # (pos_id, threshold) -> monotonic ts
 
 
 async def _handle_price_update(msg: dict):
@@ -535,10 +568,35 @@ async def _handle_price_update(msg: dict):
 
     for pos in _positions.values():
         if pos.symbol == symbol and pos.is_active:
+            prev_pct = pos.pnl_pct
             pos.current_price = price
             pos.pnl_usd, pos.pnl_pct = pnl.unrealized_pnl(
                 pos.side, pos.entry_price, price, pos.quantity, pos.entry_fees_usd,
             )
+            if prev_pct is not None:
+                _check_pnl_thresholds(pos, float(prev_pct), float(pos.pnl_pct))
+
+
+def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
+    now = _time.monotonic()
+    for t in _PNL_THRESHOLDS:
+        crossed = (prev_pct < t <= cur_pct) or (prev_pct > t >= cur_pct)
+        if not crossed:
+            continue
+        key = (pos.id, t)
+        if now - _pnl_cooldowns.get(key, 0) < _PNL_COOLDOWN:
+            continue
+        _pnl_cooldowns[key] = now
+        asyncio.create_task(telegram_notifier.notify_pnl_threshold(
+            pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
+            pos.entry_price, pos.current_price, t,
+        ))
+
+
+def clear_pnl_alerts(position_id: int):
+    dead = [k for k in _pnl_cooldowns if k[0] == position_id]
+    for k in dead:
+        del _pnl_cooldowns[k]
 
 
 # --- Record trade to DB ---

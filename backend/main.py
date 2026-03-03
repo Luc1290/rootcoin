@@ -9,7 +9,7 @@ from backend.services import log_buffer
 from backend.exchange.binance_client import close_client, init_client
 from backend.core.database import close_db, init_db
 from backend.exchange import symbol_filters, ws_manager
-from backend.services import event_recorder, health_collector, news_tracker
+from backend.services import event_recorder, health_collector, level_alert, news_tracker, telegram_notifier
 from backend.trading import balance_tracker, position_tracker, price_recorder
 from backend.market import (
     heatmap_manager, kline_manager, macro_tracker, market_analyzer,
@@ -53,11 +53,14 @@ async def lifespan(app: FastAPI):
         await opportunity_detector.start(); started.append("opportunities")
         await news_tracker.start(); started.append("news")
         await health_collector.start(); started.append("health")
+        await telegram_notifier.start(); started.append("telegram")
+        await level_alert.start(); started.append("level_alert")
     except Exception:
         log.error("startup_failed", started=started, exc_info=True)
         await _shutdown(started)
         raise
     log.info("rootcoin_started")
+    await telegram_notifier.notify_startup_summary()
     yield
     log.info("rootcoin_stopping")
     await _shutdown(started)
@@ -65,6 +68,8 @@ async def lifespan(app: FastAPI):
 
 
 _SHUTDOWN_ORDER = [
+    ("level_alert", level_alert.stop),
+    ("telegram", telegram_notifier.stop),
     ("health", health_collector.stop),
     ("news", news_tracker.stop),
     ("opportunities", opportunity_detector.stop),
@@ -112,6 +117,7 @@ from backend.routes.api_orderbook import router as orderbook_router
 from backend.routes.api_journal import router as journal_router
 from backend.routes.api_opportunities import router as opportunities_router
 from backend.routes.api_health import router as health_router
+from backend.routes.api_settings import router as settings_router
 from backend.routes.ws_dashboard import router as ws_router
 
 app.include_router(dashboard_router)
@@ -130,6 +136,7 @@ app.include_router(orderbook_router)
 app.include_router(journal_router)
 app.include_router(opportunities_router)
 app.include_router(health_router)
+app.include_router(settings_router)
 app.include_router(ws_router)
 
 if FRONTEND_DIR.exists():

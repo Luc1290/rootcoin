@@ -17,7 +17,7 @@ from backend.market import (
     orderbook_tracker,
     whale_tracker,
 )
-from backend.services import news_tracker
+from backend.services import news_tracker, telegram_notifier
 from backend.exchange import ws_manager
 from backend.core.database import DB_PATH, async_session
 
@@ -73,6 +73,11 @@ async def _collect() -> dict:
         "database": await _collect_db_stats(),
         "memory": _collect_memory_stats(),
         "process": _collect_process_stats(),
+        "telegram": {
+            "configured": telegram_notifier.is_configured(),
+            "enabled": telegram_notifier.is_enabled(),
+            "categories": telegram_notifier.get_categories(),
+        },
     }
 
 
