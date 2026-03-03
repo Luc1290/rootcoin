@@ -35,6 +35,7 @@ const KlineChart = (() => {
     let _levelPriceLines = [];
     let _cachedPositions = null;
     let _cachedAnalysis = null;
+    let _lastCandleTime = null;
 
     function _observeResize(el, chart) {
         const ro = new ResizeObserver(entries => {
@@ -390,6 +391,7 @@ const KlineChart = (() => {
             }));
             _candleSeries.setData(candles);
             _currentPrice = candles[candles.length - 1].close;
+            _lastCandleTime = candles[candles.length - 1].time;
 
             // Build crosshair sync data maps
             _seriesDataMap.candle = new Map(candles.map(c => [c.time, c.close]));
@@ -551,9 +553,13 @@ const KlineChart = (() => {
         }
     }
 
+    let _entryPriceLines = [];
+
     function _clearCycles() {
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
+        _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
+        _entryPriceLines = [];
         _activeCycleRefs = [];
         _cyclesRendered = { symbol: null, interval: null };
     }
@@ -626,34 +632,27 @@ const KlineChart = (() => {
                     priceLineVisible: false,
                     crosshairMarkerVisible: false,
                     autoscaleInfoProvider: () => null,
+                    priceScaleId: '',
                 });
                 area.setData(areaData);
                 _cycleSeries.push(area);
 
                 // Entry price line (active cycles only)
-                let entryLine = null;
                 let entryPrice = null;
                 if (c.entry_price && c.is_active) {
                     entryPrice = parseFloat(c.entry_price);
-                    const pnlTxt = c.pnl_pct ? parseFloat(c.pnl_pct).toFixed(1) + '%' : c.side;
-                    entryLine = _mainChart.addLineSeries({
+                    _entryPriceLines.push(_candleSeries.createPriceLine({
+                        price: entryPrice,
                         color: color + '0.6)',
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
-                        lastValueVisible: false,
-                        priceLineVisible: false,
-                        title: pnlTxt,
-                        autoscaleInfoProvider: () => null,
-                    });
-                    entryLine.setData([
-                        { time: areaData[0].time, value: entryPrice },
-                        { time: areaData[areaData.length - 1].time, value: entryPrice },
-                    ]);
-                    _cycleSeries.push(entryLine);
+                        axisLabelVisible: true,
+                        title: 'Entry',
+                    }));
                 }
 
                 if (c.is_active) {
-                    _activeCycleRefs.push({ area, line: entryLine, offset, entryPrice });
+                    _activeCycleRefs.push({ area, offset, entryPrice });
                 }
             });
             _cyclesRendered = { symbol: _symbol, interval: _interval };
@@ -731,9 +730,18 @@ const KlineChart = (() => {
     // Live candle update from WS
     function _onKlineUpdate(data) {
         if (!_candleSeries || data.symbol !== _symbol || data.interval !== _interval) return;
+        const t = Math.floor(data.open_time / 1000);
+
+        // New candle opened → full refresh to update indicators
+        if (_lastCandleTime && t > _lastCandleTime) {
+            _lastCandleTime = t;
+            loadChart();
+            return;
+        }
+
         _currentPrice = parseFloat(data.close);
         _candleSeries.update({
-            time: Math.floor(data.open_time / 1000),
+            time: t,
             open: parseFloat(data.open),
             high: parseFloat(data.high),
             low: parseFloat(data.low),
@@ -741,19 +749,15 @@ const KlineChart = (() => {
         });
         if (_volSeries && _activeIndicators.has('volume')) {
             _volSeries.update({
-                time: Math.floor(data.open_time / 1000),
+                time: t,
                 value: parseFloat(data.volume),
                 color: parseFloat(data.close) >= parseFloat(data.open) ? C.volUp : C.volDown,
             });
         }
 
         // Extend active cycle overlays to the current candle
-        const t = Math.floor(data.open_time / 1000);
         for (const ref of _activeCycleRefs) {
             ref.area.update({ time: t, value: _currentPrice + ref.offset });
-            if (ref.line && ref.entryPrice != null) {
-                ref.line.update({ time: t, value: ref.entryPrice });
-            }
         }
     }
 

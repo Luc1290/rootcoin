@@ -40,6 +40,23 @@ const Positions = (() => {
         const sign = total >= 0 ? '+' : '';
         el.textContent = `${sign}$${total.toFixed(2)}`;
         el.className = `font-bold tabular-nums ${total >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+
+        _updateToolbarPortfolio(total);
+    }
+
+    function _updateToolbarPortfolio(totalPnl) {
+        const totalEl = document.getElementById('pos-portfolio-total');
+        const pnlEl = document.getElementById('pos-portfolio-pnl');
+        if (!totalEl || !pnlEl) return;
+
+        const portfolioTotal = BalanceStore.getTotal();
+        totalEl.textContent = portfolioTotal !== null
+            ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '--';
+
+        const sign = totalPnl >= 0 ? '+' : '';
+        pnlEl.textContent = `${sign}$${Math.abs(totalPnl).toFixed(2)}`;
+        pnlEl.className = `font-bold tabular-nums ${totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
     }
 
     function render(positions) {
@@ -449,6 +466,12 @@ const Positions = (() => {
 
     // Real-time updates
     WS.on('positions_snapshot', render);
+    BalanceStore.onChange(() => {
+        if (currentPositions.length) {
+            const total = currentPositions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
+            _updateToolbarPortfolio(total);
+        }
+    });
 
     // Initial load via REST
     async function load() {

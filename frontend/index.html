@@ -82,12 +82,18 @@
         <!-- Positions view -->
         <div id="view-positions" class="view p-4 hidden">
             <div id="positions-toolbar" class="mb-3 hidden">
-                <select id="positions-sort" class="px-3 py-2 text-sm">
-                    <option value="pnl">Tri : PnL</option>
-                    <option value="value">Tri : Valeur</option>
-                    <option value="duration">Tri : Durée</option>
-                    <option value="symbol">Tri : Symbole</option>
-                </select>
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center gap-4 text-sm">
+                        <div><span class="text-gray-400">Portfolio</span> <span id="pos-portfolio-total" class="font-bold tabular-nums">--</span></div>
+                        <div><span class="text-gray-400">PnL ouvert</span> <span id="pos-portfolio-pnl" class="font-bold tabular-nums">--</span></div>
+                    </div>
+                    <select id="positions-sort" class="px-3 py-2 text-sm">
+                        <option value="pnl">Tri : PnL</option>
+                        <option value="value">Tri : Valeur</option>
+                        <option value="duration">Tri : Durée</option>
+                        <option value="symbol">Tri : Symbole</option>
+                    </select>
+                </div>
             </div>
             <div id="positions-empty" class="empty-state">
                 <div class="empty-state-icon">📊</div>

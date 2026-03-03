@@ -56,7 +56,13 @@ async def fetch_and_store(symbol: str, interval: str, limit: int = 500) -> int:
     if last:
         open_time, close_time = last
         open_time_utc = open_time.replace(tzinfo=timezone.utc)
-        if close_time and close_time.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc):
+        now = datetime.now(timezone.utc)
+        gap_seconds = (now - open_time_utc).total_seconds()
+        max_span = limit * INTERVAL_SECONDS.get(interval, 3600)
+        if gap_seconds > max_span:
+            # Gap too large — fetch most recent candles without startTime
+            pass
+        elif close_time and close_time.replace(tzinfo=timezone.utc) > now:
             # Current candle still open — re-fetch it to update OHLCV
             kwargs["startTime"] = int(open_time_utc.timestamp() * 1000)
         else:
