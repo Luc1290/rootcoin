@@ -86,6 +86,7 @@ async def _update_position_order_ref(position: Position, **kwargs):
 
 
 async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | None = None) -> dict:
+    await cancel_position_orders(pos)
     side = _close_side(pos)
     if qty is not None:
         qty = round_quantity(pos.symbol, qty)
@@ -133,6 +134,7 @@ async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | Non
 
 
 async def place_take_profit(pos: Position, tp_price: Decimal) -> dict:
+    await cancel_position_orders(pos)
     side = _close_side(pos)
     qty = _close_qty(pos)
 
@@ -175,27 +177,11 @@ async def place_take_profit(pos: Position, tp_price: Decimal) -> dict:
 
 
 async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict:
+    await cancel_position_orders(pos)
     side = _close_side(pos)
     qty = _close_qty(pos)
     tp_price = round_price(pos.symbol, tp_price)
     sl_price = round_price(pos.symbol, sl_price)
-
-    # Cancel existing SL/TP/OCO if any
-    if pos.sl_order_id:
-        try:
-            await cancel_order_by_binance_id(pos.symbol, pos.sl_order_id, pos.market_type)
-        except Exception:
-            pass
-    if pos.tp_order_id:
-        try:
-            await cancel_order_by_binance_id(pos.symbol, pos.tp_order_id, pos.market_type)
-        except Exception:
-            pass
-    if pos.oco_order_list_id:
-        try:
-            await _cancel_oco(pos.symbol, pos.oco_order_list_id, pos.market_type)
-        except Exception:
-            pass
 
     if pos.side == "LONG":
         sl_limit = round_price(pos.symbol, sl_price * (1 - SL_PRICE_OFFSET))
@@ -275,6 +261,7 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict
 
 
 async def close_position(pos: Position) -> dict:
+    await cancel_position_orders(pos)
     side = _close_side(pos)
     qty = _close_qty(pos)
 

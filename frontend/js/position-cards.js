@@ -6,6 +6,21 @@ const PositionCards = (() => {
         return p.toFixed(6);
     }
 
+    const QUOTE_SUFFIXES = ['USDC', 'USDT', 'BUSD', 'BNB', 'BTC', 'ETH'];
+    function _extractBase(symbol) {
+        for (const q of QUOTE_SUFFIXES) {
+            if (symbol.endsWith(q) && symbol.length > q.length) return symbol.slice(0, -q.length);
+        }
+        return symbol;
+    }
+
+    function _formatQty(q) {
+        if (q >= 1000) return q.toFixed(2);
+        if (q >= 1) return q.toFixed(4);
+        if (q >= 0.001) return q.toFixed(6);
+        return q.toFixed(8);
+    }
+
     function buildCardHtml(p) {
         const pnl = parseFloat(p.pnl_usd) || 0;
         const pnlPct = parseFloat(p.pnl_pct) || 0;
@@ -19,6 +34,7 @@ const PositionCards = (() => {
         const current = parseFloat(p.current_price) || 0;
         const qty = parseFloat(p.quantity) || 0;
         const value = (current * qty).toFixed(2);
+        const baseAsset = _extractBase(p.symbol);
         const grossPnl = p.side === 'LONG'
             ? (current - entry) * qty
             : (entry - current) * qty;
@@ -35,16 +51,17 @@ const PositionCards = (() => {
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
                 <div>
-                    <div class="metric-label mb-0.5">Entry</div>
+                    <div class="metric-label mb-0.5">Entrée</div>
                     <div class="font-medium tabular-nums" data-field="entry">${formatPrice(entry)}</div>
                 </div>
                 <div>
-                    <div class="metric-label mb-0.5">Current</div>
+                    <div class="metric-label mb-0.5">Actuel</div>
                     <div class="font-medium tabular-nums" data-field="current">${formatPrice(current)}</div>
                 </div>
                 <div>
-                    <div class="metric-label mb-0.5">Value</div>
+                    <div class="metric-label mb-0.5">Valeur</div>
                     <div class="font-medium tabular-nums" data-field="value">$${value}</div>
+                    <div class="text-gray-500 text-xs tabular-nums" data-field="qty">${_formatQty(qty)} ${baseAsset}</div>
                 </div>
                 <div>
                     <div class="metric-label mb-0.5">PnL net</div>
@@ -116,6 +133,7 @@ const PositionCards = (() => {
             ? (current - entry) * qty
             : (entry - current) * qty;
 
+        const baseAsset = _extractBase(p.symbol);
         const f = field => card.querySelector(`[data-field="${field}"]`);
 
         const durEl = f('duration');
@@ -129,6 +147,9 @@ const PositionCards = (() => {
 
         const valEl = f('value');
         if (valEl) valEl.textContent = `$${value}`;
+
+        const qtyEl = f('qty');
+        if (qtyEl) qtyEl.textContent = `${_formatQty(qty)} ${baseAsset}`;
 
         const pnlEl = f('pnl');
         if (pnlEl) {
