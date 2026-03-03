@@ -330,6 +330,7 @@ class WSManager:
                                 "low": k.get("l"),
                                 "close": k.get("c"),
                                 "volume": k.get("v"),
+                                "taker_buy_vol": k.get("V"),
                                 "is_closed": k.get("x"),
                             })
 

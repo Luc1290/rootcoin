@@ -36,6 +36,7 @@ const KlineChart = (() => {
     let _cachedPositions = null;
     let _cachedAnalysis = null;
     let _lastCandleTime = null;
+    let _liveData = null; // cached kline arrays for live indicator updates
 
     function _observeResize(el, chart) {
         const ro = new ResizeObserver(entries => {
@@ -393,6 +394,15 @@ const KlineChart = (() => {
             _currentPrice = candles[candles.length - 1].close;
             _lastCandleTime = candles[candles.length - 1].time;
 
+            // Cache kline data for live indicator computation
+            _liveData = {
+                closes: candles.map(c => c.close),
+                highs: candles.map(c => c.high),
+                lows: candles.map(c => c.low),
+                volumes: klines.map(k => parseFloat(k.volume)),
+                takerBuy: klines.map(k => parseFloat(k.taker_buy_vol || '0')),
+            };
+
             // Build crosshair sync data maps
             _seriesDataMap.candle = new Map(candles.map(c => [c.time, c.close]));
             _seriesDataMap.volume = new Map(klines.map(k => [_toTs(k.open_time), parseFloat(k.volume)]));
@@ -572,6 +582,8 @@ const KlineChart = (() => {
 
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
+        _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
+        _entryPriceLines = [];
         _activeCycleRefs = [];
 
         try {
@@ -645,8 +657,8 @@ const KlineChart = (() => {
                         color: color + '0.6)',
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: true,
-                        title: 'Entry',
+                        axisLabelVisible: false,
+                        title: 'Entry ' + Utils.fmtPrice(entryPrice),
                     }));
                 }
 
@@ -726,16 +738,147 @@ const KlineChart = (() => {
         }
     }
 
+    // ── Client-side indicator helpers (last value only) ──────────
+
+    function _lastSMA(arr, period) {
+        if (arr.length < period) return null;
+        let s = 0;
+        for (let i = arr.length - period; i < arr.length; i++) s += arr[i];
+        return s / period;
+    }
+
+    function _lastBB(closes) {
+        const p = 20;
+        if (closes.length < p) return null;
+        let sum = 0;
+        for (let i = closes.length - p; i < closes.length; i++) sum += closes[i];
+        const mean = sum / p;
+        let variance = 0;
+        for (let i = closes.length - p; i < closes.length; i++) variance += (closes[i] - mean) ** 2;
+        const std = Math.sqrt(variance / p);
+        return { upper: mean + 2 * std, lower: mean - 2 * std };
+    }
+
+    function _lastRSI(closes, period) {
+        if (closes.length < period + 1) return null;
+        let avgGain = 0, avgLoss = 0;
+        for (let i = 1; i <= period; i++) {
+            const d = closes[i] - closes[i - 1];
+            if (d > 0) avgGain += d; else avgLoss -= d;
+        }
+        avgGain /= period;
+        avgLoss /= period;
+        for (let i = period + 1; i < closes.length; i++) {
+            const d = closes[i] - closes[i - 1];
+            avgGain = (avgGain * (period - 1) + Math.max(d, 0)) / period;
+            avgLoss = (avgLoss * (period - 1) + Math.max(-d, 0)) / period;
+        }
+        return avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    }
+
+    function _lastOBV(closes, volumes) {
+        if (closes.length < 2) return null;
+        let obv = 0;
+        for (let i = 1; i < closes.length; i++) {
+            if (closes[i] > closes[i - 1]) obv += volumes[i];
+            else if (closes[i] < closes[i - 1]) obv -= volumes[i];
+        }
+        return obv;
+    }
+
+    function _emaArray(arr, period) {
+        if (arr.length < period) return [];
+        let val = 0;
+        for (let i = 0; i < period; i++) val += arr[i];
+        val /= period;
+        const result = [val];
+        const k = 2 / (period + 1);
+        for (let i = period; i < arr.length; i++) {
+            val = (arr[i] - val) * k + val;
+            result.push(val);
+        }
+        return result;
+    }
+
+    function _lastMACD(closes) {
+        if (closes.length < 26) return null;
+        const ema12 = _emaArray(closes, 12);
+        const ema26 = _emaArray(closes, 26);
+        const macdLine = [];
+        for (let i = 0; i < ema26.length; i++) {
+            macdLine.push(ema12[i + 14] - ema26[i]);
+        }
+        if (macdLine.length < 9) return null;
+        const signalArr = _emaArray(macdLine, 9);
+        const lastMacd = macdLine[macdLine.length - 1];
+        const lastSignal = signalArr[signalArr.length - 1];
+        return { line: lastMacd, signal: lastSignal, hist: lastMacd - lastSignal };
+    }
+
+    function _lastBS(volumes, takerBuy) {
+        const i = volumes.length - 1;
+        if (i < 0 || !volumes[i]) return null;
+        const raw = (takerBuy[i] / volumes[i]) * 100 - 50;
+        const p = 20;
+        if (i >= p) {
+            let avg = 0;
+            for (let j = i - p; j < i; j++) avg += volumes[j];
+            avg /= p;
+            const w = avg > 0 ? Math.min(volumes[i] / avg, 1.5) : 1;
+            return raw * w;
+        }
+        return raw;
+    }
+
+    function _updateLiveIndicators(t) {
+        const d = _liveData;
+        if (!d) return;
+        if (_activeIndicators.has('ma')) {
+            for (const [p, key] of [[7, 'ma_7'], [25, 'ma_25'], [99, 'ma_99']]) {
+                const v = _lastSMA(d.closes, p);
+                if (v != null && _maSeries[key]) _maSeries[key].update({ time: t, value: v });
+            }
+        }
+        if (_activeIndicators.has('bb')) {
+            const bb = _lastBB(d.closes);
+            if (bb) {
+                _bbSeries.upper.update({ time: t, value: bb.upper });
+                _bbSeries.lower.update({ time: t, value: bb.lower });
+            }
+        }
+        if (_activeIndicators.has('rsi') && _rsiSeries) {
+            const v = _lastRSI(d.closes, 14);
+            if (v != null) _rsiSeries.update({ time: t, value: v });
+        }
+        if (_activeIndicators.has('obv') && _obvSeries) {
+            const v = _lastOBV(d.closes, d.volumes);
+            if (v != null) _obvSeries.update({ time: t, value: v });
+        }
+        if (_activeIndicators.has('macd') && _macdLineSeries) {
+            const m = _lastMACD(d.closes);
+            if (m) {
+                _macdLineSeries.update({ time: t, value: m.line });
+                _macdSignalSeries.update({ time: t, value: m.signal });
+                _macdHistSeries.update({ time: t, value: m.hist, color: m.hist >= 0 ? C.macdHistUp : C.macdHistDown });
+            }
+        }
+        if (_activeIndicators.has('buy_sell') && _bsSeries) {
+            const v = _lastBS(d.volumes, d.takerBuy);
+            if (v != null) _bsSeries.update({ time: t, value: v, color: v >= 0 ? C.bsBuy : C.bsSell });
+        }
+    }
+
     // Live candle update from WS
     function _onKlineUpdate(data) {
         if (!_candleSeries || data.symbol !== _symbol || data.interval !== _interval) return;
         const t = Math.floor(data.open_time / 1000);
 
-        // New candle opened → full refresh to update indicators
-        if (_lastCandleTime && t > _lastCandleTime) {
+        // New candle opened → schedule full refresh for indicators
+        const isNewCandle = _lastCandleTime && t > _lastCandleTime;
+        if (isNewCandle) {
             _lastCandleTime = t;
+            _cyclesRendered = { symbol: null, interval: null };
             loadChart();
-            return;
         }
 
         _currentPrice = parseFloat(data.close);
@@ -757,6 +900,29 @@ const KlineChart = (() => {
         // Extend active cycle overlays to the current candle
         for (const ref of _activeCycleRefs) {
             ref.area.update({ time: t, value: _currentPrice + ref.offset });
+        }
+
+        // Live indicator update
+        if (_liveData) {
+            const high = parseFloat(data.high);
+            const low = parseFloat(data.low);
+            const vol = parseFloat(data.volume);
+            const tbv = data.taker_buy_vol != null ? parseFloat(data.taker_buy_vol) : 0;
+            if (isNewCandle) {
+                _liveData.closes.push(_currentPrice);
+                _liveData.highs.push(high);
+                _liveData.lows.push(low);
+                _liveData.volumes.push(vol);
+                _liveData.takerBuy.push(tbv);
+            } else {
+                const last = _liveData.closes.length - 1;
+                _liveData.closes[last] = _currentPrice;
+                _liveData.highs[last] = high;
+                _liveData.lows[last] = low;
+                _liveData.volumes[last] = vol;
+                _liveData.takerBuy[last] = tbv;
+            }
+            _updateLiveIndicators(t);
         }
     }
 
@@ -790,6 +956,16 @@ const KlineChart = (() => {
     WS.on('kline_update', Utils.throttleRAF(_onKlineUpdate));
     WS.on('positions_snapshot', _onPositionsSnapshot);
     WS.on('analysis_update', _onAnalysisUpdate);
+
+    // Reload chart when page resumes from background (mobile)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible' || !_initialized || !_candleSeries) return;
+        const el = document.getElementById('view-chart');
+        if (el && !el.classList.contains('hidden')) {
+            _subscribedStream = null; // force re-subscribe
+            loadChart();
+        }
+    });
 
     return { init, loadChart };
 })();
