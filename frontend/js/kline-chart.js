@@ -654,11 +654,13 @@ const KlineChart = (() => {
                     entryPrice = parseFloat(c.entry_price);
                     _entryPriceLines.push(_candleSeries.createPriceLine({
                         price: entryPrice,
-                        color: color + '0.6)',
+                        color: '#3b82f6',
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: false,
-                        title: 'Entry ' + Utils.fmtPrice(entryPrice),
+                        axisLabelVisible: true,
+                        axisLabelColor: '#3b82f6',
+                        axisLabelTextColor: '#ffffff',
+                        title: 'Entry',
                     }));
                 }
 
