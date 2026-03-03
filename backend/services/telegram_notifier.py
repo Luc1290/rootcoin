@@ -32,7 +32,7 @@ _CATEGORY_KEYS = {SETTING_POSITIONS, SETTING_ORDERS, SETTING_LEVELS, SETTING_PNL
 async def start():
     global _enabled, _notify_positions, _notify_orders, _notify_levels, _notify_pnl, _http, _summary_task
     _http = httpx.AsyncClient(timeout=10)
-    _enabled = await _load_setting(SETTING_KEY, False)
+    _enabled = await _load_setting(SETTING_KEY, is_configured())
     _notify_positions = await _load_setting(SETTING_POSITIONS, True)
     _notify_orders = await _load_setting(SETTING_ORDERS, True)
     _notify_levels = await _load_setting(SETTING_LEVELS, True)
