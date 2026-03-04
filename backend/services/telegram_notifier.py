@@ -186,7 +186,10 @@ async def notify_position_closed(
     exit_reason: str = "",
 ):
     if not is_positions_enabled():
+        log.warning("close_notif_skipped", symbol=symbol, enabled=is_enabled(),
+                     positions_cat=_notify_positions)
         return
+    log.info("close_notif_sending", symbol=symbol, side=side, reason=exit_reason)
     win = net_pnl > 0
     if exit_reason == "SL":
         header = f"\u26d4 <b>{symbol} {side}</b> SL touche"
@@ -209,7 +212,9 @@ async def notify_position_closed(
         f"PnL net: {sign}{_fp(net_pnl)} ({sign}{_fq(pnl_pct)}%)\n"
         f"Duree: {duration}"
     )
-    await notify(msg, retries=2)
+    ok = await notify(msg, retries=2)
+    if not ok:
+        log.warning("close_notif_failed", symbol=symbol, side=side)
 
 
 async def notify_position_dca(
@@ -281,7 +286,10 @@ async def notify_position_closed_reconciled(
     pnl_pct: Decimal | None,
 ):
     if not is_positions_enabled():
+        log.warning("close_reconciled_notif_skipped", symbol=symbol, enabled=is_enabled(),
+                     positions_cat=_notify_positions)
         return
+    log.info("close_reconciled_notif_sending", symbol=symbol, side=side)
     lines = [f"\U0001f534 <b>{symbol} {side}</b> ferme (reconciliation)"]
     if exit_price and exit_price > 0:
         lines.append(f"Entry: {_fp(entry_price)} \u2192 Exit: {_fp(exit_price)}")
@@ -503,7 +511,9 @@ def _pct_distance(side: str, entry: Decimal, target: Decimal) -> str:
 def _fmt_duration(opened_at: datetime | None, closed_at: datetime | None) -> str:
     if not opened_at or not closed_at:
         return "?"
-    diff = (closed_at - opened_at).total_seconds()
+    a = opened_at.replace(tzinfo=None) if opened_at.tzinfo else opened_at
+    b = closed_at.replace(tzinfo=None) if closed_at.tzinfo else closed_at
+    diff = (b - a).total_seconds()
     if diff < 60:
         return f"{int(diff)}s"
     if diff < 3600:

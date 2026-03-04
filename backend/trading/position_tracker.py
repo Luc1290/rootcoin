@@ -40,7 +40,13 @@ _fill_batch_tasks: dict[int, asyncio.Task] = {}
 def _fire_and_forget(coro):
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+
+    def _done(t: asyncio.Task):
+        _background_tasks.discard(t)
+        if not t.cancelled() and t.exception():
+            log.error("background_task_failed", exc_info=t.exception())
+
+    task.add_done_callback(_done)
 
 
 # --- Public API ---
@@ -438,13 +444,23 @@ async def _reduce_or_close(
         position.quantity = Decimal("0")
         position.updated_at = _now()
         await _save_position(position)
+
+        reason = _exit_reason(position, order_id)
+        log.info("position_closed", symbol=position.symbol, side=position.side,
+                 pnl=str(realized), net_pnl=str(net_pnl), exit_reason=reason)
+        _fire_and_forget(telegram_notifier.notify_position_closed(
+            position.symbol, position.side, position.entry_price, price,
+            position.realized_pnl, net_pnl, position.realized_pnl_pct,
+            position.opened_at, position.closed_at, reason,
+        ))
+
         try:
             await journal_snapshotter.capture_snapshot(
                 position.id, "CLOSE", position.symbol, position.side, price, qty,
             )
         except Exception:
             log.warning("close_snapshot_failed", position_id=position.id, exc_info=True)
-        del _positions[position.id]
+        _positions.pop(position.id, None)
         clear_pnl_alerts(position.id)
 
         if position.side == "SHORT" and position.market_type != "SPOT":
@@ -453,15 +469,6 @@ async def _reduce_or_close(
             _fire_and_forget(
                 _sell_margin_residual(position.symbol, position.market_type, position.side)
             )
-
-        reason = _exit_reason(position, order_id)
-        log.info("position_closed", symbol=position.symbol, side=position.side,
-                 pnl=str(realized), net_pnl=str(net_pnl), exit_reason=reason)
-        asyncio.create_task(telegram_notifier.notify_position_closed(
-            position.symbol, position.side, position.entry_price, price,
-            position.realized_pnl, net_pnl, position.realized_pnl_pct,
-            position.opened_at, position.closed_at, reason,
-        ))
     else:
         position.quantity = new_qty
         position.updated_at = _now()
@@ -590,7 +597,7 @@ def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
         if now - _pnl_cooldowns.get(key, 0) < _PNL_COOLDOWN:
             continue
         _pnl_cooldowns[key] = now
-        asyncio.create_task(telegram_notifier.notify_pnl_threshold(
+        _fire_and_forget(telegram_notifier.notify_pnl_threshold(
             pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
             pos.entry_price, pos.current_price, t,
         ))
