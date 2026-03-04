@@ -62,12 +62,9 @@ async def fetch_and_store(symbol: str, interval: str, limit: int = 500) -> int:
         if gap_seconds > max_span:
             # Gap too large — fetch most recent candles without startTime
             pass
-        elif close_time and close_time.replace(tzinfo=timezone.utc) > now:
-            # Current candle still open — re-fetch it to update OHLCV
-            kwargs["startTime"] = int(open_time_utc.timestamp() * 1000)
         else:
-            # Last candle closed — skip it
-            kwargs["startTime"] = int(open_time_utc.timestamp() * 1000) + 1
+            # Always re-fetch last candle to ensure final OHLCV values
+            kwargs["startTime"] = int(open_time_utc.timestamp() * 1000)
 
     raw_klines = await client.get_klines(**kwargs)
     if not raw_klines:

@@ -20,7 +20,7 @@ const KlineChart = (() => {
     let _cycleSeries = [];
     let _cyclesCache = { symbol: null, data: null };
     let _cyclesRendered = { symbol: null, interval: null };
-    let _activeCycleRefs = []; // {area, line, offset, entryPrice}
+    let _activeCycleRefs = []; // {area, entryPrice}
     let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles']);
     let _loading = false;
     let _initialized = false;
@@ -651,24 +651,17 @@ const KlineChart = (() => {
                 const cycleCandles = candles.filter(cd => cd.time >= openTs && cd.time <= closeTs);
                 if (!cycleCandles.length) return;
 
-                const allHighs = candles.map(cd => cd.high);
-                const allLows = candles.map(cd => cd.low);
-                const range = Math.max(...allHighs) - Math.min(...allLows);
-                const offset = range * 0.15; 
-
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,
-                    value: cd.close + offset,
+                    value: cd.high,
                 }));
 
-                const opHigh = c.is_active ? '0.25)' : '0.18)';
-                const opLow = c.is_active ? '0.06)' : '0.03)';
-                const opLine = c.is_active ? '0.5)' : '0.3)';
+                const opFill = c.is_active ? '0.18)' : '0.10)';
                 const area = _mainChart.addAreaSeries({
-                    topColor: color + opHigh,
-                    bottomColor: color + opLow,
-                    lineColor: color + opLine,
-                    lineWidth: c.is_active ? 2 : 1,
+                    topColor: color + opFill,
+                    bottomColor: color + opFill,
+                    lineColor: color + '0)',
+                    lineWidth: 1,
                     lastValueVisible: false,
                     priceLineVisible: false,
                     crosshairMarkerVisible: false,
@@ -699,7 +692,7 @@ const KlineChart = (() => {
                 }
 
                 if (c.is_active) {
-                    _activeCycleRefs.push({ area, offset, entryPrice });
+                    _activeCycleRefs.push({ area, entryPrice });
                 }
             });
             _cyclesRendered = { symbol: _symbol, interval: _interval };
@@ -934,13 +927,13 @@ const KlineChart = (() => {
         }
 
         // Extend active cycle overlays to the current candle
+        const high = parseFloat(data.high);
         for (const ref of _activeCycleRefs) {
-            ref.area.update({ time: t, value: _currentPrice + ref.offset });
+            ref.area.update({ time: t, value: high });
         }
 
         // Live indicator update
         if (_liveData) {
-            const high = parseFloat(data.high);
             const low = parseFloat(data.low);
             const vol = parseFloat(data.volume);
             const tbv = data.taker_buy_vol != null ? parseFloat(data.taker_buy_vol) : 0;
@@ -970,12 +963,12 @@ const KlineChart = (() => {
         const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
         const posSymbols = data.map(p => p.symbol);
         _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
-        // Detect position closed for current symbol → invalidate cycles cache
+        // Detect position opened/closed for current symbol → invalidate cycles cache
         const prev = _cachedPositions;
         if (prev) {
             const hadSymbol = prev.some(p => p.symbol === _symbol && p.is_active);
             const hasSymbol = data.some(p => p.symbol === _symbol && p.is_active);
-            if (hadSymbol && !hasSymbol) {
+            if (hadSymbol !== hasSymbol) {
                 _cyclesCache = { symbol: null, data: null };
                 _cyclesRendered = { symbol: null, interval: null };
                 if (_activeIndicators.has('cycles')) loadChart();
