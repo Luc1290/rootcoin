@@ -330,39 +330,38 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
         {"price": str(round(s2, 2)), "type": "S2", "label": "Fort support"},
     ]
 
-    await kline_manager.fetch_and_store(symbol, "4h", limit=30)
-    klines_4h = await kline_manager.get_klines(symbol, "4h", limit=30)
-    if klines_4h and len(klines_4h) >= 6:
-        # Exclude last candle (still forming) — use only closed candles
-        closed_4h = klines_4h[:-1]
-        for i in range(1, len(closed_4h) - 1):
-            h = float(closed_4h[i]["high"])
-            l = float(closed_4h[i]["low"])
-            prev_h = float(closed_4h[i - 1]["high"])
-            next_h = float(closed_4h[i + 1]["high"])
-            prev_l = float(closed_4h[i - 1]["low"])
-            next_l = float(closed_4h[i + 1]["low"])
+    # Session high/low (current forming daily candle)
+    today = klines[-1]
+    today_high = Decimal(today["high"])
+    today_low = Decimal(today["low"])
+    levels.append({"price": str(round(today_high, 2)), "type": "D_H", "label": "Plus haut du jour"})
+    levels.append({"price": str(round(today_low, 2)), "type": "D_L", "label": "Plus bas du jour"})
 
-            if h > prev_h and h > next_h:
-                levels.append({"price": str(round(Decimal(str(h)), 2)),
-                               "type": "SW_H", "label": "Plus haut"})
-            if l < prev_l and l < next_l:
-                levels.append({"price": str(round(Decimal(str(l)), 2)),
-                               "type": "SW_L", "label": "Plus bas"})
+    # 4H swings — 100 candles (~16 days) for historical context
+    await kline_manager.fetch_and_store(symbol, "4h", limit=100)
+    klines_4h = await kline_manager.get_klines(symbol, "4h", limit=100)
+    if klines_4h and len(klines_4h) >= 6:
+        _detect_swings(klines_4h[:-1], levels)
+
+    # 1H swings — 50 candles (~2 days) for scalp-level granularity
+    await kline_manager.fetch_and_store(symbol, "1h", limit=50)
+    klines_1h = await kline_manager.get_klines(symbol, "1h", limit=50)
+    if klines_1h and len(klines_1h) >= 6:
+        _detect_swings(klines_1h[:-1], levels)
 
     levels = _deduplicate_levels(levels)
 
-    pivots = [l for l in levels if l["type"] not in ("SW_H", "SW_L")]
+    fixed = [l for l in levels if l["type"] not in ("SW_H", "SW_L")]
     swings_above = sorted(
         [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) >= current_price],
         key=lambda x: Decimal(x["price"]),
-    )[:2]
+    )[:3]
     swings_below = sorted(
         [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) < current_price],
         key=lambda x: Decimal(x["price"]),
         reverse=True,
-    )[:2]
-    levels = pivots + swings_above + swings_below
+    )[:3]
+    levels = fixed + swings_above + swings_below
 
     levels.sort(key=lambda x: Decimal(x["price"]), reverse=True)
 
@@ -383,12 +382,29 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     return levels
 
 
+def _detect_swings(closed_klines: list[dict], levels: list[dict]):
+    for i in range(1, len(closed_klines) - 1):
+        h = float(closed_klines[i]["high"])
+        l = float(closed_klines[i]["low"])
+        prev_h = float(closed_klines[i - 1]["high"])
+        next_h = float(closed_klines[i + 1]["high"])
+        prev_l = float(closed_klines[i - 1]["low"])
+        next_l = float(closed_klines[i + 1]["low"])
+
+        if h > prev_h and h > next_h:
+            levels.append({"price": str(round(Decimal(str(h)), 2)),
+                           "type": "SW_H", "label": "Plus haut"})
+        if l < prev_l and l < next_l:
+            levels.append({"price": str(round(Decimal(str(l)), 2)),
+                           "type": "SW_L", "label": "Plus bas"})
+
+
 def _deduplicate_levels(levels: list[dict]) -> list[dict]:
     if not levels:
         return levels
     result = []
     prices_seen = []
-    priority = {"R2": 0, "R1": 1, "PP": 2, "S1": 3, "S2": 4, "SW_H": 5, "SW_L": 6}
+    priority = {"R2": 0, "R1": 1, "PP": 2, "S1": 3, "S2": 4, "D_H": 5, "D_L": 6, "SW_H": 7, "SW_L": 8}
     levels.sort(key=lambda x: priority.get(x["type"], 99))
     for level in levels:
         price = Decimal(level["price"])
