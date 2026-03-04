@@ -5,9 +5,10 @@ const Analysis = (() => {
 
     async function load() {
         try {
-            const [analysisResp, newsResp] = await Promise.all([
+            const [analysisResp, newsResp, oppResp] = await Promise.all([
                 fetch('/api/analysis'),
                 fetch('/api/news'),
+                fetch('/api/opportunities'),
             ]);
             if (analysisResp.ok) {
                 _data = await analysisResp.json();
@@ -15,6 +16,10 @@ const Analysis = (() => {
             }
             if (newsResp.ok) {
                 _newsData = await newsResp.json();
+            }
+            if (oppResp.ok) {
+                const oppData = await oppResp.json();
+                Opportunities.update(oppData.opportunities || []);
             }
             render();
         } catch (e) {
@@ -44,6 +49,7 @@ const Analysis = (() => {
 
         _renderFreshness();
         _renderBias(analysis);
+        _renderOpportunities();
         _renderLevels(analysis);
         _renderMacro(_data.macro);
         _renderAlerts(analysis);
@@ -172,6 +178,13 @@ const Analysis = (() => {
                 <span class="text-gray-400">${explanation}</span>
             </div>`;
         }).join('');
+    }
+
+    // ── Opportunities ──────────────────────────────────────
+
+    function _renderOpportunities() {
+        const el = document.getElementById('analysis-opportunities');
+        if (el) Opportunities.render(el);
     }
 
     // ── Block 2: Key levels ────────────────────────────────
@@ -462,6 +475,8 @@ const Analysis = (() => {
     // WS updates
     WS.on('analysis_update', (data) => {
         _data = data;
+        if (data.opportunities) Opportunities.update(data.opportunities);
+        if (document.getElementById('view-analysis').classList.contains('hidden')) return;
         render();
     });
 

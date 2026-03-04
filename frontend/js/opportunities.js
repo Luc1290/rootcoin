@@ -8,7 +8,7 @@ const Opportunities = (() => {
         _opportunities = list;
     }
 
-    function render(container) {
+    function render(container, maxItems) {
         if (!container) return;
         const visible = _opportunities.filter(o => !_dismissedIds.has(o.id));
 
@@ -18,8 +18,16 @@ const Opportunities = (() => {
             return;
         }
 
+        // Sort by best R:R first
+        const sorted = [...visible].sort((a, b) => {
+            const rrA = parseFloat((a.levels || {}).rr) || 0;
+            const rrB = parseFloat((b.levels || {}).rr) || 0;
+            return rrB - rrA;
+        });
+
+        const limit = maxItems || sorted.length;
         const keepIds = new Set();
-        const cards = visible.slice(0, 3).map(o => {
+        const cards = sorted.slice(0, limit).map(o => {
             const sym = o.symbol.replace('USDC', '');
             const dirClass = o.direction === 'LONG' ? 'long' : 'short';
             const chartContainerId = `opp-chart-${o.id}`;
@@ -55,7 +63,7 @@ const Opportunities = (() => {
         container.innerHTML = `<div class="space-y-2">${cards}</div>`;
 
         // Create charts for visible opportunities
-        for (const o of visible.slice(0, 3)) {
+        for (const o of sorted.slice(0, limit)) {
             const chartContainerId = `opp-chart-${o.id}`;
             const lvl = o.levels || {};
             const score = o.score || 0;

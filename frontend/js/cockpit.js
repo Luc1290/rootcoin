@@ -295,7 +295,7 @@ const Cockpit = (() => {
 
     function _renderOpportunities() {
         const el = document.getElementById('cockpit-opportunities');
-        if (el) Opportunities.render(el);
+        if (el) Opportunities.render(el, 1);
     }
 
     // ── Track Record ─────────────────────────────────────────
@@ -377,12 +377,11 @@ const Cockpit = (() => {
 
         // Preserve open/closed state of collapsible sections
         const macroWasOpen = el.querySelector('.context-macro')?.hasAttribute('open') ?? true;
-        const newsWasOpen = el.querySelector('.context-news')?.hasAttribute('open') ?? false;
 
         const macroHtml = _buildMacroCard(macroWasOpen);
         const whaleHtml = _buildWhaleCard();
         const cyclesHtml = _buildCyclesCard();
-        const newsHtml = _buildNewsCard(newsWasOpen);
+        const newsHtml = _buildNewsCard();
 
         // Macro + Whales + Cycles side by side, News full-width below
         el.innerHTML = `
@@ -501,7 +500,7 @@ const Cockpit = (() => {
         </div>`;
     }
 
-    function _buildNewsCard(wasOpen) {
+    function _buildNewsCard() {
         if (!_news || !_news.length) return '';
 
         const crypto = [], macro = [], general = [];
@@ -513,15 +512,14 @@ const Cockpit = (() => {
             else general.push(item);
         }
 
-        const openAttr = wasOpen ? ' open' : '';
-        return `<details class="context-section context-news cockpit-card mt-2"${openAttr}>
-            <summary>News</summary>
-            <div class="news-grid mt-2">
+        return `<div class="cockpit-card mt-2">
+            <div class="text-xs text-gray-500 mb-2">News</div>
+            <div class="news-grid">
                 ${_buildNewsColumn('Crypto', crypto, 'news-cat-crypto')}
                 ${_buildNewsColumn('Macro', macro, 'news-cat-macro')}
                 ${_buildNewsColumn('General', general, 'news-cat-other')}
             </div>
-        </details>`;
+        </div>`;
     }
 
     function _buildNewsColumn(title, items, catClass) {
