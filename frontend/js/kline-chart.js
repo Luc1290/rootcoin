@@ -657,7 +657,9 @@ const KlineChart = (() => {
                         color: '#3b82f6',
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: false,
+                        axisLabelVisible: true,
+                        axisLabelColor: '#3b82f6',
+                        axisLabelTextColor: '#ffffff',
                         title: 'Entry ' + Utils.fmtPrice(entryPrice),
                     }));
                 }
