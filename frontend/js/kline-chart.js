@@ -692,7 +692,7 @@ const KlineChart = (() => {
                     if (chartEl) {
                         const lbl = document.createElement('div');
                         lbl.textContent = 'Entry ' + Utils.fmtPrice(entryPrice);
-                        lbl.style.cssText = 'position:absolute;right:75px;color:#3b82f6;font-size:11px;font-weight:600;pointer-events:none;z-index:5;white-space:nowrap;background:rgba(0,0,0,0.85);padding:1px 6px;border-radius:3px;transform:translateY(-100%);';
+                        lbl.style.cssText = 'position:absolute;right:75px;color:#ffffff;font-size:11px;font-weight:600;pointer-events:none;z-index:5;white-space:nowrap;background:rgba(0,0,0,0.85);padding:1px 6px;border-radius:3px;transform:translateY(-100%);';
                         chartEl.appendChild(lbl);
                         _entryOverlays.push({ el: lbl, price: entryPrice });
                     }
