@@ -869,6 +869,17 @@ select {
     border-radius: 0.25rem;
     background: rgba(255, 255, 255, 0.06);
 }
+.card-type-tag {
+    font-size: 9px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.tag-position { background: rgba(59, 130, 246, 0.2); color: #93bbfd; }
+.tag-signal { background: rgba(168, 85, 247, 0.2); color: #c4b5fd; }
+.tag-market { background: rgba(255, 255, 255, 0.08); color: #9ca3af; }
 .cockpit-bias-row {
     padding: 0.375rem 0;
     cursor: pointer;

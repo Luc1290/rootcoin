@@ -82,6 +82,7 @@ const Opportunities = (() => {
             return `<div class="mini-chart-card ${dirClass}">
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
+                        <span class="card-type-tag tag-signal">Signal</span>
                         <span class="text-sm font-bold">${sym}</span>
                         ${dirBadge}
                         ${takenBadge}

@@ -43,6 +43,8 @@ const Cockpit = (() => {
             Charts.loadCockpitData();
             _initMarketChart();
             _loadTrackRecord();
+            // Retry news if empty (backend may not have fetched yet)
+            if (!_news.length) _retryNews();
         } catch (e) {
             console.error('Cockpit load failed', e);
         }
@@ -172,6 +174,7 @@ const Cockpit = (() => {
             return `<div class="mini-chart-card ${dirClass}" data-pos-id="${p.id}" onclick="App.switchTab('positions')" style="cursor:pointer">
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
+                        <span class="card-type-tag tag-position">Position</span>
                         <span class="text-sm font-bold">${sym}</span>
                         <span class="cockpit-side side-${p.side.toLowerCase()}">${p.side}</span>
                     </div>
@@ -271,6 +274,7 @@ const Cockpit = (() => {
         <div class="cockpit-card">
             <div class="flex items-center justify-between mb-1">
                 <div class="flex items-center gap-2">
+                    <span class="card-type-tag tag-market">Marche</span>
                     <span class="text-sm font-bold">${displaySymbol}</span>
                     <span class="text-xs text-gray-500">24h</span>
                 </div>
@@ -316,22 +320,20 @@ const Cockpit = (() => {
 
     // ── Track Record ─────────────────────────────────────────
 
-    async function _loadTrackRecord() {
-        const el = document.getElementById('cockpit-track-record');
-        if (!el) return;
+    let _trackHistory = [];
+    let _trackStats = {};
 
+    async function _loadTrackRecord() {
         try {
             const [histResp, statsResp] = await Promise.all([
                 fetch('/api/opportunities/history?limit=10'),
                 fetch('/api/opportunities/stats'),
             ]);
 
-            let history = [];
-            let stats = {};
-            if (histResp.ok) history = (await histResp.json()).history || [];
-            if (statsResp.ok) stats = await statsResp.json();
+            if (histResp.ok) _trackHistory = (await histResp.json()).history || [];
+            if (statsResp.ok) _trackStats = await statsResp.json();
 
-            _renderTrackRecord(el, history, stats);
+            _renderContext();
         } catch (e) {
             console.error('Track record load failed', e);
         }
@@ -339,16 +341,14 @@ const Cockpit = (() => {
 
     const REF_SIZE = 40000; // reference position $40k
 
-    function _renderTrackRecord(el, history, stats) {
-        if (!history.length && !stats.total) {
-            el.innerHTML = '';
-            return;
-        }
+    function _buildTrackRecordCard() {
+        const history = _trackHistory;
+        const stats = _trackStats;
+        if (!history.length && !stats.total) return '';
 
         const winRate = stats.win_rate || 0;
         const total = stats.total || 0;
         const avgPnl = stats.avg_pnl_pct || 0;
-        // Avoid "-0.0%" display: treat tiny negatives as zero
         const avgDisplay = Math.abs(avgPnl) < 0.05 ? 0 : avgPnl;
         const avgPnlClass = avgDisplay >= 0 ? 'pnl-positive' : 'pnl-negative';
         const avgUsd = avgPnl / 100 * REF_SIZE;
@@ -368,7 +368,6 @@ const Cockpit = (() => {
             const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(0)}` : '';
             const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
 
-            // Entry / SL / TP prices
             const entry = r.entry_price ? Utils.fmtPriceCompact(r.entry_price) : '';
             const sl = r.sl_price ? Utils.fmtPriceCompact(r.sl_price) : '';
             const tp = r.tp_price ? Utils.fmtPriceCompact(r.tp_price) : '';
@@ -389,16 +388,16 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        el.innerHTML = `<div class="cockpit-card">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs text-gray-400">Track Record</span>
-                <div class="flex items-center gap-3 text-xs">
-                    <span class="text-gray-400">${total} signaux</span>
-                    <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}% win</span>
-                    <span class="font-bold ${avgPnlClass}">${avgDisplay >= 0 ? '+' : ''}${avgDisplay.toFixed(2)}% <span style="opacity:0.7">${avgUsdStr}</span> moy</span>
-                </div>
+        return `<div class="cockpit-card" style="border-left:3px solid #a855f7">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-gray-500">Track Record</span>
+                <span class="text-xs text-gray-500">/ $${(REF_SIZE/1000).toFixed(0)}k</span>
             </div>
-            <div style="text-align:right;margin-bottom:4px"><span class="text-xs text-gray-600" style="font-size:9px">/ $${(REF_SIZE/1000).toFixed(0)}k</span></div>
+            <div class="flex items-center gap-3 text-xs mb-2">
+                <span class="text-gray-400">${total} sig</span>
+                <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}%</span>
+                <span class="font-bold ${avgPnlClass}">${avgDisplay >= 0 ? '+' : ''}${avgDisplay.toFixed(2)}% <span style="opacity:0.7">${avgUsdStr}</span></span>
+            </div>
             ${rows}
         </div>`;
     }
@@ -415,11 +414,12 @@ const Cockpit = (() => {
         const macroHtml = _buildMacroCard(macroWasOpen);
         const whaleHtml = _buildWhaleCard();
         const cyclesHtml = _buildCyclesCard();
+        const trackHtml = _buildTrackRecordCard();
         const newsHtml = _buildNewsCard();
 
-        // Macro + Whales + Cycles side by side, News full-width below
+        // Macro + Whales + Cycles + Track Record side by side, News full-width below
         el.innerHTML = `
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${macroHtml}${whaleHtml}${cyclesHtml}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">${macroHtml}${whaleHtml}${cyclesHtml}${trackHtml}</div>
             ${newsHtml}`;
     }
 
@@ -637,6 +637,36 @@ const Cockpit = (() => {
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         _renderPortfolio();
     });
+
+    async function _retryNews(attempt = 0) {
+        if (attempt >= 3) return;
+        await new Promise(r => setTimeout(r, 10_000)); // wait 10s
+        try {
+            const resp = await fetch('/api/news');
+            if (resp.ok) {
+                const newsData = await resp.json();
+                _news = Array.isArray(newsData) ? newsData : (newsData.items || []);
+                if (_news.length) {
+                    _renderContext();
+                    return;
+                }
+            }
+        } catch {}
+        _retryNews(attempt + 1);
+    }
+
+    // Periodic news refresh (every 2 min)
+    setInterval(async () => {
+        if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
+        try {
+            const resp = await fetch('/api/news');
+            if (resp.ok) {
+                const newsData = await resp.json();
+                _news = Array.isArray(newsData) ? newsData : (newsData.items || []);
+                _renderContext();
+            }
+        } catch {}
+    }, 120_000);
 
     return { load };
 })();
