@@ -45,6 +45,8 @@ const MiniTradeChart = (() => {
         });
         ro.observe(el);
 
+        const showLabels = opts.showLineLabels !== false;
+
         const entry = {
             id,
             chart,
@@ -52,12 +54,14 @@ const MiniTradeChart = (() => {
             ro,
             el,
             symbol: opts.symbol || '',
+            showLineLabels: showLabels,
             entryLine: null,
             slLine: null,
             tpLine: null,
             labelEl: null,
             timingEl: null,
             lastTs: 0,
+            pendingMarker: null,
         };
 
         if (opts.entryPrice) _addLine(entry, 'entryLine', opts.entryPrice, C.entry, LightweightCharts.LineStyle.Solid);
@@ -107,6 +111,12 @@ const MiniTradeChart = (() => {
 
         entry.series.setData(data);
         entry.lastTs = data[data.length - 1].time;
+
+        // Apply pending marker (arrow at specific timestamp)
+        if (entry.pendingMarker) {
+            _applyMarker(entry, data);
+        }
+
         entry.chart.timeScale().fitContent();
 
         // Reposition line labels now that data + scale exist
@@ -194,6 +204,38 @@ const MiniTradeChart = (() => {
         entry.timingEl = badge;
     }
 
+    function addMarker(chartId, timestamp, direction) {
+        const entry = _charts[chartId];
+        if (!entry) return;
+        // Convert ISO string or ms to seconds
+        let ts = timestamp;
+        if (typeof ts === 'string') ts = Math.floor(new Date(ts).getTime() / 1000);
+        else if (ts > 1e12) ts = Math.floor(ts / 1000);
+        entry.pendingMarker = { time: ts, direction: direction || 'LONG' };
+    }
+
+    function _applyMarker(entry, data) {
+        const m = entry.pendingMarker;
+        if (!m || !data.length) return;
+
+        // Find the closest data point to the marker timestamp
+        let closest = data[0];
+        let bestDiff = Math.abs(data[0].time - m.time);
+        for (const d of data) {
+            const diff = Math.abs(d.time - m.time);
+            if (diff < bestDiff) { bestDiff = diff; closest = d; }
+        }
+
+        const isLong = m.direction === 'LONG';
+        entry.series.setMarkers([{
+            time: closest.time,
+            position: isLong ? 'belowBar' : 'aboveBar',
+            color: isLong ? '#22c55e' : '#ef4444',
+            shape: isLong ? 'arrowUp' : 'arrowDown',
+            size: 1,
+        }]);
+    }
+
     function destroy(chartId) {
         const entry = _charts[chartId];
         if (!entry) return;
@@ -244,8 +286,7 @@ const MiniTradeChart = (() => {
             lineStyle: style,
             axisLabelVisible: false,
         });
-        // Add text label overlay
-        _addLineLabel(entry, key, p, color);
+        if (entry.showLineLabels) _addLineLabel(entry, key, p, color);
     }
 
     function _addLineLabel(entry, key, price, color) {
@@ -319,6 +360,7 @@ const MiniTradeChart = (() => {
         appendCandle,
         addLabel,
         addTiming,
+        addMarker,
         destroy,
         destroyExcept,
         destroyAll,

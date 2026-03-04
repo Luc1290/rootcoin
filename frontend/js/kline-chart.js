@@ -21,6 +21,8 @@ const KlineChart = (() => {
     let _cyclesCache = { symbol: null, data: null };
     let _cyclesRendered = { symbol: null, interval: null };
     let _activeCycleRefs = []; // {area, entryPrice}
+    let _cycleInfos = []; // {openTs, closeTs, data} for tooltip
+    let _cycleTooltipEl = null;
     let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles']);
     let _loading = false;
     let _initialized = false;
@@ -158,8 +160,17 @@ const KlineChart = (() => {
         el.style.position = 'relative';
         el.appendChild(pctLabel);
 
+        // Cycle tooltip element
+        _cycleTooltipEl = document.createElement('div');
+        _cycleTooltipEl.className = 'cycle-tooltip';
+        el.appendChild(_cycleTooltipEl);
+
         _mainChart.subscribeCrosshairMove(param => {
-            if (!param.point || !_currentPrice) { pctLabel.style.display = 'none'; return; }
+            if (!param.point || !_currentPrice) {
+                pctLabel.style.display = 'none';
+                _cycleTooltipEl.style.display = 'none';
+                return;
+            }
             const price = _candleSeries.coordinateToPrice(param.point.y);
             if (price == null) { pctLabel.style.display = 'none'; return; }
             const pct = ((price - _currentPrice) / _currentPrice * 100);
@@ -170,6 +181,24 @@ const KlineChart = (() => {
             pctLabel.style.top = (param.point.y + 12) + 'px';
             pctLabel.style.display = 'block';
             _updateEntryOverlayPositions();
+
+            // Cycle tooltip
+            const t = param.time;
+            if (t && _cycleInfos.length) {
+                const hit = _cycleInfos.find(ci => t >= ci.openTs && t <= ci.closeTs);
+                if (hit) {
+                    _cycleTooltipEl.innerHTML = _buildCycleTooltip(hit.data);
+                    // Position near crosshair
+                    const x = Math.min(param.point.x + 16, el.clientWidth - 200);
+                    _cycleTooltipEl.style.left = x + 'px';
+                    _cycleTooltipEl.style.top = '8px';
+                    _cycleTooltipEl.style.display = 'block';
+                } else {
+                    _cycleTooltipEl.style.display = 'none';
+                }
+            } else {
+                _cycleTooltipEl.style.display = 'none';
+            }
         });
 
         _mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
@@ -363,6 +392,41 @@ const KlineChart = (() => {
 
     function _toTs(isoStr) {
         return Math.floor(new Date(isoStr.endsWith('Z') ? isoStr : isoStr + 'Z').getTime() / 1000);
+    }
+
+    function _buildCycleTooltip(c) {
+        const sym = c.symbol ? c.symbol.replace('USDC', '') : '';
+        const side = c.side || '';
+        const sideClass = side === 'LONG' ? 'pnl-positive' : 'pnl-negative';
+        const entry = c.entry_price ? Utils.fmtPrice(parseFloat(c.entry_price)) : '--';
+
+        if (c.is_active) {
+            const pnl = c.pnl_pct ? parseFloat(c.pnl_pct) : 0;
+            const pnlUsd = c.pnl_usd ? parseFloat(c.pnl_usd) : 0;
+            const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+            const pnlSign = pnl >= 0 ? '+' : '';
+            const dur = c.duration || '';
+            return `<div class="ct-header"><span class="${sideClass}">${side}</span> ${sym} <span class="ct-status ct-active">En cours</span></div>`
+                + `<div class="ct-row">Entry <b>${entry}</b></div>`
+                + `<div class="ct-row ${pnlClass}">${pnlSign}${pnl.toFixed(2)}% (${pnlSign}$${Math.abs(pnlUsd).toFixed(0)})</div>`
+                + (dur ? `<div class="ct-row ct-dim">${dur}</div>` : '');
+        }
+
+        const pnl = c.realized_pnl_pct ? parseFloat(c.realized_pnl_pct) : 0;
+        const pnlUsd = c.realized_pnl ? parseFloat(c.realized_pnl) : 0;
+        const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const pnlSign = pnl >= 0 ? '+' : '';
+        const exit = c.exit_price ? Utils.fmtPrice(parseFloat(c.exit_price)) : '--';
+        const fees = c.total_fees_usd ? parseFloat(c.total_fees_usd) : 0;
+        const dur = c.duration || '';
+        const statusLabel = pnl >= 0 ? 'Win' : 'Loss';
+        const statusClass = pnl >= 0 ? 'ct-win' : 'ct-loss';
+
+        return `<div class="ct-header"><span class="${sideClass}">${side}</span> ${sym} <span class="ct-status ${statusClass}">${statusLabel}</span></div>`
+            + `<div class="ct-row">Entry <b>${entry}</b> &rarr; <b>${exit}</b></div>`
+            + `<div class="ct-row ${pnlClass}">${pnlSign}${pnl.toFixed(2)}% (${pnlSign}$${Math.abs(pnlUsd).toFixed(2)})</div>`
+            + (fees ? `<div class="ct-row ct-dim">Fees $${fees.toFixed(2)}</div>` : '')
+            + (dur ? `<div class="ct-row ct-dim">${dur}</div>` : '');
     }
 
     async function _subscribeWS() {
@@ -633,6 +697,7 @@ const KlineChart = (() => {
         _entryPriceLines = [];
         _clearEntryOverlays();
         _activeCycleRefs = [];
+        _cycleInfos = [];
         _cyclesRendered = { symbol: null, interval: null };
     }
 
@@ -648,6 +713,7 @@ const KlineChart = (() => {
         _entryPriceLines = [];
         _clearEntryOverlays();
         _activeCycleRefs = [];
+        _cycleInfos = [];
 
         try {
             // Refetch if symbol changed or cache has active cycles (may have closed)
@@ -708,6 +774,7 @@ const KlineChart = (() => {
                 });
                 area.setData(areaData);
                 _cycleSeries.push(area);
+                _cycleInfos.push({ openTs, closeTs, data: c });
 
                 // Entry price line (active cycles only)
                 let entryPrice = null;

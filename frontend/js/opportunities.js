@@ -5,6 +5,8 @@ const Opportunities = (() => {
     let _containerCharts = {};
     // Per-container previous keys for change detection
     let _prevKeys = {};
+    // Timer for updating timeAgo
+    let _agoTimer = null;
 
     function update(list) {
         if (!Array.isArray(list)) return;
@@ -41,6 +43,7 @@ const Opportunities = (() => {
         const takenKey = Object.keys(activeSymbols).sort().join(',');
         const newKey = items.map(o => o.id).join(',') + '|' + takenKey;
         if (_prevKeys[cid] === newKey && _containerCharts[cid] && Object.keys(_containerCharts[cid]).length === items.length) {
+            _refreshAgo(container);
             return;
         }
         _prevKeys[cid] = newKey;
@@ -50,12 +53,16 @@ const Opportunities = (() => {
             const dirClass = o.direction === 'LONG' ? 'long' : 'short';
             const chartContainerId = `${cid}-chart-${o.id}`;
 
+            // Direction badge (same style as position cards)
+            const sideClass = o.direction === 'LONG' ? 'side-long' : 'side-short';
+            const dirBadge = `<span class="cockpit-side ${sideClass}">${o.direction}</span>`;
+
             // Taken badge
             const takenSide = activeSymbols[o.symbol];
             let takenBadge = '';
             if (takenSide) {
                 const badgeColor = takenSide === 'LONG' ? '#22c55e' : '#ef4444';
-                takenBadge = `<span style="background:${badgeColor};color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">${takenSide}</span>`;
+                takenBadge = `<span style="background:${badgeColor};color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">Pris</span>`;
             }
 
             const lvl = o.levels || {};
@@ -76,8 +83,9 @@ const Opportunities = (() => {
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-sm font-bold">${sym}</span>
+                        ${dirBadge}
                         ${takenBadge}
-                        <span class="text-xs text-gray-500">${ago}</span>
+                        <span class="text-xs text-gray-500 opp-ago" data-ts="${o.detected_at || ''}">${ago}</span>
                     </div>
                     <button class="opp-dismiss" onclick="Opportunities.dismiss('${o.id}')" title="Masquer">&#x2715;</button>
                 </div>
@@ -96,8 +104,6 @@ const Opportunities = (() => {
         for (const o of items) {
             const chartContainerId = `${cid}-chart-${o.id}`;
             const lvl = o.levels || {};
-            const score = o.score || 0;
-            const strength = score >= 60 ? 'strong' : null;
 
             const chartId = MiniTradeChart.create(chartContainerId, {
                 symbol: o.symbol,
@@ -105,11 +111,13 @@ const Opportunities = (() => {
                 entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
                 slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                 tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
+                showLineLabels: false,
             });
 
             if (chartId) {
                 newCharts[o.id] = chartId;
-                MiniTradeChart.addLabel(chartId, o.direction, strength);
+
+                if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction);
 
                 const timing = o.timing;
                 if (timing) MiniTradeChart.addTiming(chartId, timing);
@@ -118,6 +126,27 @@ const Opportunities = (() => {
             }
         }
         _containerCharts[cid] = newCharts;
+
+        // Start periodic timeAgo refresh
+        _ensureAgoTimer();
+    }
+
+    function _refreshAgo(container) {
+        if (!container) return;
+        container.querySelectorAll('.opp-ago').forEach(el => {
+            const ts = el.dataset.ts;
+            if (ts) el.textContent = Utils.timeAgoShort(ts);
+        });
+    }
+
+    function _ensureAgoTimer() {
+        if (_agoTimer) return;
+        _agoTimer = setInterval(() => {
+            document.querySelectorAll('.opp-ago').forEach(el => {
+                const ts = el.dataset.ts;
+                if (ts) el.textContent = Utils.timeAgoShort(ts);
+            });
+        }, 30_000);
     }
 
     function dismiss(id) {

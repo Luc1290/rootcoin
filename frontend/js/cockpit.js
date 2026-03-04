@@ -201,10 +201,12 @@ const Cockpit = (() => {
                 entryPrice,
                 slPrice,
                 tpPrice,
+                showLineLabels: false,
             });
 
             if (chartId) {
                 _posChartIds[p.id] = chartId;
+                if (p.opened_at) MiniTradeChart.addMarker(chartId, p.opened_at, p.side || 'LONG');
                 MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', 288);
             }
         }
@@ -346,9 +348,12 @@ const Cockpit = (() => {
         const winRate = stats.win_rate || 0;
         const total = stats.total || 0;
         const avgPnl = stats.avg_pnl_pct || 0;
-        const avgPnlClass = avgPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        // Avoid "-0.0%" display: treat tiny negatives as zero
+        const avgDisplay = Math.abs(avgPnl) < 0.05 ? 0 : avgPnl;
+        const avgPnlClass = avgDisplay >= 0 ? 'pnl-positive' : 'pnl-negative';
         const avgUsd = avgPnl / 100 * REF_SIZE;
-        const avgUsdStr = `${avgUsd >= 0 ? '+' : ''}$${Math.abs(avgUsd).toFixed(0)}`;
+        const avgUsdSign = avgUsd >= 0 ? '+' : '-';
+        const avgUsdStr = `${avgUsdSign}$${Math.abs(avgUsd).toFixed(0)}`;
 
         const rows = history.slice(0, 8).map(r => {
             const sym = r.symbol.replace('USDC', '');
@@ -390,7 +395,7 @@ const Cockpit = (() => {
                 <div class="flex items-center gap-3 text-xs">
                     <span class="text-gray-400">${total} signaux</span>
                     <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}% win</span>
-                    <span class="font-bold ${avgPnlClass}">${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(1)}% <span style="opacity:0.7">${avgUsdStr}</span> moy</span>
+                    <span class="font-bold ${avgPnlClass}">${avgDisplay >= 0 ? '+' : ''}${avgDisplay.toFixed(2)}% <span style="opacity:0.7">${avgUsdStr}</span> moy</span>
                 </div>
             </div>
             <div style="text-align:right;margin-bottom:4px"><span class="text-xs text-gray-600" style="font-size:9px">/ $${(REF_SIZE/1000).toFixed(0)}k</span></div>
