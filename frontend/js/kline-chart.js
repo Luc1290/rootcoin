@@ -168,6 +168,11 @@ const KlineChart = (() => {
             pctLabel.style.color = color;
             pctLabel.style.top = (param.point.y + 12) + 'px';
             pctLabel.style.display = 'block';
+            _updateEntryOverlayPositions();
+        });
+
+        _mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+            _updateEntryOverlayPositions();
         });
 
         _maSeries = {};
@@ -536,6 +541,9 @@ const KlineChart = (() => {
                 from: total - visible,
                 to: total - 1 + rightPad,
             });
+
+            // Position entry overlays after chart is laid out
+            requestAnimationFrame(() => _updateEntryOverlayPositions());
         } catch (e) {
             console.error('KlineChart: load failed', e);
         } finally {
@@ -564,12 +572,32 @@ const KlineChart = (() => {
     }
 
     let _entryPriceLines = [];
+    let _entryOverlays = []; // { el, price }
+
+    function _clearEntryOverlays() {
+        _entryOverlays.forEach(ov => ov.el.remove());
+        _entryOverlays = [];
+    }
+
+    function _updateEntryOverlayPositions() {
+        if (!_candleSeries) return;
+        for (const ov of _entryOverlays) {
+            const y = _candleSeries.priceToCoordinate(ov.price);
+            if (y != null) {
+                ov.el.style.top = (y - 8) + 'px';
+                ov.el.style.display = '';
+            } else {
+                ov.el.style.display = 'none';
+            }
+        }
+    }
 
     function _clearCycles() {
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
         _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
         _entryPriceLines = [];
+        _clearEntryOverlays();
         _activeCycleRefs = [];
         _cyclesRendered = { symbol: null, interval: null };
     }
@@ -584,6 +612,7 @@ const KlineChart = (() => {
         _cycleSeries = [];
         _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
         _entryPriceLines = [];
+        _clearEntryOverlays();
         _activeCycleRefs = [];
 
         try {
@@ -657,11 +686,16 @@ const KlineChart = (() => {
                         color: '#3b82f6',
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: true,
-                        axisLabelColor: '#3b82f6',
-                        axisLabelTextColor: '#ffffff',
-                        title: 'Entry ' + Utils.fmtPrice(entryPrice),
+                        axisLabelVisible: false,
                     }));
+                    const chartEl = document.getElementById('kline-chart-main');
+                    if (chartEl) {
+                        const lbl = document.createElement('div');
+                        lbl.textContent = 'Entry ' + Utils.fmtPrice(entryPrice);
+                        lbl.style.cssText = 'position:absolute;left:8px;color:#3b82f6;font-size:11px;font-weight:600;pointer-events:none;z-index:5;white-space:nowrap;text-shadow:0 0 3px rgba(0,0,0,0.8);';
+                        chartEl.appendChild(lbl);
+                        _entryOverlays.push({ el: lbl, price: entryPrice });
+                    }
                 }
 
                 if (c.is_active) {
@@ -926,6 +960,8 @@ const KlineChart = (() => {
             }
             _updateLiveIndicators(t);
         }
+
+        _updateEntryOverlayPositions();
     }
 
     // Update symbol dropdown + order lines when positions change
