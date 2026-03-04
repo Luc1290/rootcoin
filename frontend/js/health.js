@@ -1,6 +1,7 @@
 const Health = (() => {
     let _data = null;
     let _logEntries = [];
+    let _errorEntries = [];
     let _eventEntries = [];
     let _logPaused = false;
     let _logFilter = '';
@@ -38,6 +39,7 @@ const Health = (() => {
             if (logsResp.ok) {
                 const logData = await logsResp.json();
                 _logEntries = logData.logs || [];
+                _errorEntries = logData.errors || [];
             }
             if (eventsResp.ok) {
                 const evData = await eventsResp.json();
@@ -62,6 +64,7 @@ const Health = (() => {
         _renderNotifications();
         _renderDB();
         _renderSystem();
+        _renderErrors();
         _renderEvents();
         _renderLogs();
     }
@@ -235,6 +238,34 @@ const Health = (() => {
         </div>`;
     }
 
+    function _renderErrors() {
+        const el = document.getElementById('health-errors');
+        if (!el) return;
+        if (!_errorEntries.length) {
+            el.innerHTML = '';
+            return;
+        }
+
+        const rows = _errorEntries.slice().reverse().map(e => {
+            const lvlClass = 'log-level-' + (e.level || 'error');
+            const ctx = e.context && Object.keys(e.context).length
+                ? ' ' + Object.entries(e.context).map(([k, v]) => k + '=' + v).join(' ')
+                : '';
+            const ts = e.timestamp || '';
+            const tsShort = ts.substring(0, 19).replace('T', ' ');
+            return `<div class="log-line"><span class="log-ts">${tsShort}</span> <span class="${lvlClass}">${(e.level || '').toUpperCase().padEnd(5)}</span> <span class="log-event">${Utils.escHtml(e.event || '')}</span><span class="log-ctx">${Utils.escHtml(ctx)}</span></div>`;
+        }).join('');
+
+        el.innerHTML = `
+        <div class="card" style="border-left:3px solid #ef4444">
+            <div class="flex items-center justify-between mb-2">
+                <div class="metric-label">Erreurs recentes (${_errorEntries.length})</div>
+                <span class="text-xs text-gray-500">Garde les 200 dernieres</span>
+            </div>
+            <div class="log-terminal" style="max-height:200px">${rows}</div>
+        </div>`;
+    }
+
     function _renderLogs() {
         const el = document.getElementById('log-terminal');
         let entries = _logEntries;
@@ -404,8 +435,18 @@ const Health = (() => {
         if (_logEntries.length > 1000) {
             _logEntries = _logEntries.slice(-500);
         }
+        const lvl = entry.level || '';
+        if (lvl === 'error' || lvl === 'warning' || lvl === 'critical') {
+            _errorEntries.push(entry);
+            if (_errorEntries.length > 200) {
+                _errorEntries = _errorEntries.slice(-200);
+            }
+        }
         if (!_logPaused && !document.getElementById('view-health').classList.contains('hidden')) {
             _throttledRenderLogs();
+            if (lvl === 'error' || lvl === 'warning' || lvl === 'critical') {
+                _renderErrors();
+            }
         }
     });
 

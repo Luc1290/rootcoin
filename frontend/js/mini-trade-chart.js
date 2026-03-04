@@ -255,7 +255,9 @@ const MiniTradeChart = (() => {
         const el = document.createElement('div');
         el.className = 'mini-chart-line-label';
         el.style.color = color;
-        el.textContent = _lineLabels[key] || '';
+        const label = _lineLabels[key] || '';
+        const priceStr = Utils && Utils.fmtPriceCompact ? Utils.fmtPriceCompact(price) : price.toString();
+        el.textContent = `${label} ${priceStr}`;
         entry.el.style.position = 'relative';
         entry.el.appendChild(el);
         entry[labelKey] = el;
@@ -270,7 +272,8 @@ const MiniTradeChart = (() => {
         try {
             const y = entry.series.priceToCoordinate(price);
             if (y !== null && isFinite(y)) {
-                labelEl.style.top = (y - 7) + 'px';
+                // Place label above the line (offset -14px so text sits on top, not crossed)
+                labelEl.style.top = (y - 14) + 'px';
             } else {
                 labelEl.style.top = key === 'tpLine' ? '4px' : key === 'slLine' ? 'calc(100% - 16px)' : '50%';
             }

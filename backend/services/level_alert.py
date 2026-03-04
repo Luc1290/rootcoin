@@ -12,16 +12,18 @@ from backend.services import telegram_notifier
 log = structlog.get_logger()
 
 CROSS_TOLERANCE = Decimal("0.0005")  # ±0.05% band around level
-COOLDOWN_DEFAULT = 3600  # 1h per (symbol, level_price)
+COOLDOWN_DEFAULT = 14400  # 4h per (symbol, level_price)
 COOLDOWN_BY_TYPE = {
-    "PP": 14400, "D_H": 7200, "D_L": 7200,  # 4h pivot, 2h session H/L
-    "FIB_382": 7200, "FIB_50": 7200, "FIB_618": 7200,  # 2h fib
-    "FIB_1272": 7200, "FIB_1618": 7200,  # 2h fib extensions
-    "PSYCH": 14400,  # 4h psychological levels
+    "PP": 28800, "D_H": 14400, "D_L": 14400,  # 8h pivot, 4h session H/L
+    "FIB_382": 21600, "FIB_50": 21600, "FIB_618": 21600,  # 6h fib
+    "FIB_1272": 21600, "FIB_1618": 21600,  # 6h fib extensions
+    "PSYCH": 28800,  # 8h psychological levels
 }
+SYMBOL_COOLDOWN = 900  # 15min min between alerts for same symbol
 
 _last_prices: dict[str, Decimal] = {}
 _cooldowns: dict[tuple[str, str], float] = {}
+_symbol_last_alert: dict[str, float] = {}
 
 
 async def start():
@@ -84,13 +86,17 @@ async def _on_price(msg: dict):
 
 
 def _try_alert(symbol: str, price: Decimal, level: dict):
-    key = (symbol, level.get("price", ""))
     now = time.monotonic()
+    # Global per-symbol rate limit
+    if now - _symbol_last_alert.get(symbol, 0) < SYMBOL_COOLDOWN:
+        return
+    key = (symbol, level.get("price", ""))
     level_type = level.get("type", "")
     cooldown = COOLDOWN_BY_TYPE.get(level_type, COOLDOWN_DEFAULT)
     if now - _cooldowns.get(key, 0) < cooldown:
         return
     _cooldowns[key] = now
+    _symbol_last_alert[symbol] = now
     log.info("level_alert_triggered", symbol=symbol, level_type=level.get("type"),
              price=str(price), level_price=level.get("price"))
     asyncio.create_task(telegram_notifier.notify_level_reached(

@@ -30,6 +30,7 @@ const KlineChart = (() => {
     let _chartRegistry = [];
     let _seriesDataMap = {};
     let _currentPrice = null;
+    let _countdownTimer = null;
     const _observers = [];
     let _orderPriceLines = [];
     let _levelPriceLines = [];
@@ -544,11 +545,38 @@ const KlineChart = (() => {
 
             // Position entry overlays after chart is laid out
             requestAnimationFrame(() => _updateEntryOverlayPositions());
+            _startCountdown();
         } catch (e) {
             console.error('KlineChart: load failed', e);
         } finally {
             _loading = false;
         }
+    }
+
+    const _intervalMs = {
+        '1m': 60000, '3m': 180000, '5m': 300000, '15m': 900000,
+        '30m': 1800000, '1h': 3600000, '2h': 7200000, '4h': 14400000,
+        '6h': 21600000, '8h': 28800000, '12h': 43200000, '1d': 86400000,
+    };
+
+    function _startCountdown() {
+        if (_countdownTimer) clearInterval(_countdownTimer);
+        const el = document.getElementById('candle-countdown');
+        if (!el) return;
+
+        function tick() {
+            const ms = _intervalMs[_interval];
+            if (!ms) { el.textContent = ''; return; }
+            const now = Date.now();
+            const remaining = ms - (now % ms);
+            const totalSecs = Math.floor(remaining / 1000);
+            const m = Math.floor(totalSecs / 60);
+            const s = totalSecs % 60;
+            el.textContent = (m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's');
+        }
+
+        tick();
+        _countdownTimer = setInterval(tick, 1000);
     }
 
     async function _loadTradeMarkers(klines) {
@@ -651,9 +679,14 @@ const KlineChart = (() => {
                 const cycleCandles = candles.filter(cd => cd.time >= openTs && cd.time <= closeTs);
                 if (!cycleCandles.length) return;
 
+                // Add padding above candle highs so area visibly exceeds them
+                let maxHigh = 0;
+                for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
+                const pad = maxHigh * 0.004; // 0.4% above highs
+
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,
-                    value: cd.high,
+                    value: cd.high + pad,
                 }));
 
                 const opFill = c.is_active ? '0.18)' : '0.10)';
@@ -685,7 +718,7 @@ const KlineChart = (() => {
                     if (chartEl) {
                         const lbl = document.createElement('div');
                         lbl.textContent = 'Entry ' + Utils.fmtPrice(entryPrice);
-                        lbl.style.cssText = 'position:absolute;right:75px;color:#ffffff;font-size:11px;font-weight:600;pointer-events:none;z-index:5;white-space:nowrap;background:rgba(0,0,0,0.85);padding:1px 6px;border-radius:3px;transform:translateY(-100%);';
+                        lbl.style.cssText = 'position:absolute;left:8px;color:#ffffff;font-size:11px;font-weight:600;pointer-events:none;z-index:5;white-space:nowrap;background:rgba(0,0,0,0.85);padding:1px 6px;border-radius:3px;transform:translateY(-100%);';
                         chartEl.appendChild(lbl);
                         _entryOverlays.push({ el: lbl, price: entryPrice });
                     }

@@ -156,6 +156,19 @@ const Cockpit = (() => {
             const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
             const containerId = `pos-chart-${p.id}`;
 
+            const entryPrice = parseFloat(p.entry_price) || 0;
+            const slPrice = parseFloat(p.sl_price) || 0;
+            const tpPrice = parseFloat(p.tp_price) || 0;
+
+            let levelsHtml = '';
+            if (entryPrice) {
+                const parts = [];
+                parts.push(`<span style="color:#3b82f6">Entry ${Utils.fmtPriceCompact(entryPrice)}</span>`);
+                if (slPrice) parts.push(`<span style="color:#ef4444">SL ${Utils.fmtPriceCompact(slPrice)}</span>`);
+                if (tpPrice) parts.push(`<span style="color:#22c55e">TP ${Utils.fmtPriceCompact(tpPrice)}</span>`);
+                levelsHtml = `<div class="flex flex-wrap gap-x-3 gap-y-0 mt-1" style="font-size:10px;opacity:0.8">${parts.join('')}</div>`;
+            }
+
             return `<div class="mini-chart-card ${dirClass}" data-pos-id="${p.id}" onclick="App.switchTab('positions')" style="cursor:pointer">
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
@@ -169,6 +182,7 @@ const Cockpit = (() => {
                     </div>
                 </div>
                 <div id="${containerId}" style="height:140px;width:100%"></div>
+                ${levelsHtml}
             </div>`;
         }).join('');
 
@@ -191,7 +205,7 @@ const Cockpit = (() => {
 
             if (chartId) {
                 _posChartIds[p.id] = chartId;
-                MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', 24);
+                MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', 288);
             }
         }
     }

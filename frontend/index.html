@@ -164,8 +164,8 @@
             <div class="mb-4">
                 <div class="flex gap-2 mb-3">
                     <button class="chart-range-btn active text-xs px-3 py-1.5 font-medium" onclick="Balances.setChartRange(24)" data-hours="24">24h</button>
-                    <button class="chart-range-btn text-xs px-3 py-1.5 font-medium text-gray-400" onclick="Balances.setChartRange(168)" data-hours="168">7d</button>
-                    <button class="chart-range-btn text-xs px-3 py-1.5 font-medium text-gray-400" onclick="Balances.setChartRange(720)" data-hours="720">30d</button>
+                    <button class="chart-range-btn text-xs px-3 py-1.5 font-medium" onclick="Balances.setChartRange(168)" data-hours="168">7d</button>
+                    <button class="chart-range-btn text-xs px-3 py-1.5 font-medium" onclick="Balances.setChartRange(720)" data-hours="720">30d</button>
                 </div>
                 <div id="portfolio-chart" style="height:200px; width:100%;"></div>
             </div>
@@ -191,6 +191,7 @@
                     <option value="BTCUSDC">BTCUSDC</option>
                     <option value="ETHUSDC">ETHUSDC</option>
                 </select>
+                <span id="candle-countdown" class="text-xs tabular-nums text-gray-500" style="min-width:36px"></span>
                 <div class="flex gap-1" id="chart-intervals">
                     <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1m">1m</button>
                     <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="5m">5m</button>
@@ -378,6 +379,7 @@
                 <div id="health-db"></div>
                 <div id="health-system"></div>
             </div>
+            <div id="health-errors" class="mb-4"></div>
             <div id="health-events" class="mb-4"></div>
             <div class="card">
                 <div class="flex items-center justify-between mb-2">

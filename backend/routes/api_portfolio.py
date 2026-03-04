@@ -9,7 +9,7 @@ from backend.core.models import Balance
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
-CHANGE_THRESHOLD = Decimal("1")  # min $1 change to keep a point
+CHANGE_THRESHOLD = Decimal("0.01")  # keep virtually all points
 
 
 def _compress(rows, threshold=CHANGE_THRESHOLD):

@@ -12,7 +12,7 @@ async def get_health():
 
 @router.get("/logs")
 async def get_logs(limit: int = Query(100, le=500)):
-    return {"logs": log_buffer.get_logs(limit)}
+    return {"logs": log_buffer.get_logs(limit), "errors": log_buffer.get_errors(50)}
 
 
 @router.get("/events")

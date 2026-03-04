@@ -3,6 +3,8 @@ import time
 from collections import deque
 
 _buffer: deque[dict] = deque(maxlen=500)
+_error_buffer: deque[dict] = deque(maxlen=200)
+_ERROR_LEVELS = frozenset({"error", "warning", "critical"})
 _subscribers: set[asyncio.Queue] = set()
 
 
@@ -19,6 +21,8 @@ def capture_processor(logger, method_name: str, event_dict: dict) -> dict:
         "seq": time.monotonic_ns(),
     }
     _buffer.append(entry)
+    if entry["level"] in _ERROR_LEVELS:
+        _error_buffer.append(entry)
     for q in list(_subscribers):
         try:
             q.put_nowait(entry)
@@ -29,6 +33,11 @@ def capture_processor(logger, method_name: str, event_dict: dict) -> dict:
 
 def get_logs(limit: int = 100) -> list[dict]:
     items = list(_buffer)
+    return items[-limit:]
+
+
+def get_errors(limit: int = 50) -> list[dict]:
+    items = list(_error_buffer)
     return items[-limit:]
 
 
