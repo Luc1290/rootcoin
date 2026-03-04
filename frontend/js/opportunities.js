@@ -1,12 +1,11 @@
 const Opportunities = (() => {
     let _opportunities = [];
-    let _knownIds = new Set();
     let _dismissedIds = _loadDismissed();
+    let _chartIds = {};
 
     function update(list) {
         if (!Array.isArray(list)) return;
         _opportunities = list;
-        _knownIds = new Set(list.map(o => o.id));
     }
 
     function render(container) {
@@ -14,21 +13,17 @@ const Opportunities = (() => {
         const visible = _opportunities.filter(o => !_dismissedIds.has(o.id));
 
         if (!visible.length) {
+            _destroyCharts();
             container.innerHTML = '';
             return;
         }
 
+        const keepIds = new Set();
         const cards = visible.slice(0, 3).map(o => {
             const sym = o.symbol.replace('USDC', '');
-            const dirClass = o.direction === 'LONG' ? 'opp-long' : 'opp-short';
-            const dirIcon = o.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
-            const signals = (o.key_signals || []).map(s => {
-                const cls = s.type === 'bullish' ? 'opp-signal-bull'
-                    : s.type === 'bearish' ? 'opp-signal-bear'
-                    : 'opp-signal-level';
-                return `<span class="opp-signal ${cls}">${s.label}</span>`;
-            }).join('');
-            const ago = Utils.timeAgoShort(o.detected_at);
+            const dirClass = o.direction === 'LONG' ? 'long' : 'short';
+            const chartContainerId = `opp-chart-${o.id}`;
+            keepIds.add(o.id);
 
             const lvl = o.levels || {};
             const levelsHtml = lvl.entry ? `<div class="opp-levels">
@@ -39,32 +34,75 @@ const Opportunities = (() => {
                 <span class="opp-rr">R:R ${lvl.rr}</span>
             </div>` : '';
 
-            return `<div class="opp-card ${dirClass}">
-                <div class="flex items-center justify-between mb-1.5">
+            const ago = Utils.timeAgoShort(o.detected_at);
+
+            return `<div class="mini-chart-card ${dirClass}">
+                <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-sm font-bold">${sym}</span>
-                        <span class="opp-direction ${dirClass}">${dirIcon} ${o.direction}</span>
-                        <span class="opp-score">${o.score}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-500">${ago}</span>
-                        <button class="opp-dismiss" onclick="Opportunities.dismiss('${o.id}')" title="Masquer">&#x2715;</button>
                     </div>
+                    <button class="opp-dismiss" onclick="Opportunities.dismiss('${o.id}')" title="Masquer">&#x2715;</button>
                 </div>
-                <p class="text-xs text-gray-300 leading-relaxed mb-1.5">${o.message}</p>
+                <div id="${chartContainerId}" style="height:140px;width:100%"></div>
                 ${levelsHtml}
-                <div class="flex flex-wrap gap-1">${signals}</div>
             </div>`;
         }).join('');
 
         container.innerHTML = `<div class="space-y-2">${cards}</div>`;
+
+        // Destroy charts no longer visible
+        for (const [oppId, chartId] of Object.entries(_chartIds)) {
+            if (!keepIds.has(oppId)) {
+                MiniTradeChart.destroy(chartId);
+                delete _chartIds[oppId];
+            }
+        }
+
+        // Create charts for visible opportunities
+        for (const o of visible.slice(0, 3)) {
+            if (_chartIds[o.id]) continue;
+            const chartContainerId = `opp-chart-${o.id}`;
+            const lvl = o.levels || {};
+            const score = o.score || 0;
+            const strength = score >= 60 ? 'strong' : null;
+
+            const chartId = MiniTradeChart.create(chartContainerId, {
+                symbol: o.symbol,
+                height: 140,
+                entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
+                slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
+                tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
+            });
+
+            if (chartId) {
+                _chartIds[o.id] = chartId;
+                MiniTradeChart.addLabel(chartId, o.direction, strength);
+
+                const timing = o.timing;
+                if (timing) MiniTradeChart.addTiming(chartId, timing);
+
+                MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', 24);
+            }
+        }
     }
 
     function dismiss(id) {
         _dismissedIds.add(id);
         _saveDismissed();
+        if (_chartIds[id]) {
+            MiniTradeChart.destroy(_chartIds[id]);
+            delete _chartIds[id];
+        }
         const el = document.getElementById('cockpit-opportunities');
         if (el) render(el);
+    }
+
+    function _destroyCharts() {
+        for (const [oppId, chartId] of Object.entries(_chartIds)) {
+            MiniTradeChart.destroy(chartId);
+        }
+        _chartIds = {};
     }
 
     function _loadDismissed() {

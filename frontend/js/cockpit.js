@@ -1,26 +1,24 @@
 const Cockpit = (() => {
     let _positions = [];
     let _analysis = null;
-    let _recentCycles = [];
-    let _prevPositionKeys = null;
     let _dayPnl = null;
     let _dayTrades = 0;
+    let _news = [];
+    let _prevPositionKeys = null;
+    let _posChartIds = {};
     let _marketSymbol = null;
     let _marketFirstPrice = null;
-    const MAX_CYCLES = 5;
 
     async function load() {
         try {
-            const [, anaResp, oppResp, streaksResp, cyclesResp] = await Promise.all([
+            const [, anaResp, oppResp, streaksResp, newsResp] = await Promise.all([
                 BalanceStore.load(),
                 fetch('/api/analysis'),
                 fetch('/api/opportunities'),
                 fetch('/api/journal/streaks'),
-                fetch('/api/cycles?status=closed&limit=5'),
+                fetch('/api/news'),
             ]);
-            if (anaResp.ok) {
-                _analysis = await anaResp.json();
-            }
+            if (anaResp.ok) _analysis = await anaResp.json();
             if (oppResp.ok) {
                 const oppData = await oppResp.json();
                 Opportunities.update(oppData.opportunities || []);
@@ -30,13 +28,15 @@ const Cockpit = (() => {
                 _dayPnl = parseFloat(s.day_pnl) || 0;
                 _dayTrades = s.day_trades || 0;
             }
-            if (cyclesResp.ok) {
-                _recentCycles = await cyclesResp.json();
+            if (newsResp.ok) {
+                const newsData = await newsResp.json();
+                _news = Array.isArray(newsData) ? newsData : (newsData.items || []);
             }
             render();
             Charts.createCockpitChart('cockpit-portfolio-chart');
             Charts.loadCockpitData();
             _initMarketChart();
+            _loadTrackRecord();
         } catch (e) {
             console.error('Cockpit load failed', e);
         }
@@ -44,13 +44,12 @@ const Cockpit = (() => {
 
     function render() {
         _renderPortfolio();
-        _renderMarketChart();
-        _renderPositions();
-        _renderBias();
-        _renderRecentCycles();
-        _renderWhale();
+        _renderPositionCharts();
         _renderOpportunities();
+        _renderContext();
     }
+
+    // ── Portfolio (unchanged) ────────────────────────────────
 
     function _renderPortfolio() {
         const el = document.getElementById('cockpit-portfolio');
@@ -98,178 +97,130 @@ const Cockpit = (() => {
         </div>`;
     }
 
-    function _renderPositions() {
+    // ── Position mini-charts ─────────────────────────────────
+
+    function _renderPositionCharts() {
         const el = document.getElementById('cockpit-positions');
         if (!_positions.length) {
+            _destroyPosCharts();
             _prevPositionKeys = null;
-            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucune position ouverte</span></div>';
+            // Show market chart as fallback
+            _renderMarketChart(el);
             return;
         }
 
-        const keys = _positions.map(p => p.symbol + ':' + p.side).join(',');
-
+        const keys = _positions.map(p => `${p.id}:${p.symbol}:${p.side}`).join(',');
         if (_prevPositionKeys === keys) {
-            for (const p of _positions) {
-                const row = el.querySelector(`[data-pos-id="${p.id}"]`);
-                if (!row) continue;
-                const pnl = parseFloat(p.pnl_pct) || 0;
-                const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-                const pnlSign = pnl >= 0 ? '+' : '';
-                const pnlUsd = parseFloat(p.pnl_usd) || 0;
-                const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
-
-                const priceEl = row.querySelector('[data-field="price"]');
-                const pctEl = row.querySelector('[data-field="pnl-pct"]');
-                const usdEl = row.querySelector('[data-field="pnl-usd"]');
-
-                if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(p.current_price);
-                if (pctEl) {
-                    pctEl.textContent = `${pnlSign}${pnl.toFixed(1)}%`;
-                    pctEl.className = `text-sm font-bold tabular-nums ${pnlClass}`;
-                }
-                if (usdEl) {
-                    usdEl.textContent = `${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}`;
-                    usdEl.className = `text-xs tabular-nums ${pnlClass}`;
-                }
-            }
+            // Just update PnL overlays for existing charts
+            _updatePosOverlays();
             return;
         }
 
         _prevPositionKeys = keys;
-        const rows = _positions.map(p => {
+        _destroyPosCharts();
+
+        const cards = _positions.map(p => {
+            const sym = p.symbol.replace('USDC', '');
+            const dirClass = p.side === 'LONG' ? 'long' : 'short';
             const pnl = parseFloat(p.pnl_pct) || 0;
             const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
             const pnlSign = pnl >= 0 ? '+' : '';
-            const sideClass = p.side === 'LONG' ? 'side-long' : 'side-short';
-            const symbol = p.symbol.replace('USDC', '');
-            const price = Utils.fmtPriceCompact(p.current_price);
             const pnlUsd = parseFloat(p.pnl_usd) || 0;
             const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
-            return `<div class="cockpit-position" data-pos-id="${p.id}" onclick="App.switchTab('positions')">
-                <div class="flex items-center gap-2 flex-1 min-w-0">
-                    <span class="font-bold text-sm">${symbol}</span>
-                    <span class="cockpit-side ${sideClass}">${p.side}</span>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span class="text-xs text-gray-400 tabular-nums" data-field="price">${price}</span>
-                    <span class="text-sm font-bold tabular-nums ${pnlClass}" data-field="pnl-pct">${pnlSign}${pnl.toFixed(1)}%</span>
-                    <span class="text-xs tabular-nums ${pnlClass}" data-field="pnl-usd">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
-                </div>
-            </div>`;
-        }).join('');
+            const containerId = `pos-chart-${p.id}`;
 
-        el.innerHTML = `<div class="cockpit-card">${rows}</div>`;
-    }
-
-    function _renderBias() {
-        const el = document.getElementById('cockpit-bias');
-        if (!_analysis || !_analysis.analyses || !_analysis.analyses.length) {
-            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Analyse en attente...</span></div>';
-            return;
-        }
-
-        const rows = _analysis.analyses.map(a => {
-            if (!a.bias) return '';
-            const dir = a.bias.direction;
-            const conf = a.bias.confidence || 0;
-            const symbol = a.symbol.replace('USDC', '');
-            let barColor = '#6b7280';
-            let dirClass = '';
-            if (dir === 'LONG') { barColor = '#22c55e'; dirClass = 'pnl-positive'; }
-            else if (dir === 'SHORT') { barColor = '#ef4444'; dirClass = 'pnl-negative'; }
-            return `<div class="cockpit-bias-row" onclick="App.switchTab('analysis')">
+            return `<div class="mini-chart-card ${dirClass}" data-pos-id="${p.id}" onclick="App.switchTab('positions')" style="cursor:pointer">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs font-bold">${symbol}</span>
-                    <span class="text-xs font-semibold ${dirClass}">${dir} ${conf}%</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-bold">${sym}</span>
+                        <span class="cockpit-side side-${p.side.toLowerCase()}">${p.side}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-400 tabular-nums" data-field="price">${Utils.fmtPriceCompact(p.current_price)}</span>
+                        <span class="text-sm font-bold tabular-nums ${pnlClass}" data-field="pnl-pct">${pnlSign}${pnl.toFixed(1)}%</span>
+                        <span class="text-xs tabular-nums ${pnlClass}" data-field="pnl-usd">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
+                    </div>
                 </div>
-                <div class="cockpit-bias-track"><div class="cockpit-bias-fill" style="width:${conf}%;background:${barColor}"></div></div>
+                <div id="${containerId}" style="height:140px;width:100%"></div>
             </div>`;
         }).join('');
 
-        el.innerHTML = rows ? `<div class="cockpit-card">${rows}</div>` : '';
+        el.innerHTML = `<div class="space-y-2">${cards}</div>`;
+
+        // Create mini-charts for each position
+        for (const p of _positions) {
+            const containerId = `pos-chart-${p.id}`;
+            const entryPrice = parseFloat(p.entry_price) || 0;
+            const slPrice = parseFloat(p.sl_price) || 0;
+            const tpPrice = parseFloat(p.tp_price) || 0;
+
+            const chartId = MiniTradeChart.create(containerId, {
+                symbol: p.symbol,
+                height: 140,
+                entryPrice,
+                slPrice,
+                tpPrice,
+            });
+
+            if (chartId) {
+                _posChartIds[p.id] = chartId;
+                MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', 24);
+            }
+        }
     }
 
-    function _renderRecentCycles() {
-        const el = document.getElementById('cockpit-lastfill');
-        if (!_recentCycles.length) {
-            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucun cycle recent</span></div>';
-            return;
-        }
-
-        const rows = _recentCycles.slice(0, MAX_CYCLES).map(c => {
-            const symbol = c.symbol.replace('USDC', '');
-            const sideClass = c.side === 'LONG' ? 'side-long' : 'side-short';
-            const pnlPct = parseFloat(c.realized_pnl_pct) || 0;
-            const pnlClass = pnlPct >= 0 ? 'pnl-positive' : 'pnl-negative';
-            const pnlSign = pnlPct >= 0 ? '+' : '';
-            const pnlUsd = parseFloat(c.realized_pnl) || 0;
+    function _updatePosOverlays() {
+        for (const p of _positions) {
+            const card = document.querySelector(`[data-pos-id="${p.id}"]`);
+            if (!card) continue;
+            const pnl = parseFloat(p.pnl_pct) || 0;
+            const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+            const pnlSign = pnl >= 0 ? '+' : '';
+            const pnlUsd = parseFloat(p.pnl_usd) || 0;
             const pnlUsdSign = pnlUsd >= 0 ? '+' : '';
-            const ago = c.closed_at ? Utils.timeAgoShort(c.closed_at) : '';
-            const dur = c.duration || '';
-            return `<div class="flex items-center justify-between py-1.5" onclick="App.switchTab('cycles')" style="cursor:pointer">
-                <div class="flex items-center gap-2 min-w-0">
-                    <span class="text-xs font-bold">${symbol}</span>
-                    <span class="cockpit-side ${sideClass}">${c.side}</span>
-                    <span class="text-xs text-gray-500">${dur}</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlSign}${pnlPct.toFixed(1)}%</span>
-                    <span class="text-xs tabular-nums ${pnlClass}">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
-                    <span class="text-xs text-gray-500 shrink-0">${ago}</span>
-                </div>
-            </div>`;
-        }).join('');
 
-        el.innerHTML = `<div class="cockpit-card"><div class="text-xs text-gray-500 mb-1">Derniers cycles</div>${rows}</div>`;
-    }
+            const priceEl = card.querySelector('[data-field="price"]');
+            const pctEl = card.querySelector('[data-field="pnl-pct"]');
+            const usdEl = card.querySelector('[data-field="pnl-usd"]');
 
-    function _renderWhale() {
-        const el = document.getElementById('cockpit-whale');
-        const alerts = _analysis && _analysis.whale_alerts ? _analysis.whale_alerts : [];
-        if (!alerts.length) {
-            el.innerHTML = '<div class="cockpit-card"><span class="text-xs text-gray-500">Aucune alerte whale</span></div>';
-            return;
+            if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(p.current_price);
+            if (pctEl) {
+                pctEl.textContent = `${pnlSign}${pnl.toFixed(1)}%`;
+                pctEl.className = `text-sm font-bold tabular-nums ${pnlClass}`;
+            }
+            if (usdEl) {
+                usdEl.textContent = `${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}`;
+                usdEl.className = `text-xs tabular-nums ${pnlClass}`;
+            }
+
+            // Update SL/TP lines if changed
+            const chartId = _posChartIds[p.id];
+            if (chartId) {
+                MiniTradeChart.updateLevels(chartId, {
+                    slPrice: parseFloat(p.sl_price) || 0,
+                    tpPrice: parseFloat(p.tp_price) || 0,
+                });
+            }
         }
-
-        const rows = alerts.slice(0, 10).map(w => {
-            const sym = w.symbol.replace('USDC', '');
-            const qty = Utils.fmtQuoteQty(w.quote_qty);
-            const price = Utils.fmtPriceCompact(w.price);
-            const ago = Utils.timeAgoShort(w.timestamp);
-            const isBuy = w.side === 'BUY';
-            const sideClass = isBuy ? 'side-long' : 'side-short';
-            const label = isBuy ? 'Achat massif' : 'Vente massive';
-            return `<div class="flex items-center justify-between py-1.5">
-                <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="text-xs">&#x1F40B;</span>
-                    <span class="cockpit-side ${sideClass}">${label}</span>
-                    <span class="text-xs text-gray-300"><b>${qty}</b> de ${sym} \u00e0 ${price}</span>
-                </div>
-                <span class="text-xs text-gray-500 shrink-0 ml-2">${ago}</span>
-            </div>`;
-        }).join('');
-
-        el.innerHTML = `<div class="cockpit-card cockpit-whale-card">${rows}</div>`;
     }
 
-    function _renderOpportunities() {
-        const el = document.getElementById('cockpit-opportunities');
-        if (el) Opportunities.render(el);
+    function _destroyPosCharts() {
+        for (const chartId of Object.values(_posChartIds)) {
+            MiniTradeChart.destroy(chartId);
+        }
+        _posChartIds = {};
     }
 
-    // ── Market chart ──
+    // ── Market chart (fallback when no positions) ──────────
 
     function _getMarketSymbol() {
         if (_positions.length) return _positions[0].symbol;
         return 'BTCUSDC';
     }
 
-    function _renderMarketChart() {
-        const el = document.getElementById('cockpit-market-chart');
-        if (!el) return;
+    function _renderMarketChart(el) {
         const symbol = _getMarketSymbol();
         const displaySymbol = symbol.replace('USDC', '');
-        // Skip re-render if symbol unchanged and card already built
         if (_marketSymbol === symbol && el.querySelector('.cockpit-card')) return;
         _marketSymbol = symbol;
         _marketFirstPrice = null;
@@ -290,9 +241,12 @@ const Cockpit = (() => {
     }
 
     async function _initMarketChart() {
-        _renderMarketChart();
+        if (_positions.length) return; // positions have their own charts
+        const el = document.getElementById('cockpit-positions');
+        if (!el) return;
+        _renderMarketChart(el);
         Charts.createCockpitMarketChart('cockpit-market-chart-container');
-        const info = await Charts.loadCockpitMarketData(_marketSymbol);
+        const info = await Charts.loadCockpitMarketData(_getMarketSymbol());
         if (info) {
             _marketFirstPrice = info.price / (1 + info.change / 100);
             _updateMarketHeader(info.price, info.change);
@@ -310,27 +264,237 @@ const Cockpit = (() => {
         }
     }
 
-    // ── WS real-time updates ──
+    // ── Opportunities ────────────────────────────────────────
+
+    function _renderOpportunities() {
+        const el = document.getElementById('cockpit-opportunities');
+        if (el) Opportunities.render(el);
+    }
+
+    // ── Track Record ─────────────────────────────────────────
+
+    async function _loadTrackRecord() {
+        const el = document.getElementById('cockpit-track-record');
+        if (!el) return;
+
+        try {
+            const [histResp, statsResp] = await Promise.all([
+                fetch('/api/opportunities/history?limit=10'),
+                fetch('/api/opportunities/stats'),
+            ]);
+
+            let history = [];
+            let stats = {};
+            if (histResp.ok) history = (await histResp.json()).history || [];
+            if (statsResp.ok) stats = await statsResp.json();
+
+            _renderTrackRecord(el, history, stats);
+        } catch (e) {
+            console.error('Track record load failed', e);
+        }
+    }
+
+    function _renderTrackRecord(el, history, stats) {
+        if (!history.length && !stats.total) {
+            el.innerHTML = '';
+            return;
+        }
+
+        const winRate = stats.win_rate || 0;
+        const total = stats.total || 0;
+        const avgPnl = stats.avg_pnl_pct || 0;
+        const avgPnlClass = avgPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+
+        const rows = history.slice(0, 8).map(r => {
+            const sym = r.symbol.replace('USDC', '');
+            const dirIcon = r.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
+            const dirClass = r.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
+            const statusCls = r.status;
+            const statusLabel = r.status === 'tp_hit' ? 'TP' : r.status === 'sl_hit' ? 'SL' : r.status === 'expired' ? 'Exp' : r.status;
+            const pnl = r.outcome_pnl_pct ? parseFloat(r.outcome_pnl_pct) : null;
+            const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
+            const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
+            const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
+
+            return `<div class="track-record-row">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold">${sym}</span>
+                    <span class="text-xs ${dirClass}">${dirIcon}</span>
+                    <span class="track-record-status ${statusCls}">${statusLabel}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
+                    <span class="text-xs text-gray-500">${ago}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        el.innerHTML = `<div class="cockpit-card">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs text-gray-400">Track Record</span>
+                <div class="flex items-center gap-3 text-xs">
+                    <span class="text-gray-400">${total} signaux</span>
+                    <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}% win</span>
+                    <span class="font-bold ${avgPnlClass}">${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(1)}% moy</span>
+                </div>
+            </div>
+            ${rows}
+        </div>`;
+    }
+
+    // ── Context (macro + whales + news — separate cards) ────
+
+    function _renderContext() {
+        const el = document.getElementById('cockpit-context');
+        if (!el) return;
+
+        // Preserve open/closed state of collapsible sections
+        const macroWasOpen = el.querySelector('.context-macro')?.hasAttribute('open') ?? true;
+        const newsWasOpen = el.querySelector('.context-news')?.hasAttribute('open') ?? false;
+
+        const macroHtml = _buildMacroCard(macroWasOpen);
+        const whaleHtml = _buildWhaleCard();
+        const newsHtml = _buildNewsCard(newsWasOpen);
+
+        // Macro + Whales side by side, News full-width below
+        el.innerHTML = `
+            <div class="grid grid-cols-2 gap-2">${macroHtml}${whaleHtml}</div>
+            ${newsHtml}`;
+    }
+
+    const _cryptoImpact = {
+        dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'inverse',
+        us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
+    };
+
+    function _buildMacroCard(wasOpen) {
+        if (!_analysis || !_analysis.macro || !_analysis.macro.indicators) return '';
+        const openAttr = wasOpen !== false ? ' open' : '';
+
+        const indicators = _analysis.macro.indicators;
+        const items = Object.entries(indicators).map(([name, data]) => {
+            const val = data.value !== undefined ? parseFloat(data.value) : null;
+            const valStr = val !== null ? val.toFixed(name === 'vix' ? 1 : 2) : '--';
+            const change = parseFloat(data.change_pct || 0);
+            const changeStr = change ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}%` : '';
+
+            // Crypto impact color
+            const impact = _cryptoImpact[name];
+            let impactClass = 'text-gray-400';
+            let impactIcon = '&#x2022;';
+            if (impact === 'spread') {
+                const sv = parseFloat(data.value || 0);
+                impactClass = sv < 0 ? 'pnl-negative' : sv > 0.5 ? 'pnl-positive' : 'text-yellow-400';
+                impactIcon = sv < 0 ? '&#x25BC;' : sv > 0.5 ? '&#x25B2;' : '&#x2022;';
+            } else if (impact === 'inverse') {
+                impactClass = change < 0 ? 'pnl-positive' : change > 0 ? 'pnl-negative' : 'text-gray-400';
+                impactIcon = change < 0 ? '&#x25B2;' : change > 0 ? '&#x25BC;' : '&#x2022;';
+            } else if (impact === 'direct') {
+                impactClass = change > 0 ? 'pnl-positive' : change < 0 ? 'pnl-negative' : 'text-gray-400';
+                impactIcon = change > 0 ? '&#x25B2;' : change < 0 ? '&#x25BC;' : '&#x2022;';
+            }
+
+            return `<div class="macro-row">
+                <span class="macro-label">${name}</span>
+                <span class="macro-val tabular-nums">${valStr}</span>
+                <span class="macro-chg tabular-nums">${changeStr}</span>
+                <span class="macro-impact ${impactClass}" title="crypto">${impactIcon}</span>
+            </div>`;
+        }).join('');
+
+        return `<details class="context-section context-macro cockpit-card"${openAttr}>
+            <summary>Macro</summary>
+            <div>${items}</div>
+        </details>`;
+    }
+
+    function _buildWhaleCard() {
+        const alerts = _analysis && _analysis.whale_alerts ? _analysis.whale_alerts : [];
+        if (!alerts.length) return '';
+
+        const rows = alerts.slice(0, 10).map(w => {
+            const sym = w.symbol.replace('USDC', '');
+            const qty = Utils.fmtQuoteQty(w.quote_qty);
+            const price = Utils.fmtPriceCompact(w.price);
+            const ago = Utils.timeAgoShort(w.timestamp);
+            const isBuy = w.side === 'BUY';
+            const sideClass = isBuy ? 'side-long' : 'side-short';
+            const label = isBuy ? 'Achat' : 'Vente';
+            return `<div class="flex items-center gap-1.5 py-0.5 text-xs leading-tight">
+                <span class="cockpit-side ${sideClass}">${label}</span>
+                <span class="text-gray-300"><b>${qty}</b> ${sym} @ ${price}</span>
+                <span class="text-gray-500">&middot; ${ago}</span>
+            </div>`;
+        }).join('');
+
+        return `<div class="cockpit-card cockpit-whale-card">
+            <div class="text-xs text-gray-500 mb-1">Whales</div>
+            ${rows}
+        </div>`;
+    }
+
+    function _buildNewsCard(wasOpen) {
+        if (!_news || !_news.length) return '';
+
+        const crypto = [], macro = [], general = [];
+        for (const item of _news) {
+            const cat = item.category || '';
+            const feed = item.feed || '';
+            if (cat === 'Markets' || cat === 'crypto' || feed === 'google_crypto') crypto.push(item);
+            else if (cat === 'macro' || feed === 'google_macro') macro.push(item);
+            else general.push(item);
+        }
+
+        const openAttr = wasOpen ? ' open' : '';
+        return `<details class="context-section context-news cockpit-card mt-2"${openAttr}>
+            <summary>News</summary>
+            <div class="news-grid mt-2">
+                ${_buildNewsColumn('Crypto', crypto, 'news-cat-crypto')}
+                ${_buildNewsColumn('Macro', macro, 'news-cat-macro')}
+                ${_buildNewsColumn('General', general, 'news-cat-other')}
+            </div>
+        </details>`;
+    }
+
+    function _buildNewsColumn(title, items, catClass) {
+        const rows = items.slice(0, 6).map(n => {
+            const t = n.title_fr || n.title || '';
+            const ago = n.published_at ? Utils.timeAgoShort(n.published_at) : '';
+            const src = n.source || '';
+            const href = n.link || '#';
+            return `<a href="${href}" target="_blank" rel="noopener" class="news-item">
+                <div class="text-xs text-gray-200 leading-snug line-clamp-2">${t}</div>
+                <div class="flex items-center gap-2 mt-0.5">
+                    <span class="text-xs text-gray-600">${src}</span>
+                    <span class="text-xs text-gray-600">${ago}</span>
+                </div>
+            </a>`;
+        }).join('');
+
+        return `<div class="news-column">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="news-category ${catClass}">${title}</span>
+                <span class="text-xs text-gray-600">${items.length}</span>
+            </div>
+            <div class="news-list">${rows || '<div class="text-xs text-gray-600 py-2">Aucune</div>'}</div>
+        </div>`;
+    }
+
+    // ── WS real-time updates ─────────────────────────────────
 
     WS.on('positions_snapshot', (data) => {
         const prev = _positions;
         _positions = data || [];
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         _renderPortfolio();
-        _renderPositions();
-        // Market chart: switch symbol if needed
+        _renderPositionCharts();
+        // Switch to market chart if positions closed, or to position charts if opened
         const newSymbol = _getMarketSymbol();
-        if (newSymbol !== _marketSymbol) _initMarketChart();
-        // Position closed → refresh recent cycles
-        if (prev.length > _positions.length) {
-            fetch('/api/cycles?status=closed&limit=5')
-                .then(r => r.ok ? r.json() : [])
-                .then(c => { _recentCycles = c; _renderRecentCycles(); });
-        }
+        if (!_positions.length && newSymbol !== _marketSymbol) _initMarketChart();
     });
 
     WS.on('price_update', (data) => {
-        if (!_marketSymbol || data.symbol !== _marketSymbol) return;
+        if (!_marketSymbol || data.symbol !== _marketSymbol || _positions.length) return;
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         const price = parseFloat(data.price);
         if (!price || !isFinite(price)) return;
@@ -343,13 +507,30 @@ const Cockpit = (() => {
         }
     });
 
+    WS.on('kline_update', (data) => {
+        if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
+        if (data.interval !== '5m') return;
+        // Feed kline to position mini-charts
+        for (const p of _positions) {
+            const chartId = _posChartIds[p.id];
+            if (chartId && p.symbol === data.symbol) {
+                MiniTradeChart.appendCandle(chartId, {
+                    time: data.open_time,
+                    open: data.open,
+                    high: data.high,
+                    low: data.low,
+                    close: data.close,
+                });
+            }
+        }
+    });
+
     WS.on('analysis_update', (data) => {
         _analysis = data;
         if (data.opportunities) Opportunities.update(data.opportunities);
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
-        _renderBias();
-        _renderWhale();
         _renderOpportunities();
+        _renderContext();
     });
 
     BalanceStore.onChange(() => {

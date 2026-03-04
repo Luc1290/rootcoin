@@ -9,7 +9,7 @@ from backend.services import log_buffer
 from backend.exchange.binance_client import close_client, init_client
 from backend.core.database import close_db, init_db
 from backend.exchange import symbol_filters, ws_manager
-from backend.services import event_recorder, health_collector, level_alert, news_tracker, telegram_notifier
+from backend.services import event_recorder, health_collector, level_alert, news_tracker, opportunity_tracker, telegram_notifier
 from backend.trading import balance_tracker, position_tracker, price_recorder
 from backend.market import (
     heatmap_manager, kline_manager, macro_tracker, market_analyzer,
@@ -51,6 +51,7 @@ async def lifespan(app: FastAPI):
         await heatmap_manager.start(); started.append("heatmap")
         await market_analyzer.start(); started.append("analyzer")
         await opportunity_detector.start(); started.append("opportunities")
+        await opportunity_tracker.start(); started.append("opp_tracker")
         await news_tracker.start(); started.append("news")
         await health_collector.start(); started.append("health")
         await telegram_notifier.start(); started.append("telegram")
@@ -72,6 +73,7 @@ _SHUTDOWN_ORDER = [
     ("telegram", telegram_notifier.stop),
     ("health", health_collector.stop),
     ("news", news_tracker.stop),
+    ("opp_tracker", opportunity_tracker.stop),
     ("opportunities", opportunity_detector.stop),
     ("analyzer", market_analyzer.stop),
     ("heatmap", heatmap_manager.stop),

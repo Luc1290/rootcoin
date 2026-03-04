@@ -140,8 +140,8 @@ async def notify(message: str, parse_mode: str = "HTML", retries: int = 0) -> bo
                 continue
             log.warning("telegram_send_failed", status=resp.status_code, body=resp.text[:200])
             return False
-        except Exception:
-            log.error("telegram_send_error", exc_info=True)
+        except Exception as e:
+            log.warning("telegram_send_error", error=type(e).__name__)
             return False
     return False
 

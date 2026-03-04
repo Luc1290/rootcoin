@@ -137,6 +137,23 @@ class Setting(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class OpportunityRecord(Base):
+    __tablename__ = "opportunity_records"
+    __table_args__ = (Index("ix_opp_records_detected", "detected_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    entry_price: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    sl_price: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    tp_price: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="detected")
+    outcome_pnl_pct: Mapped[Decimal | None] = mapped_column(Numeric)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class TradeSnapshot(Base):
     __tablename__ = "trade_snapshots"
     __table_args__ = (

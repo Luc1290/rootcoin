@@ -13,7 +13,12 @@ log = structlog.get_logger()
 
 CROSS_TOLERANCE = Decimal("0.0005")  # ±0.05% band around level
 COOLDOWN_DEFAULT = 3600  # 1h per (symbol, level_price)
-COOLDOWN_BY_TYPE = {"PP": 14400, "D_H": 7200, "D_L": 7200}  # 4h pivot, 2h session H/L
+COOLDOWN_BY_TYPE = {
+    "PP": 14400, "D_H": 7200, "D_L": 7200,  # 4h pivot, 2h session H/L
+    "FIB_382": 7200, "FIB_50": 7200, "FIB_618": 7200,  # 2h fib
+    "FIB_1272": 7200, "FIB_1618": 7200,  # 2h fib extensions
+    "PSYCH": 14400,  # 4h psychological levels
+}
 
 _last_prices: dict[str, Decimal] = {}
 _cooldowns: dict[tuple[str, str], float] = {}

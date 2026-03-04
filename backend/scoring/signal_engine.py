@@ -13,7 +13,7 @@ from backend.market import kline_manager
 
 INDICATORS_SET = {"rsi", "macd", "ma", "bb", "mfi", "stoch_rsi", "buy_sell", "obv", "adx", "ema", "atr"}
 
-STRUCTURE_LOOKBACK = 16  # ~4h on 15m candles
+STRUCTURE_LOOKBACK = {"5m": 24, "15m": 16}  # 5m: 2h, 15m: 4h
 LEVEL_TOLERANCE = 0.003  # 0.3% proximity for level detection
 WICK_RATIO = 2.0  # wick >= 2x body = rejection
 
@@ -34,9 +34,9 @@ async def extract_signals(
     mom_pts, mom_dir, mom_signals = _score_momentum(indicators, interval)
 
     structure_pts, structure_signals = 0.0, []
-    if interval == "15m":
+    if interval in STRUCTURE_LOOKBACK:
         level_prices = _extract_level_prices(key_levels)
-        structure_pts, structure_signals = _score_structure(klines, level_prices, trend_dir)
+        structure_pts, structure_signals = _score_structure(klines, level_prices, trend_dir, interval)
 
     bs_score = _get_buy_sell_score(indicators)
     raw_direction = trend_dir if trend_dir != 0 else mom_dir
@@ -231,11 +231,13 @@ def _score_momentum(indicators: dict, interval: str) -> tuple[float, int, list[d
 
 def _score_structure(
     klines: list[dict], level_prices: list[float], direction: int,
+    interval: str = "15m",
 ) -> tuple[float, list[dict]]:
     if not level_prices or direction == 0:
         return 0.0, []
 
-    window = klines[-STRUCTURE_LOOKBACK:]
+    lookback = STRUCTURE_LOOKBACK.get(interval, 16)
+    window = klines[-lookback:]
     if len(window) < 3:
         return 0.0, []
 
@@ -306,7 +308,7 @@ def _detect_rejection_wicks(
     label = "Rejection" if direction == 1 else "Rejection"
     score_norm = best_pts / 4.0 * direction
     return best_pts, {
-        "name": "Rejection(15m)", "value": round(best_ratio, 1),
+        "name": "Rejection", "value": round(best_ratio, 1),
         "score": round(score_norm, 2), "weight": 1.0,
         "layer": "structure", "points": best_pts,
     }
@@ -340,7 +342,7 @@ def _detect_level_tests(
     pts = min(best_count, 3.0)
     score_norm = pts / 3.0 * direction
     return pts, {
-        "name": "LevelTest(15m)", "value": best_count,
+        "name": "LevelTest", "value": best_count,
         "score": round(score_norm, 2), "weight": 1.0,
         "layer": "structure", "points": pts,
     }
@@ -375,7 +377,7 @@ def _detect_break_retest(
         if retested:
             score_norm = 1.0 * direction
             return 3.0, {
-                "name": "Retest(15m)", "value": round(lp, 2),
+                "name": "Retest", "value": round(lp, 2),
                 "score": round(score_norm, 2), "weight": 1.0,
                 "layer": "structure", "points": 3.0,
             }

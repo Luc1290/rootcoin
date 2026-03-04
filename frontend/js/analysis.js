@@ -105,16 +105,22 @@ const Analysis = (() => {
             : b.direction === 'SHORT' ? '#ef4444'
             : '#6b7280';
 
-        const justificationHtml = (b.justification || '').split('\n').map(line => {
-            if (!line.trim()) return '';
-            const isConclusion = line.startsWith('Conclusion');
-            const cls = isConclusion ? 'text-sm font-semibold text-gray-200 mt-2' : 'text-sm text-gray-400';
-            return `<div class="${cls}">${Utils.escHtml(line)}</div>`;
-        }).join('');
+        const layersHtml = _buildLayerExplanations(b);
+
+        let freshnessHtml = '';
+        if (_data && _data.computed_at) {
+            const ago = Utils.timeAgo(_data.computed_at);
+            const computedMs = new Date(_data.computed_at).getTime();
+            const nextMs = computedMs + 60000;
+            const nowMs = Date.now();
+            const secsLeft = Math.max(0, Math.round((nextMs - nowMs) / 1000));
+            const nextStr = secsLeft > 0 ? `${secsLeft}s` : 'imminent';
+            freshnessHtml = `<div class="text-xs text-gray-500 mt-2">Mis a jour ${ago} · prochain refresh ~${nextStr}</div>`;
+        }
 
         el.innerHTML = `
         <div class="card">
-            <div class="metric-label mb-2">Biais du jour &mdash; ${analysis.symbol}</div>
+            <div class="metric-label mb-2">Biais &mdash; ${analysis.symbol}</div>
             <div class="flex items-center gap-4 mb-3">
                 <span class="bias-direction ${colorClass}">${arrow}</span>
                 <div>
@@ -127,8 +133,45 @@ const Analysis = (() => {
                     </div>
                 </div>
             </div>
-            <div class="space-y-1">${justificationHtml}</div>
+            <div class="space-y-1">${layersHtml}</div>
+            ${freshnessHtml}
         </div>`;
+    }
+
+    function _buildLayerExplanations(bias) {
+        const ls = bias.layer_scores;
+        if (!ls) return '';
+
+        const layers = [
+            { key: 'primary_5m', label: '5min', score: ls.primary_5m, max: 30,
+              desc: s => s > 20 ? 'Tendance + momentum alignes' : s > 10 ? 'Signal moderé, momentum partiel' : s > 0 ? 'Signal faible, peu de momentum' : 'Aucun signal' },
+            { key: 'confirmation_15m', label: '15min', score: ls.confirmation_15m, max: 25,
+              desc: s => s > 16 ? 'Confirme le 5min' : s > 7 ? 'Confirmation partielle' : s > 0 ? 'Neutre, pas de confirmation' : 'Oppose le 5min' },
+            { key: 'context_1h', label: '1h', score: ls.context_1h, max: 15,
+              desc: s => s > 10 ? 'Tendance horaire alignee' : s > 3 ? 'Tendance horaire neutre' : 'Tendance horaire opposee' },
+            { key: 'warning_4h', label: '4h', score: ls.warning_4h, max: 5,
+              desc: s => s >= 4 ? 'Contexte 4h favorable' : s >= 2 ? 'Contexte 4h neutre' : 'Contexte 4h defavorable' },
+            { key: 'flow', label: 'Flux', score: ls.flow, max: 20,
+              desc: s => s > 13 ? 'Pression achat/vente + orderbook + whales' : s > 7 ? 'Flux moderé en faveur' : s > 0 ? 'Flux faible' : 'Aucun flux favorable' },
+            { key: 'macro', label: 'Macro', score: ls.macro, max: 5,
+              desc: s => s > 2 ? 'Environnement macro favorable' : s < -2 ? 'Environnement macro defavorable' : 'Macro neutre' },
+        ];
+
+        return layers.map(l => {
+            const pct = l.max > 0 ? Math.round(l.score / l.max * 100) : 0;
+            const clampPct = Math.max(0, Math.min(pct, 100));
+            const color = clampPct > 60 ? '#22c55e' : clampPct > 30 ? '#eab308' : '#ef4444';
+            const explanation = l.desc(l.score);
+
+            return `<div class="flex items-center gap-2 text-xs">
+                <span class="text-gray-500 font-semibold" style="min-width:36px">${l.label}</span>
+                <div class="flex-shrink-0" style="width:60px;height:4px;background:#1f2937;border-radius:2px;overflow:hidden">
+                    <div style="width:${clampPct}%;height:100%;background:${color};border-radius:2px"></div>
+                </div>
+                <span class="tabular-nums text-gray-500" style="min-width:28px">${l.score}/${l.max}</span>
+                <span class="text-gray-400">${explanation}</span>
+            </div>`;
+        }).join('');
     }
 
     // ── Block 2: Key levels ────────────────────────────────

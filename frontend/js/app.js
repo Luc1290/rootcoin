@@ -132,7 +132,7 @@ const App = (() => {
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
         if (tab === 'chart') { KlineChart.init(); KlineChart.loadChart(); }
-        if (tab === 'analysis') Analysis.load();
+        if (tab === 'analysis') { Analysis.load(); }
         if (tab === 'heatmap') { Heatmap.init(); Heatmap.load(); Heatmap.startPolling(); } else { Heatmap.stopPolling(); }
         if (tab === 'journal') { Journal.init(); Journal.load(); }
         if (tab === 'health') { Health.init(); Health.load(); Health.startPolling(); } else { Health.stopPolling(); }

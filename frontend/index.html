@@ -68,15 +68,11 @@
     <main class="flex-1 overflow-y-auto">
         <!-- Cockpit view -->
         <div id="view-cockpit" class="view p-4">
-            <div class="cockpit-grid">
-                <div id="cockpit-portfolio" class="cockpit-span-full"></div>
-                <div id="cockpit-market-chart" class="cockpit-span-full"></div>
-                <div id="cockpit-opportunities" class="cockpit-span-full"></div>
-                <div id="cockpit-positions"></div>
-                <div id="cockpit-bias"></div>
-                <div id="cockpit-lastfill"></div>
-                <div id="cockpit-whale"></div>
-            </div>
+            <div id="cockpit-portfolio" class="mb-3"></div>
+            <div id="cockpit-positions" class="mb-3"></div>
+            <div id="cockpit-opportunities" class="mb-3"></div>
+            <div id="cockpit-track-record" class="mb-3"></div>
+            <div id="cockpit-context" class="mb-3"></div>
         </div>
 
         <!-- Positions view -->
@@ -429,6 +425,7 @@
     <script src="/static/js/analysis.js"></script>
     <script src="/static/js/heatmap.js"></script>
     <script src="/static/js/health.js"></script>
+    <script src="/static/js/mini-trade-chart.js"></script>
     <script src="/static/js/opportunities.js"></script>
     <script src="/static/js/cockpit.js"></script>
     <script src="/static/js/journal.js"></script>

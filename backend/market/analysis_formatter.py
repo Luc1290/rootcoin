@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-TIMEFRAMES = ["15m", "1h", "4h"]
+TIMEFRAMES = ["5m", "15m", "1h", "4h"]
 
 SIGNAL_DESCRIPTIONS = {
     "RSI": lambda v, sc: f"RSI a {v:.0f}" + (" (survente)" if sc > 0 else " (surachat)" if sc < 0 else ""),
@@ -44,91 +44,6 @@ def signal_to_dict(s: dict) -> dict:
         "score": round(score, 2),
         "trend": s.get("trend"),
     }
-
-
-def build_justification(ta_signals: list, macro_signals: list, direction: str) -> str:
-    tf_groups: dict[str, list] = {}
-    for s in ta_signals:
-        name = s["name"]
-        tf = "other"
-        if "(" in name and ")" in name:
-            tf = name.split("(")[1].rstrip(")")
-        tf_groups.setdefault(tf, []).append(s)
-
-    sections = []
-
-    for tf in TIMEFRAMES:
-        signals = tf_groups.get(tf, [])
-        if not signals:
-            continue
-
-        bullish = [s for s in signals if s["score"] > 0.2]
-        bearish = [s for s in signals if s["score"] < -0.2]
-        bullish.sort(key=lambda s: s["score"], reverse=True)
-        bearish.sort(key=lambda s: s["score"])
-
-        parts = []
-        for s in bullish[:3]:
-            key = s["name"].split("(")[0]
-            desc_fn = SIGNAL_DESCRIPTIONS.get(key)
-            if desc_fn:
-                parts.append(desc_fn(s.get("value") or 0, s["score"]))
-        for s in bearish[:3]:
-            key = s["name"].split("(")[0]
-            desc_fn = SIGNAL_DESCRIPTIONS.get(key)
-            if desc_fn:
-                parts.append(desc_fn(s.get("value") or 0, s["score"]))
-
-        if not parts:
-            sections.append(f"{tf} : signaux mixtes, pas de direction claire.")
-        elif bullish and bearish:
-            sections.append(f"{tf} : {', '.join(parts)} — signaux contradictoires.")
-        elif bullish:
-            sections.append(f"{tf} : {', '.join(parts)} — tendance haussiere.")
-        else:
-            sections.append(f"{tf} : {', '.join(parts)} — tendance baissiere.")
-
-    other_signals = tf_groups.get("other", [])
-    other_parts = []
-    for s in other_signals:
-        if abs(s["score"]) > 0.1:
-            desc_fn = SIGNAL_DESCRIPTIONS.get(s["name"])
-            if desc_fn:
-                other_parts.append(desc_fn(s.get("value") or 0, s["score"]))
-    if other_parts:
-        sections.append(f"Liquidite : {', '.join(other_parts)}.")
-
-    macro_parts = []
-    for s in macro_signals:
-        if abs(s["score"]) >= 0.2:
-            desc_fn = MACRO_DESC.get(s["name"])
-            if desc_fn:
-                macro_parts.append(desc_fn(s))
-    if macro_parts:
-        sections.append(f"Macro : {', '.join(macro_parts)}.")
-
-    ta_bull = sum(1 for s in ta_signals if s["score"] > 0.2)
-    ta_bear = sum(1 for s in ta_signals if s["score"] < -0.2)
-    diff = abs(ta_bull - ta_bear)
-    total = ta_bull + ta_bear
-
-    if total == 0:
-        strength = "aucun signal fort"
-    elif diff == 0:
-        strength = "signaux parfaitement divises"
-    elif diff <= 2:
-        strength = "leger avantage"
-    elif diff <= total * 0.5:
-        strength = "avantage net"
-    else:
-        strength = "forte majorite"
-
-    if direction == "LONG":
-        sections.append(f"Conclusion : {strength} haussier ({ta_bull} vs {ta_bear}). Biais LONG.")
-    else:
-        sections.append(f"Conclusion : {strength} baissier ({ta_bear} vs {ta_bull}). Biais SHORT.")
-
-    return "\n".join(sections)
 
 
 def format_qty(qty_str: str) -> str:

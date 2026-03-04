@@ -6,6 +6,8 @@ from decimal import Decimal, InvalidOperation
 import structlog
 
 from backend.market import market_analyzer
+from backend.scoring import timing_coach
+from backend.services import opportunity_tracker
 from backend.trading import position_tracker
 from backend.core.config import settings
 
@@ -79,6 +81,9 @@ def _evaluate():
         opp = _build_opportunity(analysis, score, details, now)
         _opportunities.appendleft(opp)
         _cooldowns[symbol] = now
+
+        asyncio.create_task(opportunity_tracker.record_detection(opp))
+
         log.info(
             "opportunity_detected",
             symbol=symbol,
@@ -272,6 +277,16 @@ def _build_opportunity(analysis: dict, score: float, details: dict, now: datetim
 
     levels = _compute_levels(analysis, direction)
 
+    timing = analysis.get("timing")
+    if not timing:
+        _timing_input = {
+            "bias": {"direction": direction},
+            "_signals_5m": analysis.get("_signals_5m", {}),
+            "key_levels": [l for l in analysis.get("key_levels", []) if l.get("type") != "current"],
+            "current_price": analysis.get("current_price"),
+        }
+        timing = timing_coach.evaluate(_timing_input, symbol)
+
     return {
         "id": f"{symbol}_{ts}",
         "symbol": symbol,
@@ -283,6 +298,7 @@ def _build_opportunity(analysis: dict, score: float, details: dict, now: datetim
         "key_signals": key_signals,
         "nearest_level": details.get("nearest_level"),
         "levels": levels,
+        "timing": timing,
         "detected_at": now.isoformat(),
     }
 

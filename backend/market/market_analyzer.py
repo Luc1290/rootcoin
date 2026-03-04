@@ -5,8 +5,8 @@ from decimal import Decimal
 import structlog
 
 from backend.market import kline_manager, macro_tracker, orderbook_tracker, whale_tracker
-from backend.market.analysis_formatter import build_justification, signal_to_dict, format_qty, TIMEFRAMES
-from backend.scoring import signal_engine, scorer
+from backend.market.analysis_formatter import signal_to_dict, format_qty, TIMEFRAMES
+from backend.scoring import signal_engine, scorer, timing_coach
 from backend.trading import position_tracker
 from backend.core.config import settings
 
@@ -112,21 +112,24 @@ async def _analyze_symbol(symbol: str) -> dict:
         current_price = key_levels[0].get("current_price")
 
     # Extract signals per timeframe via unified signal engine
+    signals_5m = await signal_engine.extract_signals(symbol, "5m", key_levels)
     signals_15m = await signal_engine.extract_signals(symbol, "15m", key_levels)
     signals_1h = await signal_engine.extract_signals(symbol, "1h", key_levels)
     signals_4h = await signal_engine.extract_signals(symbol, "4h", key_levels)
 
-    # Direction from 15m primary
-    direction = signals_15m.get("raw_direction", 0)
+    # Direction from 5m primary (scalp-optimized fallback chain)
+    direction = signals_5m.get("raw_direction", 0)
+    if direction == 0:
+        direction = signals_15m.get("raw_direction", 0)
     if direction == 0:
         direction = signals_1h.get("raw_direction", 0)
     if direction == 0:
         direction = 1  # Default LONG if completely ambiguous
 
-    # Unified score
+    # Unified score (6-layer scalp model)
     macro_data = macro_tracker.get_macro_data()
     result = scorer.compute_unified_score(
-        signals_15m, signals_1h, signals_4h,
+        signals_5m, signals_15m, signals_1h, signals_4h,
         symbol, macro_data, direction,
     )
 
@@ -139,12 +142,9 @@ async def _analyze_symbol(symbol: str) -> dict:
         dir_str = prev
     _prev_direction[symbol] = dir_str
 
-    # Macro signals for display/justification
+    # Macro signals for display
     macro_signals = _score_macro_display(macro_data)
     all_signals = result["all_signals"]
-
-    # Justification
-    justification = build_justification(all_signals, macro_signals, dir_str)
 
     # Alerts
     macro_direction = _macro_direction(macro_data)
@@ -158,14 +158,22 @@ async def _analyze_symbol(symbol: str) -> dict:
                 dist = ((price - current_price) / current_price * 100)
                 level["distance_pct"] = str(round(dist, 2))
 
+    # Timing coach — build temporary analysis-like dict for evaluation
+    _timing_input = {
+        "bias": {"direction": dir_str},
+        "_signals_5m": signals_5m,
+        "key_levels": [l for l in key_levels if l.get("type") != "current"],
+        "current_price": str(current_price) if current_price else None,
+    }
+    timing = timing_coach.evaluate(_timing_input, symbol)
+
     return {
         "symbol": symbol,
         "bias": {
             "direction": dir_str,
             "confidence": score,
-            "justification": justification,
             "ta_score": round(result["raw_points"] / scorer.TOTAL_MAX, 3),
-            "macro_score": round(result["layer_scores"]["macro"] / 10, 3),
+            "macro_score": round(result["layer_scores"]["macro"] / 5, 3),
             "layer_scores": result["layer_scores"],
         },
         "signals": {
@@ -175,6 +183,8 @@ async def _analyze_symbol(symbol: str) -> dict:
         "key_levels": [l for l in key_levels if l.get("type") != "current"],
         "alerts": alerts,
         "current_price": str(current_price) if current_price else None,
+        "timing": timing,
+        "atr_5m": signals_5m.get("atr"),
         "atr_15m": signals_15m.get("atr"),
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -343,24 +353,38 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     if klines_4h and len(klines_4h) >= 6:
         _detect_swings(klines_4h[:-1], levels)
 
-    # 1H swings — 50 candles (~2 days) for scalp-level granularity
-    await kline_manager.fetch_and_store(symbol, "1h", limit=50)
-    klines_1h = await kline_manager.get_klines(symbol, "1h", limit=50)
+    # 1H swings — 100 candles (~4 days) for scalp-level granularity + Fibonacci
+    await kline_manager.fetch_and_store(symbol, "1h", limit=100)
+    klines_1h = await kline_manager.get_klines(symbol, "1h", limit=100)
     if klines_1h and len(klines_1h) >= 6:
         _detect_swings(klines_1h[:-1], levels)
 
+    # 15min swings — 96 candles (24h lookback) for intraday granularity
+    await kline_manager.fetch_and_store(symbol, "15m", limit=96)
+    klines_15m = await kline_manager.get_klines(symbol, "15m", limit=96)
+    if klines_15m and len(klines_15m) >= 6:
+        _detect_swings(klines_15m[:-1], levels)
+
+    # Fibonacci retracements/extensions from latest significant 1H swing
+    if klines_1h and len(klines_1h) >= 20:
+        _add_fibonacci_levels(klines_1h, levels)
+
+    # Psychological levels (round numbers near current price)
+    _add_psychological_levels(current_price, levels)
+
     levels = _deduplicate_levels(levels)
 
-    fixed = [l for l in levels if l["type"] not in ("SW_H", "SW_L")]
+    swing_types = {"SW_H", "SW_L"}
+    fixed = [l for l in levels if l["type"] not in swing_types]
     swings_above = sorted(
-        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) >= current_price],
+        [l for l in levels if l["type"] in swing_types and Decimal(l["price"]) >= current_price],
         key=lambda x: Decimal(x["price"]),
-    )[:3]
+    )[:4]
     swings_below = sorted(
-        [l for l in levels if l["type"] in ("SW_H", "SW_L") and Decimal(l["price"]) < current_price],
+        [l for l in levels if l["type"] in swing_types and Decimal(l["price"]) < current_price],
         key=lambda x: Decimal(x["price"]),
         reverse=True,
-    )[:3]
+    )[:4]
     levels = fixed + swings_above + swings_below
 
     levels.sort(key=lambda x: Decimal(x["price"]), reverse=True)
@@ -404,7 +428,12 @@ def _deduplicate_levels(levels: list[dict]) -> list[dict]:
         return levels
     result = []
     prices_seen = []
-    priority = {"R2": 0, "R1": 1, "PP": 2, "S1": 3, "S2": 4, "D_H": 5, "D_L": 6, "SW_H": 7, "SW_L": 8}
+    priority = {
+        "R2": 0, "R1": 1, "PP": 2, "S1": 3, "S2": 4, "D_H": 5, "D_L": 6,
+        "FIB_618": 7, "FIB_50": 8, "FIB_382": 9,
+        "FIB_1272": 10, "FIB_1618": 11, "PSYCH": 12,
+        "SW_H": 13, "SW_L": 14,
+    }
     levels.sort(key=lambda x: priority.get(x["type"], 99))
     for level in levels:
         price = Decimal(level["price"])
@@ -417,6 +446,106 @@ def _deduplicate_levels(levels: list[dict]) -> list[dict]:
             result.append(level)
             prices_seen.append(price)
     return result
+
+
+# ── Fibonacci levels ──────────────────────────────────────────
+
+_FIB_RATIOS = [
+    (Decimal("0.382"), "FIB_382", "Fib 38.2%"),
+    (Decimal("0.5"), "FIB_50", "Fib 50%"),
+    (Decimal("0.618"), "FIB_618", "Fib 61.8%"),
+]
+_FIB_EXT_RATIOS = [
+    (Decimal("0.272"), "FIB_1272", "Fib Ext 127.2%"),
+    (Decimal("0.618"), "FIB_1618", "Fib Ext 161.8%"),
+]
+
+
+def _add_fibonacci_levels(klines_1h: list[dict], levels: list[dict]):
+    swing = _find_significant_swing(klines_1h)
+    if not swing:
+        return
+    swing_high, swing_low = swing
+    diff = swing_high - swing_low
+
+    for ratio, ftype, label in _FIB_RATIOS:
+        price = swing_low + diff * ratio
+        levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
+
+    for ratio, ftype, label in _FIB_EXT_RATIOS:
+        price = swing_high + diff * ratio
+        levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
+
+
+def _find_significant_swing(klines: list[dict]) -> tuple[Decimal, Decimal] | None:
+    if len(klines) < 20:
+        return None
+
+    # Find all swing highs and lows
+    highs = []
+    lows = []
+    closed = klines[:-1]  # Skip forming candle
+    for i in range(1, len(closed) - 1):
+        h = Decimal(closed[i]["high"])
+        l = Decimal(closed[i]["low"])
+        prev_h = Decimal(closed[i - 1]["high"])
+        next_h = Decimal(closed[i + 1]["high"])
+        prev_l = Decimal(closed[i - 1]["low"])
+        next_l = Decimal(closed[i + 1]["low"])
+        if h > prev_h and h > next_h:
+            highs.append((i, h))
+        if l < prev_l and l < next_l:
+            lows.append((i, l))
+
+    if not highs or not lows:
+        return None
+
+    # Find the most recent pair with >= 1% range and >= 10 candles apart
+    for hi_idx, hi_price in reversed(highs):
+        for lo_idx, lo_price in reversed(lows):
+            if abs(hi_idx - lo_idx) < 10:
+                continue
+            diff = hi_price - lo_price
+            if lo_price > 0 and diff / lo_price >= Decimal("0.01"):
+                return (hi_price, lo_price)
+
+    return None
+
+
+# ── Psychological levels ─────────────────────────────────────
+
+def _add_psychological_levels(current_price: Decimal, levels: list[dict]):
+    cp = float(current_price)
+    if cp <= 0:
+        return
+
+    # Determine magnitude based on price range
+    if cp >= 10000:
+        step = 1000
+    elif cp >= 1000:
+        step = 100
+    elif cp >= 100:
+        step = 50
+    elif cp >= 10:
+        step = 10
+    elif cp >= 1:
+        step = 1
+    else:
+        return  # Too small for psychological levels
+
+    base = int(cp / step) * step
+    for m in range(-2, 4):
+        psych = base + m * step
+        if psych <= 0:
+            continue
+        dist_pct = abs(psych - cp) / cp * 100
+        if dist_pct > 5:  # Only within 5% of current price
+            continue
+        levels.append({
+            "price": str(psych),
+            "type": "PSYCH",
+            "label": f"Niveau psycho {psych:,.0f}".replace(",", " "),
+        })
 
 
 # ── Alerts ────────────────────────────────────────────────────
