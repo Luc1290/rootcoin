@@ -22,7 +22,7 @@ const MiniTradeChart = (() => {
             height,
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-            rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af', scaleMargins: { top: 0.05, bottom: 0.05 } },
+            rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af', scaleMargins: { top: 0.1, bottom: 0.1 }, autoScale: true },
             timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             handleScroll: false,
@@ -85,6 +85,13 @@ const MiniTradeChart = (() => {
         entry.series.setData(data);
         entry.lastTs = data[data.length - 1].time;
         entry.chart.timeScale().fitContent();
+
+        // Reposition line labels now that data + scale exist
+        requestAnimationFrame(() => {
+            if (entry.entryLine) _positionLineLabel(entry, 'entryLine', entry.entryLine.options().price);
+            if (entry.slLine) _positionLineLabel(entry, 'slLine', entry.slLine.options().price);
+            if (entry.tpLine) _positionLineLabel(entry, 'tpLine', entry.tpLine.options().price);
+        });
     }
 
     function updateLevels(chartId, levels) {
@@ -169,6 +176,9 @@ const MiniTradeChart = (() => {
         if (!entry) return;
         if (entry.labelEl) entry.labelEl.remove();
         if (entry.timingEl) entry.timingEl.remove();
+        if (entry.entryLine_label) entry.entryLine_label.remove();
+        if (entry.slLine_label) entry.slLine_label.remove();
+        if (entry.tpLine_label) entry.tpLine_label.remove();
         if (entry.ro) entry.ro.disconnect();
         entry.chart.remove();
         delete _charts[chartId];
@@ -195,6 +205,12 @@ const MiniTradeChart = (() => {
 
     // ── Helpers ──────────────────────────────────────────────
 
+    const _lineLabels = {
+        entryLine: 'Entry',
+        slLine: 'SL',
+        tpLine: 'TP',
+    };
+
     function _addLine(entry, key, price, color, style) {
         const p = parseFloat(price);
         if (!p || !isFinite(p)) return;
@@ -205,6 +221,39 @@ const MiniTradeChart = (() => {
             lineStyle: style,
             axisLabelVisible: false,
         });
+        // Add text label overlay
+        _addLineLabel(entry, key, p, color);
+    }
+
+    function _addLineLabel(entry, key, price, color) {
+        const labelKey = key + '_label';
+        if (entry[labelKey]) entry[labelKey].remove();
+
+        const el = document.createElement('div');
+        el.className = 'mini-chart-line-label';
+        el.style.color = color;
+        el.textContent = _lineLabels[key] || '';
+        entry.el.style.position = 'relative';
+        entry.el.appendChild(el);
+        entry[labelKey] = el;
+
+        // Position after chart renders
+        requestAnimationFrame(() => _positionLineLabel(entry, key, price));
+    }
+
+    function _positionLineLabel(entry, key, price) {
+        const labelEl = entry[key + '_label'];
+        if (!labelEl) return;
+        try {
+            const y = entry.series.priceToCoordinate(price);
+            if (y !== null && isFinite(y)) {
+                labelEl.style.top = (y - 7) + 'px';
+            } else {
+                labelEl.style.top = key === 'tpLine' ? '4px' : key === 'slLine' ? 'calc(100% - 16px)' : '50%';
+            }
+        } catch {
+            labelEl.style.top = '50%';
+        }
     }
 
     function _updateOrAddLine(entry, key, price, color, style) {

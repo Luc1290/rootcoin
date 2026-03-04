@@ -780,6 +780,13 @@ select {
     border-radius: 0.75rem;
     padding: 0.75rem 1rem;
 }
+.cockpit-sep {
+    display: inline-block;
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.15);
+    vertical-align: middle;
+}
 .cockpit-position {
     display: flex;
     align-items: center;
@@ -895,6 +902,17 @@ select {
 .mini-chart-label.short { color: #f87171; background: rgba(239, 68, 68, 0.12); }
 .mini-chart-label.strong { font-size: 0.75rem; }
 
+.mini-chart-line-label {
+    position: absolute;
+    left: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    z-index: 1;
+    pointer-events: none;
+    text-shadow: 0 0 3px rgba(0,0,0,0.8);
+}
+
 .mini-chart-timing {
     position: absolute;
     top: 0.375rem;
@@ -948,6 +966,11 @@ select {
 .macro-val {
     width: 66px;
     text-align: right;
+    flex-shrink: 0;
+}
+.macro-trend {
+    width: 14px;
+    text-align: center;
     flex-shrink: 0;
 }
 .macro-chg {

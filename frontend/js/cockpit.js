@@ -60,74 +60,65 @@ const Cockpit = (() => {
     function _renderPortfolio() {
         const el = document.getElementById('cockpit-portfolio');
         const totalPnl = _positions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
-        const pnlClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const pnlSign = totalPnl >= 0 ? '+' : '';
         const portfolioTotal = BalanceStore.getTotal();
         const portfolioStr = portfolioTotal !== null ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
-        // PnL ouvert : % moyen pondéré des positions
-        let weightedPnlPct = 0;
-        if (_positions.length) {
-            let totalCost = 0;
-            for (const p of _positions) {
-                const cost = (parseFloat(p.entry_price) || 0) * (parseFloat(p.quantity) || 0);
-                weightedPnlPct += (parseFloat(p.pnl_pct) || 0) * cost;
-                totalCost += cost;
-            }
-            weightedPnlPct = totalCost > 0 ? weightedPnlPct / totalCost : 0;
-        }
-        const openPctStr = _positions.length
-            ? ` (${weightedPnlPct >= 0 ? '+' : ''}${weightedPnlPct.toFixed(2)}%)`
-            : '';
-
-        // PnL 24h
+        // 24h PnL (realized + unrealized)
         const dayTotal = (_dayPnl || 0) + totalPnl;
         const dayPnlClass = dayTotal >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const dayPnlSign = dayTotal >= 0 ? '+' : '';
-        const dayLabel = _dayPnl !== null ? `${dayPnlSign}$${Math.abs(dayTotal).toFixed(2)}` : '--';
+        const daySign = dayTotal >= 0 ? '+' : '';
         const dayPctStr = (portfolioTotal && portfolioTotal > 0 && _dayPnl !== null)
-            ? ` (${dayTotal >= 0 ? '+' : ''}${(dayTotal / portfolioTotal * 100).toFixed(2)}%)`
+            ? `${dayTotal >= 0 ? '+' : ''}${(dayTotal / portfolioTotal * 100).toFixed(2)}%`
             : '';
-        const dayTradesLabel = _dayTrades > 0 ? ` · ${_dayTrades} trade${_dayTrades > 1 ? 's' : ''}` : '';
-
-        // Portfolio subtitle: 24h summary
-        const daySummary = (_dayPnl !== null && portfolioTotal)
-            ? `${dayPnlSign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr}`
+        const dayStr = _dayPnl !== null
+            ? `24h ${daySign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr ? '  ·  ' + dayPctStr : ''}${_dayTrades > 0 ? '  ·  ' + _dayTrades + ' trade' + (_dayTrades > 1 ? 's' : '') : ''}`
             : '';
 
-        const totalSpan = el.querySelector('[data-field="total"]');
-        const pnlSpan = el.querySelector('[data-field="pnl"]');
-        if (totalSpan && pnlSpan) {
-            totalSpan.textContent = portfolioStr;
-            const daySub = el.querySelector('[data-field="day-sub"]');
-            if (daySub) {
-                daySub.textContent = daySummary;
-                daySub.className = `text-sm tabular-nums ${dayPnlClass}`;
+        // PnL ouvert (only if positions)
+        const hasPositions = _positions.length > 0;
+        let openStr = '';
+        let openClass = '';
+        if (hasPositions) {
+            const openSign = totalPnl >= 0 ? '+' : '';
+            openClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+            let weightedPct = 0, totalCost = 0;
+            for (const p of _positions) {
+                const cost = (parseFloat(p.entry_price) || 0) * (parseFloat(p.quantity) || 0);
+                weightedPct += (parseFloat(p.pnl_pct) || 0) * cost;
+                totalCost += cost;
             }
-            pnlSpan.textContent = `${pnlSign}$${Math.abs(totalPnl).toFixed(2)}${openPctStr}`;
-            pnlSpan.className = `text-base font-bold tabular-nums ${pnlClass}`;
-            const daySpan = el.querySelector('[data-field="day-pnl"]');
-            if (daySpan) {
-                daySpan.textContent = dayLabel + dayPctStr + dayTradesLabel;
-                daySpan.className = `text-base font-bold tabular-nums ${dayPnlClass}`;
+            weightedPct = totalCost > 0 ? weightedPct / totalCost : 0;
+            openStr = `${openSign}$${Math.abs(totalPnl).toFixed(2)} (${weightedPct >= 0 ? '+' : ''}${weightedPct.toFixed(2)}%)`;
+        }
+
+        // Fast update path
+        const totalSpan = el.querySelector('[data-field="total"]');
+        if (totalSpan) {
+            totalSpan.textContent = portfolioStr;
+            const dayEl = el.querySelector('[data-field="day"]');
+            if (dayEl) { dayEl.textContent = dayStr; dayEl.className = `text-sm tabular-nums ${dayPnlClass}`; }
+            const openEl = el.querySelector('[data-field="open"]');
+            if (openEl) {
+                if (hasPositions) {
+                    openEl.textContent = openStr;
+                    openEl.className = `text-sm font-bold tabular-nums ${openClass}`;
+                    openEl.parentElement.classList.remove('hidden');
+                } else {
+                    openEl.parentElement.classList.add('hidden');
+                }
             }
             return;
         }
 
         el.innerHTML = `
         <div class="cockpit-card">
-            <div class="flex items-center gap-2 justify-end">
-                <span class="text-sm text-gray-400">Portfolio</span>
+            <div class="flex items-center gap-3 justify-end flex-wrap">
                 <span class="text-lg font-bold tabular-nums" data-field="total">${portfolioStr}</span>
-                ${daySummary ? `<span class="text-sm tabular-nums ${dayPnlClass}" data-field="day-sub">${daySummary}</span>` : '<span data-field="day-sub"></span>'}
+                ${dayStr ? `<span class="cockpit-sep"></span><span class="text-sm tabular-nums ${dayPnlClass}" data-field="day">${dayStr}</span>` : '<span data-field="day"></span>'}
             </div>
-            <div class="flex items-center gap-2 justify-end mt-1">
-                <span class="text-sm text-gray-400">PnL ouvert</span>
-                <span class="text-base font-bold tabular-nums ${pnlClass}" data-field="pnl">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}${openPctStr}</span>
-            </div>
-            <div class="flex items-center gap-2 justify-end mt-1">
-                <span class="text-sm text-gray-400">PnL 24h</span>
-                <span class="text-base font-bold tabular-nums ${dayPnlClass}" data-field="day-pnl">${dayLabel}${dayPctStr}${dayTradesLabel}</span>
+            <div class="flex items-center gap-3 justify-end mt-1 ${hasPositions ? '' : 'hidden'}">
+                <span class="text-xs text-gray-500">PnL ouvert</span>
+                <span class="text-sm font-bold tabular-nums ${openClass}" data-field="open">${openStr}</span>
             </div>
             <div id="cockpit-portfolio-chart" style="height:80px;width:100%;margin-top:8px"></div>
         </div>`;
@@ -403,6 +394,10 @@ const Cockpit = (() => {
         dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'inverse',
         us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
     };
+    const _macroLabels = {
+        dxy: 'DXY', vix: 'VIX', nasdaq: 'NDQ', gold: 'Gold',
+        us10y: '10Y', spread: '10-5Y', oil: 'Oil', usdjpy: 'JPY',
+    };
 
     function _buildMacroCard(wasOpen) {
         if (!_analysis || !_analysis.macro || !_analysis.macro.indicators) return '';
@@ -410,12 +405,17 @@ const Cockpit = (() => {
 
         const indicators = _analysis.macro.indicators;
         const items = Object.entries(indicators).map(([name, data]) => {
+            const label = _macroLabels[name] || name;
             const val = data.value !== undefined ? parseFloat(data.value) : null;
             const valStr = val !== null ? val.toFixed(name === 'vix' ? 1 : 2) : '--';
             const change = parseFloat(data.change_pct || 0);
             const changeStr = change ? `${change >= 0 ? '+' : ''}${change.toFixed(2)}%` : '';
 
-            // Crypto impact color
+            // Trend arrow (asset direction)
+            const trendIcon = change > 0 ? '&#x25B2;' : change < 0 ? '&#x25BC;' : '&#x2022;';
+            const trendClass = change > 0 ? 'pnl-positive' : change < 0 ? 'pnl-negative' : 'text-gray-400';
+
+            // Crypto impact
             const impact = _cryptoImpact[name];
             let impactClass = 'text-gray-400';
             let impactIcon = '&#x2022;';
@@ -432,10 +432,11 @@ const Cockpit = (() => {
             }
 
             return `<div class="macro-row">
-                <span class="macro-label">${name}</span>
+                <span class="macro-label">${label}</span>
                 <span class="macro-val tabular-nums">${valStr}</span>
+                <span class="macro-trend ${trendClass}">${trendIcon}</span>
                 <span class="macro-chg tabular-nums">${changeStr}</span>
-                <span class="macro-impact ${impactClass}" title="crypto">${impactIcon}</span>
+                <span class="macro-impact ${impactClass}" title="crypto">c${impactIcon}</span>
             </div>`;
         }).join('');
 

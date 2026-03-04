@@ -27,10 +27,10 @@ const Opportunities = (() => {
 
             const lvl = o.levels || {};
             const levelsHtml = lvl.entry ? `<div class="opp-levels">
-                <span class="opp-lvl"><span class="text-gray-400">Entry</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
-                <span class="opp-lvl"><span class="opp-sl">SL</span> ${Utils.fmtPriceCompact(lvl.sl)}</span>
-                <span class="opp-lvl"><span class="opp-tp">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)}</span>
-                ${lvl.tp2 ? `<span class="opp-lvl"><span class="opp-tp">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)}</span>` : ''}
+                <span class="opp-lvl"><span style="color:#3b82f6">Entry</span> <span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span></span>
+                <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span></span>
+                <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span></span>
+                ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span></span>` : ''}
                 <span class="opp-rr">R:R ${lvl.rr}</span>
             </div>` : '';
 
@@ -49,19 +49,13 @@ const Opportunities = (() => {
             </div>`;
         }).join('');
 
-        container.innerHTML = `<div class="space-y-2">${cards}</div>`;
+        // Destroy all existing charts before rewriting DOM
+        _destroyCharts();
 
-        // Destroy charts no longer visible
-        for (const [oppId, chartId] of Object.entries(_chartIds)) {
-            if (!keepIds.has(oppId)) {
-                MiniTradeChart.destroy(chartId);
-                delete _chartIds[oppId];
-            }
-        }
+        container.innerHTML = `<div class="space-y-2">${cards}</div>`;
 
         // Create charts for visible opportunities
         for (const o of visible.slice(0, 3)) {
-            if (_chartIds[o.id]) continue;
             const chartContainerId = `opp-chart-${o.id}`;
             const lvl = o.levels || {};
             const score = o.score || 0;
