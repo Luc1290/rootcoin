@@ -15,6 +15,7 @@ log.txt
 *.bat
 doc/private/
 .claude/settings.local.json
+.claude/CLAUDE.md
 scripts/*.py
 *.csv
 *.pdf
