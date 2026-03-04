@@ -4,6 +4,7 @@ const Cockpit = (() => {
     let _dayPnl = null;
     let _dayTrades = 0;
     let _news = [];
+    let _recentCycles = [];
     let _prevPositionKeys = null;
     let _posChartIds = {};
     let _marketSymbol = null;
@@ -11,12 +12,13 @@ const Cockpit = (() => {
 
     async function load() {
         try {
-            const [, anaResp, oppResp, streaksResp, newsResp] = await Promise.all([
+            const [, anaResp, oppResp, streaksResp, newsResp, cyclesResp] = await Promise.all([
                 BalanceStore.load(),
                 fetch('/api/analysis'),
                 fetch('/api/opportunities'),
                 fetch('/api/journal/streaks'),
                 fetch('/api/news'),
+                fetch('/api/cycles?status=closed&limit=10'),
             ]);
             if (anaResp.ok) _analysis = await anaResp.json();
             if (oppResp.ok) {
@@ -31,6 +33,10 @@ const Cockpit = (() => {
             if (newsResp.ok) {
                 const newsData = await newsResp.json();
                 _news = Array.isArray(newsData) ? newsData : (newsData.items || []);
+            }
+            if (cyclesResp.ok) {
+                _recentCycles = await cyclesResp.json();
+                if (!Array.isArray(_recentCycles)) _recentCycles = [];
             }
             render();
             Charts.createCockpitChart('cockpit-portfolio-chart');
@@ -59,21 +65,50 @@ const Cockpit = (() => {
         const portfolioTotal = BalanceStore.getTotal();
         const portfolioStr = portfolioTotal !== null ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
+        // PnL ouvert : % moyen pondéré des positions
+        let weightedPnlPct = 0;
+        if (_positions.length) {
+            let totalCost = 0;
+            for (const p of _positions) {
+                const cost = (parseFloat(p.entry_price) || 0) * (parseFloat(p.quantity) || 0);
+                weightedPnlPct += (parseFloat(p.pnl_pct) || 0) * cost;
+                totalCost += cost;
+            }
+            weightedPnlPct = totalCost > 0 ? weightedPnlPct / totalCost : 0;
+        }
+        const openPctStr = _positions.length
+            ? ` (${weightedPnlPct >= 0 ? '+' : ''}${weightedPnlPct.toFixed(2)}%)`
+            : '';
+
+        // PnL 24h
         const dayTotal = (_dayPnl || 0) + totalPnl;
         const dayPnlClass = dayTotal >= 0 ? 'pnl-positive' : 'pnl-negative';
         const dayPnlSign = dayTotal >= 0 ? '+' : '';
         const dayLabel = _dayPnl !== null ? `${dayPnlSign}$${Math.abs(dayTotal).toFixed(2)}` : '--';
-        const dayTradesLabel = _dayTrades > 0 ? ` (${_dayTrades} trade${_dayTrades > 1 ? 's' : ''})` : '';
+        const dayPctStr = (portfolioTotal && portfolioTotal > 0 && _dayPnl !== null)
+            ? ` (${dayTotal >= 0 ? '+' : ''}${(dayTotal / portfolioTotal * 100).toFixed(2)}%)`
+            : '';
+        const dayTradesLabel = _dayTrades > 0 ? ` · ${_dayTrades} trade${_dayTrades > 1 ? 's' : ''}` : '';
+
+        // Portfolio subtitle: 24h summary
+        const daySummary = (_dayPnl !== null && portfolioTotal)
+            ? `${dayPnlSign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr}`
+            : '';
 
         const totalSpan = el.querySelector('[data-field="total"]');
         const pnlSpan = el.querySelector('[data-field="pnl"]');
         if (totalSpan && pnlSpan) {
             totalSpan.textContent = portfolioStr;
-            pnlSpan.textContent = `${pnlSign}$${Math.abs(totalPnl).toFixed(2)}`;
+            const daySub = el.querySelector('[data-field="day-sub"]');
+            if (daySub) {
+                daySub.textContent = daySummary;
+                daySub.className = `text-sm tabular-nums ${dayPnlClass}`;
+            }
+            pnlSpan.textContent = `${pnlSign}$${Math.abs(totalPnl).toFixed(2)}${openPctStr}`;
             pnlSpan.className = `text-base font-bold tabular-nums ${pnlClass}`;
             const daySpan = el.querySelector('[data-field="day-pnl"]');
             if (daySpan) {
-                daySpan.textContent = dayLabel + dayTradesLabel;
+                daySpan.textContent = dayLabel + dayPctStr + dayTradesLabel;
                 daySpan.className = `text-base font-bold tabular-nums ${dayPnlClass}`;
             }
             return;
@@ -84,14 +119,15 @@ const Cockpit = (() => {
             <div class="flex items-center gap-2 justify-end">
                 <span class="text-sm text-gray-400">Portfolio</span>
                 <span class="text-lg font-bold tabular-nums" data-field="total">${portfolioStr}</span>
+                ${daySummary ? `<span class="text-sm tabular-nums ${dayPnlClass}" data-field="day-sub">${daySummary}</span>` : '<span data-field="day-sub"></span>'}
             </div>
             <div class="flex items-center gap-2 justify-end mt-1">
                 <span class="text-sm text-gray-400">PnL ouvert</span>
-                <span class="text-base font-bold tabular-nums ${pnlClass}" data-field="pnl">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}</span>
+                <span class="text-base font-bold tabular-nums ${pnlClass}" data-field="pnl">${pnlSign}$${Math.abs(totalPnl).toFixed(2)}${openPctStr}</span>
             </div>
             <div class="flex items-center gap-2 justify-end mt-1">
                 <span class="text-sm text-gray-400">PnL 24h</span>
-                <span class="text-base font-bold tabular-nums ${dayPnlClass}" data-field="day-pnl">${dayLabel}${dayTradesLabel}</span>
+                <span class="text-base font-bold tabular-nums ${dayPnlClass}" data-field="day-pnl">${dayLabel}${dayPctStr}${dayTradesLabel}</span>
             </div>
             <div id="cockpit-portfolio-chart" style="height:80px;width:100%;margin-top:8px"></div>
         </div>`;
@@ -354,11 +390,12 @@ const Cockpit = (() => {
 
         const macroHtml = _buildMacroCard(macroWasOpen);
         const whaleHtml = _buildWhaleCard();
+        const cyclesHtml = _buildCyclesCard();
         const newsHtml = _buildNewsCard(newsWasOpen);
 
-        // Macro + Whales side by side, News full-width below
+        // Macro + Whales + Cycles side by side, News full-width below
         el.innerHTML = `
-            <div class="grid grid-cols-2 gap-2">${macroHtml}${whaleHtml}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${macroHtml}${whaleHtml}${cyclesHtml}</div>
             ${newsHtml}`;
     }
 
@@ -429,6 +466,36 @@ const Cockpit = (() => {
 
         return `<div class="cockpit-card cockpit-whale-card">
             <div class="text-xs text-gray-500 mb-1">Whales</div>
+            ${rows}
+        </div>`;
+    }
+
+    function _buildCyclesCard() {
+        if (!_recentCycles.length) return '';
+
+        const rows = _recentCycles.slice(0, 10).map(c => {
+            const sym = c.symbol.replace('USDC', '');
+            const pnl = c.realized_pnl_pct ? parseFloat(c.realized_pnl_pct) : null;
+            const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
+            const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
+            const pnlUsd = c.realized_pnl ? parseFloat(c.realized_pnl) : null;
+            const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : ''}$${Math.abs(pnlUsd).toFixed(0)}` : '';
+            const dirIcon = c.side === 'LONG' ? '&#x2191;' : '&#x2193;';
+            const dirClass = c.side === 'LONG' ? 'pnl-positive' : 'pnl-negative';
+            const ago = c.closed_at ? Utils.timeAgoShort(c.closed_at) : '';
+            const dur = c.duration || '';
+
+            return `<div class="flex items-center gap-1.5 py-0.5 text-xs leading-tight">
+                <span class="${dirClass}">${dirIcon}</span>
+                <span class="text-gray-300 font-semibold">${sym}</span>
+                <span class="font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
+                ${pnlUsdStr ? `<span class="tabular-nums ${pnlClass}" style="font-size:10px">${pnlUsdStr}</span>` : ''}
+                <span class="text-gray-500">&middot; ${dur || ago}</span>
+            </div>`;
+        }).join('');
+
+        return `<div class="cockpit-card" style="border-left:3px solid #3b82f6">
+            <div class="text-xs text-gray-500 mb-1">Derniers cycles</div>
             ${rows}
         </div>`;
     }
