@@ -313,8 +313,8 @@ def _macro_direction(macro_data: dict) -> str:
 # ── Key levels ────────────────────────────────────────────────
 
 async def _compute_key_levels(symbol: str) -> list[dict]:
-    await kline_manager.fetch_and_store(symbol, "1d", limit=30)
-    klines = await kline_manager.get_klines(symbol, "1d", limit=30)
+    await kline_manager.fetch_and_store(symbol, "1d", limit=45)
+    klines = await kline_manager.get_klines(symbol, "1d", limit=45)
     if not klines or len(klines) < 2:
         return []
 
@@ -347,21 +347,21 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     levels.append({"price": str(round(today_high, 2)), "type": "D_H", "label": "Plus haut du jour"})
     levels.append({"price": str(round(today_low, 2)), "type": "D_L", "label": "Plus bas du jour"})
 
-    # 4H swings — 100 candles (~16 days) for historical context
-    await kline_manager.fetch_and_store(symbol, "4h", limit=100)
-    klines_4h = await kline_manager.get_klines(symbol, "4h", limit=100)
+    # 4H swings — 150 candles (~25 days) for historical context
+    await kline_manager.fetch_and_store(symbol, "4h", limit=150)
+    klines_4h = await kline_manager.get_klines(symbol, "4h", limit=150)
     if klines_4h and len(klines_4h) >= 6:
         _detect_swings(klines_4h[:-1], levels)
 
-    # 1H swings — 100 candles (~4 days) for scalp-level granularity + Fibonacci
-    await kline_manager.fetch_and_store(symbol, "1h", limit=100)
-    klines_1h = await kline_manager.get_klines(symbol, "1h", limit=100)
+    # 1H swings — 150 candles (~6 days) for scalp-level granularity + Fibonacci
+    await kline_manager.fetch_and_store(symbol, "1h", limit=150)
+    klines_1h = await kline_manager.get_klines(symbol, "1h", limit=150)
     if klines_1h and len(klines_1h) >= 6:
         _detect_swings(klines_1h[:-1], levels)
 
-    # 15min swings — 96 candles (24h lookback) for intraday granularity
-    await kline_manager.fetch_and_store(symbol, "15m", limit=96)
-    klines_15m = await kline_manager.get_klines(symbol, "15m", limit=96)
+    # 15min swings — 144 candles (36h lookback) for intraday granularity
+    await kline_manager.fetch_and_store(symbol, "15m", limit=144)
+    klines_15m = await kline_manager.get_klines(symbol, "15m", limit=144)
     if klines_15m and len(klines_15m) >= 6:
         _detect_swings(klines_15m[:-1], levels)
 
@@ -478,7 +478,7 @@ def _add_fibonacci_levels(klines_1h: list[dict], levels: list[dict]):
 
 
 def _find_significant_swing(klines: list[dict]) -> tuple[Decimal, Decimal] | None:
-    if len(klines) < 20:
+    if len(klines) < 30:
         return None
 
     # Find all swing highs and lows

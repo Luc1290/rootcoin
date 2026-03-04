@@ -566,13 +566,19 @@ const KlineChart = (() => {
 
         function tick() {
             const ms = _intervalMs[_interval];
-            if (!ms) { el.textContent = ''; return; }
+            if (!ms) { el.innerHTML = ''; return; }
             const now = Date.now();
             const remaining = ms - (now % ms);
             const totalSecs = Math.floor(remaining / 1000);
-            const m = Math.floor(totalSecs / 60);
+            const h = Math.floor(totalSecs / 3600);
+            const m = Math.floor((totalSecs % 3600) / 60);
             const s = totalSecs % 60;
-            el.textContent = (m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's');
+            let timeStr;
+            if (h > 0) timeStr = h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            else if (m > 0) timeStr = m + ':' + String(s).padStart(2, '0');
+            else timeStr = s + 's';
+            const urgent = totalSecs <= 10;
+            el.innerHTML = `<span class="candle-countdown-label">${_interval}</span><span class="candle-countdown-time${urgent ? ' candle-countdown-urgent' : ''}">${timeStr}</span>`;
         }
 
         tick();

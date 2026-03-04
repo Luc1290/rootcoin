@@ -335,6 +335,8 @@ const Cockpit = (() => {
         }
     }
 
+    const REF_SIZE = 40000; // reference position $40k
+
     function _renderTrackRecord(el, history, stats) {
         if (!history.length && !stats.total) {
             el.innerHTML = '';
@@ -345,26 +347,38 @@ const Cockpit = (() => {
         const total = stats.total || 0;
         const avgPnl = stats.avg_pnl_pct || 0;
         const avgPnlClass = avgPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const avgUsd = avgPnl / 100 * REF_SIZE;
+        const avgUsdStr = `${avgUsd >= 0 ? '+' : ''}$${Math.abs(avgUsd).toFixed(0)}`;
 
         const rows = history.slice(0, 8).map(r => {
             const sym = r.symbol.replace('USDC', '');
             const dirIcon = r.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
             const dirClass = r.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
             const statusCls = r.status;
-            const statusLabel = r.status === 'tp_hit' ? 'TP' : r.status === 'sl_hit' ? 'SL' : r.status === 'expired' ? 'Exp' : r.status;
+            const statusLabel = r.status === 'tp_hit' ? 'TP' : r.status === 'sl_hit' ? 'SL' : r.status === 'expired' ? 'Exp' : r.status === 'taken' ? 'Pris' : r.status;
             const pnl = r.outcome_pnl_pct ? parseFloat(r.outcome_pnl_pct) : null;
             const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
             const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
+            const pnlUsd = pnl !== null ? pnl / 100 * REF_SIZE : null;
+            const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(0)}` : '';
             const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
 
+            // Entry / SL / TP prices
+            const entry = r.entry_price ? Utils.fmtPriceCompact(r.entry_price) : '';
+            const sl = r.sl_price ? Utils.fmtPriceCompact(r.sl_price) : '';
+            const tp = r.tp_price ? Utils.fmtPriceCompact(r.tp_price) : '';
+            const levelsStr = entry ? `<span style="color:#3b82f6">${entry}</span> <span style="color:#ef4444">${sl}</span> <span style="color:#22c55e">${tp}</span>` : '';
+
             return `<div class="track-record-row">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2" style="min-width:0">
                     <span class="text-xs font-bold">${sym}</span>
                     <span class="text-xs ${dirClass}">${dirIcon}</span>
                     <span class="track-record-status ${statusCls}">${statusLabel}</span>
+                    <span class="text-xs text-gray-500 tabular-nums truncate" style="font-size:9px">${levelsStr}</span>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
+                    ${pnlUsdStr ? `<span class="text-xs tabular-nums ${pnlClass}" style="font-size:9px;opacity:0.8">${pnlUsdStr}</span>` : ''}
                     <span class="text-xs text-gray-500">${ago}</span>
                 </div>
             </div>`;
@@ -376,9 +390,10 @@ const Cockpit = (() => {
                 <div class="flex items-center gap-3 text-xs">
                     <span class="text-gray-400">${total} signaux</span>
                     <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}% win</span>
-                    <span class="font-bold ${avgPnlClass}">${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(1)}% moy</span>
+                    <span class="font-bold ${avgPnlClass}">${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(1)}% <span style="opacity:0.7">${avgUsdStr}</span> moy</span>
                 </div>
             </div>
+            <div style="text-align:right;margin-bottom:4px"><span class="text-xs text-gray-600" style="font-size:9px">/ $${(REF_SIZE/1000).toFixed(0)}k</span></div>
             ${rows}
         </div>`;
     }

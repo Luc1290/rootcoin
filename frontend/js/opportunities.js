@@ -33,8 +33,13 @@ const Opportunities = (() => {
         const limit = maxItems || sorted.length;
         const items = sorted.slice(0, limit);
 
-        // Change detection: skip full rebuild if same opportunities
-        const newKey = items.map(o => o.id).join(',');
+        // Check which symbols have active positions
+        const activeSymbols = (typeof Positions !== 'undefined' && Positions.getActiveSymbols)
+            ? Positions.getActiveSymbols() : {};
+
+        // Change detection: skip full rebuild if same opportunities + same taken state
+        const takenKey = Object.keys(activeSymbols).sort().join(',');
+        const newKey = items.map(o => o.id).join(',') + '|' + takenKey;
         if (_prevKeys[cid] === newKey && _containerCharts[cid] && Object.keys(_containerCharts[cid]).length === items.length) {
             return;
         }
@@ -43,33 +48,25 @@ const Opportunities = (() => {
         const cards = items.map(o => {
             const sym = o.symbol.replace('USDC', '');
             const dirClass = o.direction === 'LONG' ? 'long' : 'short';
-            // Use container-specific chart ID to avoid collisions between pages
             const chartContainerId = `${cid}-chart-${o.id}`;
+
+            // Taken badge
+            const takenSide = activeSymbols[o.symbol];
+            let takenBadge = '';
+            if (takenSide) {
+                const badgeColor = takenSide === 'LONG' ? '#22c55e' : '#ef4444';
+                takenBadge = `<span style="background:${badgeColor};color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">${takenSide}</span>`;
+            }
 
             const lvl = o.levels || {};
             let levelsHtml = '';
             if (lvl.entry) {
-                const entry = parseFloat(lvl.entry);
-                const sl = parseFloat(lvl.sl);
-                const tp1 = parseFloat(lvl.tp1);
-                const tp2 = lvl.tp2 ? parseFloat(lvl.tp2) : 0;
-                const isLong = o.direction === 'LONG';
-                const slPct = entry ? ((isLong ? sl - entry : entry - sl) / entry * 100) : 0;
-                const tpPct = entry ? ((isLong ? tp1 - entry : entry - tp1) / entry * 100) : 0;
-                const tp2Pct = (entry && tp2) ? ((isLong ? tp2 - entry : entry - tp2) / entry * 100) : 0;
-                const REF = 40000; // reference position $40k
-                const fmtPnl = pct => {
-                    const usd = pct / 100 * REF;
-                    return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% <b>${usd >= 0 ? '+' : '-'}$${Math.abs(usd).toFixed(0)}</b>`;
-                };
-
                 levelsHtml = `<div class="opp-levels">
                 <span class="opp-lvl"><span style="color:#3b82f6">Entry</span> <span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span></span>
-                <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#ef4444;opacity:0.8;font-size:10px">${fmtPnl(slPct)}</span></span>
-                <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span> <span style="color:#22c55e;opacity:0.8;font-size:10px">${fmtPnl(tpPct)}</span></span>
-                ${tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span> <span style="color:#22c55e;opacity:0.8;font-size:10px">${fmtPnl(tp2Pct)}</span></span>` : ''}
+                <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span></span>
+                <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span></span>
+                ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span></span>` : ''}
                 <span class="opp-rr">R:R ${lvl.rr}</span>
-                <span style="color:#6b7280;font-size:9px">/ $40k</span>
             </div>`;
             }
 
@@ -79,6 +76,7 @@ const Opportunities = (() => {
                 <div class="flex items-center justify-between mb-1">
                     <div class="flex items-center gap-2">
                         <span class="text-sm font-bold">${sym}</span>
+                        ${takenBadge}
                         <span class="text-xs text-gray-500">${ago}</span>
                     </div>
                     <button class="opp-dismiss" onclick="Opportunities.dismiss('${o.id}')" title="Masquer">&#x2715;</button>

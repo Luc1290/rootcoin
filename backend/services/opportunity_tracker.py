@@ -107,22 +107,29 @@ async def get_stats() -> dict:
 
     total = len(rows)
     if total == 0:
-        return {"total": 0, "tp_hit": 0, "sl_hit": 0, "expired": 0, "win_rate": 0, "avg_pnl_pct": 0}
+        return {"total": 0, "tp_hit": 0, "sl_hit": 0, "expired": 0, "taken": 0, "win_rate": 0, "avg_pnl_pct": 0}
 
     tp_hit = sum(1 for r in rows if r.status == "tp_hit")
     sl_hit = sum(1 for r in rows if r.status == "sl_hit")
     expired = sum(1 for r in rows if r.status == "expired")
+    taken = sum(1 for r in rows if r.status == "taken")
     resolved = tp_hit + sl_hit
     win_rate = round(tp_hit / resolved * 100) if resolved else 0
 
-    pnls = [float(r.outcome_pnl_pct) for r in rows if r.outcome_pnl_pct is not None]
-    avg_pnl = round(sum(pnls) / len(pnls), 2) if pnls else 0
+    # Average PnL only on fully resolved records (exclude "taken" which are still open)
+    pnls = [
+        float(r.outcome_pnl_pct)
+        for r in rows
+        if r.outcome_pnl_pct is not None and r.status in ("tp_hit", "sl_hit", "expired")
+    ]
+    avg_pnl = round(sum(pnls) / len(pnls), 3) if pnls else 0
 
     return {
         "total": total,
         "tp_hit": tp_hit,
         "sl_hit": sl_hit,
         "expired": expired,
+        "taken": taken,
         "win_rate": win_rate,
         "avg_pnl_pct": avg_pnl,
     }

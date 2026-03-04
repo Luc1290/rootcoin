@@ -13,7 +13,7 @@ from backend.market import kline_manager
 
 INDICATORS_SET = {"rsi", "macd", "ma", "bb", "mfi", "stoch_rsi", "buy_sell", "obv", "adx", "ema", "atr"}
 
-STRUCTURE_LOOKBACK = {"5m": 24, "15m": 16}  # 5m: 2h, 15m: 4h
+STRUCTURE_LOOKBACK = {"5m": 36, "15m": 24}  # 5m: 3h, 15m: 6h
 LEVEL_TOLERANCE = 0.003  # 0.3% proximity for level detection
 WICK_RATIO = 2.0  # wick >= 2x body = rejection
 
@@ -21,7 +21,7 @@ WICK_RATIO = 2.0  # wick >= 2x body = rejection
 # ── Public API ────────────────────────────────────────────────
 
 async def extract_signals(
-    symbol: str, interval: str, key_levels: list[dict], limit: int = 200,
+    symbol: str, interval: str, key_levels: list[dict], limit: int = 300,
 ) -> dict:
     await kline_manager.fetch_and_store(symbol, interval, limit=limit)
     klines = await kline_manager.get_klines(symbol, interval, limit=limit)

@@ -615,10 +615,18 @@ const Positions = (() => {
         if (sel) sel.addEventListener('change', () => render(currentPositions));
     });
 
+    function getActiveSymbols() {
+        const map = {};
+        for (const p of currentPositions) {
+            map[p.symbol] = p.side || 'LONG';
+        }
+        return map;
+    }
+
     return {
         load, render, showSL, showTP, showOCO, confirmClose, confirmSecure,
         submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
         confirmCancelOrders, submitCancelOrders, selectClosePct,
-        _setMode, _updateRisk, _updateRR, _fillLevel,
+        _setMode, _updateRisk, _updateRR, _fillLevel, getActiveSymbols,
     };
 })();
