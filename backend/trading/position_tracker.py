@@ -31,6 +31,11 @@ _reconcile_task: asyncio.Task | None = None
 _periodic_reconcile_task: asyncio.Task | None = None
 _background_tasks: set[asyncio.Task] = set()
 
+# Fill notification batching — group rapid fills into one message
+FILL_BATCH_DELAY = 5.0
+_fill_batches: dict[int, list[dict]] = {}
+_fill_batch_tasks: dict[int, asyncio.Task] = {}
+
 
 def _fire_and_forget(coro):
     task = asyncio.create_task(coro)
@@ -369,7 +374,8 @@ async def _open_position(
         log.warning("open_snapshot_failed", position_id=pos.id, exc_info=True)
     log.info("position_opened", symbol=symbol, side=side, price=str(price), qty=str(qty),
              market_type=market_type)
-    asyncio.create_task(telegram_notifier.notify_position_opened(symbol, side, price, qty, market_type))
+    _queue_fill_notification(pos.id, "open", symbol=symbol, side=side,
+                             price=price, qty=qty, market_type=market_type)
 
 
 async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decimal = Decimal("0")):
@@ -389,9 +395,9 @@ async def _dca(position: Position, qty: Decimal, price: Decimal, fee_usd: Decima
         log.warning("dca_snapshot_failed", position_id=position.id, exc_info=True)
     log.info("position_dca", symbol=position.symbol, avg_price=str(position.entry_price),
              qty=str(position.quantity))
-    asyncio.create_task(telegram_notifier.notify_position_dca(
-        position.symbol, position.side, price, qty, position.entry_price, position.quantity,
-    ))
+    _queue_fill_notification(position.id, "dca", symbol=position.symbol, side=position.side,
+                             price=price, qty=qty, new_avg=position.entry_price,
+                             new_total=position.quantity)
 
 
 def _exit_reason(position: Position, order_id: str) -> str:
@@ -594,6 +600,59 @@ def clear_pnl_alerts(position_id: int):
     dead = [k for k in _pnl_cooldowns if k[0] == position_id]
     for k in dead:
         del _pnl_cooldowns[k]
+
+
+# --- Fill notification batching ---
+
+
+def _queue_fill_notification(pos_id: int, notif_type: str, **kwargs):
+    if pos_id not in _fill_batches:
+        _fill_batches[pos_id] = []
+    _fill_batches[pos_id].append({"type": notif_type, **kwargs})
+    existing = _fill_batch_tasks.get(pos_id)
+    if existing and not existing.done():
+        existing.cancel()
+    _fill_batch_tasks[pos_id] = asyncio.create_task(_send_batched_fills(pos_id))
+
+
+async def _send_batched_fills(pos_id: int):
+    await asyncio.sleep(FILL_BATCH_DELAY)
+    fills = _fill_batches.pop(pos_id, [])
+    _fill_batch_tasks.pop(pos_id, None)
+    if not fills:
+        return
+
+    first = fills[0]
+    symbol = first["symbol"]
+    side = first["side"]
+
+    if len(fills) == 1:
+        if first["type"] == "open":
+            await telegram_notifier.notify_position_opened(
+                symbol, side, first["price"], first["qty"], first["market_type"],
+            )
+        else:
+            await telegram_notifier.notify_position_dca(
+                symbol, side, first["price"], first["qty"],
+                first["new_avg"], first["new_total"],
+            )
+        return
+
+    pos = _positions.get(pos_id)
+    if not pos:
+        return
+
+    if first["type"] == "open":
+        await telegram_notifier.notify_position_opened_batch(
+            symbol, side, pos.entry_price, pos.quantity,
+            first["market_type"], len(fills),
+        )
+    else:
+        total_added = sum(f["qty"] for f in fills)
+        await telegram_notifier.notify_position_dca_batch(
+            symbol, side, pos.entry_price, total_added,
+            pos.quantity, len(fills),
+        )
 
 
 # --- Record trade to DB ---

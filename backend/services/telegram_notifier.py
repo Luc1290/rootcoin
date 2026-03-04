@@ -227,6 +227,37 @@ async def notify_position_dca(
     await notify(msg)
 
 
+async def notify_position_opened_batch(
+    symbol: str, side: str, avg_price: Decimal, total_qty: Decimal,
+    market_type: str, num_fills: int,
+):
+    if not is_positions_enabled():
+        return
+    base = symbol.replace("USDC", "").replace("USDT", "")
+    msg = (
+        f"\U0001f7e2 <b>{symbol} {side}</b> ouvert\n"
+        f"Qty: {_fq(total_qty)} {base} @ {_fp(avg_price)}\n"
+        f"Marche: {market_type.replace('_', ' ')}\n"
+        f"({num_fills} fills)"
+    )
+    await notify(msg)
+
+
+async def notify_position_dca_batch(
+    symbol: str, side: str, avg_price: Decimal, added_qty: Decimal,
+    new_total: Decimal, num_fills: int,
+):
+    if not is_positions_enabled():
+        return
+    base = symbol.replace("USDC", "").replace("USDT", "")
+    msg = (
+        f"\U0001f504 <b>{symbol} {side}</b> DCA\n"
+        f"+{_fq(added_qty)} {base} ({num_fills} fills)\n"
+        f"Nouveau moy: {_fp(avg_price)} (total: {_fq(new_total)} {base})"
+    )
+    await notify(msg)
+
+
 async def notify_position_reduced(
     symbol: str, side: str, price: Decimal, qty: Decimal,
     remaining: Decimal, realized: Decimal,
@@ -242,6 +273,28 @@ async def notify_position_reduced(
         f"Restant: {_fq(remaining)} {base}"
     )
     await notify(msg)
+
+
+async def notify_position_closed_reconciled(
+    symbol: str, side: str, entry_price: Decimal,
+    exit_price: Decimal | None, net_pnl: Decimal | None,
+    pnl_pct: Decimal | None,
+):
+    if not is_positions_enabled():
+        return
+    lines = [f"\U0001f534 <b>{symbol} {side}</b> ferme (reconciliation)"]
+    if exit_price and exit_price > 0:
+        lines.append(f"Entry: {_fp(entry_price)} \u2192 Exit: {_fp(exit_price)}")
+    else:
+        lines.append(f"Entry: {_fp(entry_price)}")
+    if net_pnl is not None:
+        sign = "+" if net_pnl > 0 else ""
+        icon = "\u2705" if net_pnl > 0 else "\u274c"
+        lines.append(f"PnL net: {sign}{_fp(net_pnl)} {icon}")
+    if pnl_pct is not None:
+        sign = "+" if pnl_pct > 0 else ""
+        lines.append(f"({sign}{_fq(pnl_pct)}%)")
+    await notify("\n".join(lines), retries=2)
 
 
 # ── Order notifications ──────────────────────────────────────

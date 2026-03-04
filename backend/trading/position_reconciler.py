@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from backend.exchange import binance_client, ws_manager
 from backend.trading import order_manager, pnl
+from backend.services import telegram_notifier
 from backend.core.config import settings
 from backend.core.database import async_session
 from backend.core.models import Position, Trade
@@ -201,14 +202,25 @@ async def _reconcile_positions():
                 log.warning("stale_position_still_exists_on_binance",
                             symbol=pos.symbol, market_type=pos.market_type)
                 continue
+            exit_price, net_pnl, pnl_pct = _get_close_info(pos)
             pos.is_active = False
             pos.quantity = Decimal("0")
+            if exit_price:
+                pos.exit_price = exit_price
+            if net_pnl is not None:
+                pos.realized_pnl = net_pnl
+                pos.realized_pnl_pct = pnl_pct
             if not pos.closed_at:
                 pos.closed_at = tracker._now()
             pos.updated_at = tracker._now()
             await tracker._save_position(pos)
             del tracker._positions[pos.id]
-            log.info("position_closed_stale", symbol=pos.symbol, market_type=pos.market_type)
+            tracker.clear_pnl_alerts(pos.id)
+            log.info("position_closed_stale", symbol=pos.symbol, market_type=pos.market_type,
+                     exit_price=str(exit_price), net_pnl=str(net_pnl))
+            asyncio.create_task(telegram_notifier.notify_position_closed_reconciled(
+                pos.symbol, pos.side, pos.entry_price, exit_price, net_pnl, pnl_pct,
+            ))
 
     for symbol, _ in found_keys:
         await ws_manager.subscribe_symbol(symbol)
@@ -253,6 +265,16 @@ async def _verify_position_on_binance(pos) -> bool:
                     market_type=pos.market_type, exc_info=True)
         return True  # assume still exists if verification fails
     return False
+
+
+def _get_close_info(pos) -> tuple[Decimal | None, Decimal | None, Decimal | None]:
+    if pos.exit_price and pos.exit_price > 0 and pos.realized_pnl is not None:
+        net = pnl.net_realized_pnl(
+            pos.realized_pnl, pos.entry_fees_usd or Decimal("0"),
+            pos.exit_fees_usd or Decimal("0"),
+        )
+        return pos.exit_price, net, pos.realized_pnl_pct
+    return None, None, None
 
 
 async def _reconcile_single(
