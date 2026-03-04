@@ -11,8 +11,9 @@ from backend.services import telegram_notifier
 
 log = structlog.get_logger()
 
-CROSS_TOLERANCE = Decimal("0.0015")  # ±0.15% band around level
-COOLDOWN_SECONDS = 3600  # 1h per (symbol, level_price)
+CROSS_TOLERANCE = Decimal("0.0005")  # ±0.05% band around level
+COOLDOWN_DEFAULT = 3600  # 1h per (symbol, level_price)
+COOLDOWN_BY_TYPE = {"PP": 14400}  # 4h for pivot
 
 _last_prices: dict[str, Decimal] = {}
 _cooldowns: dict[tuple[str, str], float] = {}
@@ -80,7 +81,9 @@ async def _on_price(msg: dict):
 def _try_alert(symbol: str, price: Decimal, level: dict):
     key = (symbol, level.get("price", ""))
     now = time.monotonic()
-    if now - _cooldowns.get(key, 0) < COOLDOWN_SECONDS:
+    level_type = level.get("type", "")
+    cooldown = COOLDOWN_BY_TYPE.get(level_type, COOLDOWN_DEFAULT)
+    if now - _cooldowns.get(key, 0) < cooldown:
         return
     _cooldowns[key] = now
     log.info("level_alert_triggered", symbol=symbol, level_type=level.get("type"),
