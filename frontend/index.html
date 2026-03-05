@@ -244,6 +244,7 @@
             </div>
             <div id="analysis-bias" class="mb-4"></div>
             <div id="analysis-opportunities" class="mb-4"></div>
+            <div id="analysis-track-record" class="mb-4"></div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
                 <div id="analysis-levels"></div>
                 <div>
@@ -292,7 +293,23 @@
                         <button class="chart-range-btn text-xs px-3 py-1.5 font-medium" data-hours="8760">1y</button>
                     </div>
                 </div>
-                <div class="grid grid-cols-3 gap-2 mb-3 text-center text-sm">
+                <div class="grid grid-cols-3 gap-2 mb-2 text-center text-sm">
+                    <div class="stat-card">
+                        <div class="metric-label mb-1">Portfolio</div>
+                        <div id="journal-portfolio-val" class="font-bold text-base">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="metric-label mb-1">PnL 24h</div>
+                        <div id="journal-day-pnl" class="font-bold text-base">--</div>
+                        <div id="journal-day-detail" class="text-xs text-gray-500"></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="metric-label mb-1">PnL mois</div>
+                        <div id="journal-month-pnl" class="font-bold text-base">--</div>
+                        <div id="journal-month-detail" class="text-xs text-gray-500"></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mb-3 text-center text-sm">
                     <div class="stat-card">
                         <div class="metric-label mb-1">Max Drawdown</div>
                         <div id="journal-max-dd" class="font-bold text-base pnl-negative">--</div>
@@ -300,10 +317,6 @@
                     <div class="stat-card">
                         <div class="metric-label mb-1">Drawdown actuel</div>
                         <div id="journal-current-dd" class="font-bold text-base">--</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="metric-label mb-1">Portfolio</div>
-                        <div id="journal-portfolio-val" class="font-bold text-base">--</div>
                     </div>
                 </div>
                 <div id="journal-equity-chart" style="height:250px;width:100%"></div>

@@ -164,6 +164,9 @@ async def cancel_order(symbol: str, order_id: str) -> dict:
         log.info("order_cancelled", symbol=symbol, order_id=order_id)
         return result
     except BinanceAPIException as e:
+        if e.code == -2011:
+            log.debug("order_already_gone", symbol=symbol, order_id=order_id)
+            return {"orderId": order_id, "status": "CANCELED"}
         log.error("cancel_order_failed", symbol=symbol, order_id=order_id, code=e.code, msg=e.message)
         raise
 
@@ -178,6 +181,9 @@ async def cancel_margin_order(symbol: str, order_id: str, is_isolated: bool = Fa
         log.info("margin_order_cancelled", symbol=symbol, order_id=order_id)
         return result
     except BinanceAPIException as e:
+        if e.code == -2011:
+            log.debug("margin_order_already_gone", symbol=symbol, order_id=order_id)
+            return {"orderId": order_id, "status": "CANCELED"}
         log.error("cancel_margin_order_failed", symbol=symbol, order_id=order_id, code=e.code, msg=e.message)
         raise
 

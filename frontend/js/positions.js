@@ -253,8 +253,12 @@ const Positions = (() => {
     }
 
     function _fillLevel(prefix, price, posId) {
-        _setMode(prefix, 'price');
         if (prefix === 'oco') {
+            // Switch to price mode without clearing existing values
+            const toggle = document.getElementById('oco-mode-toggle');
+            if (toggle) toggle.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.mode === 'price');
+            });
             const pos = _getPos(posId);
             if (!pos) return;
             const entry = parseFloat(pos.entry_price) || 0;
@@ -262,8 +266,14 @@ const Positions = (() => {
             const isTPAbove = pos.side === 'LONG';
             const inputId = (isAbove === isTPAbove) ? 'oco-tp-input' : 'oco-sl-input';
             document.getElementById(inputId).value = price;
+            // Update placeholders without clearing
+            const tpInput = document.getElementById('oco-tp-input');
+            const slInput = document.getElementById('oco-sl-input');
+            if (tpInput && !tpInput.value) tpInput.placeholder = 'Prix TP';
+            if (slInput && !slInput.value) slInput.placeholder = 'Prix SL';
             _updateRR(posId);
         } else {
+            _setMode(prefix, 'price');
             document.getElementById(`${prefix}-input`).value = price;
             _updateRisk(posId, prefix);
         }

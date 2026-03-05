@@ -39,6 +39,16 @@ def get_opportunities() -> list[dict]:
     return list(_opportunities)
 
 
+def remove_opportunity(symbol: str):
+    """Remove resolved/taken opportunities for a symbol from the active list."""
+    to_remove = [o for o in _opportunities if o.get("symbol") == symbol]
+    for o in to_remove:
+        try:
+            _opportunities.remove(o)
+        except ValueError:
+            pass
+
+
 # ── Main loop ─────────────────────────────────────────────────
 
 async def _run_loop():
@@ -77,8 +87,14 @@ def _evaluate():
         if score < settings.opportunity_min_score:
             continue
 
+        direction = analysis["bias"]["direction"]
+        levels = _compute_levels(analysis, direction)
+
+        if not _viable_reward(levels):
+            continue
+
         details = _extract_details(analysis)
-        opp = _build_opportunity(analysis, score, details, now)
+        opp = _build_opportunity(analysis, score, details, now, levels)
         _opportunities.appendleft(opp)
         _cooldowns[symbol] = now
 
@@ -155,6 +171,21 @@ ATR_SL_BUFFER = Decimal("0.3")  # SL = level ± 0.3×ATR
 ATR_FALLBACK_SL = Decimal("1.5")  # SL = entry ± 1.5×ATR if no level
 RR_MIN = Decimal("1.5")  # Minimum R:R for TP1
 RR_TP2 = Decimal("2.0")  # R:R for TP2 fallback
+MIN_REWARD_PCT = Decimal("0.25")  # Minimum reward % to cover fees + slippage
+
+
+def _viable_reward(levels: dict) -> bool:
+    if not levels or "entry" not in levels or "tp1" not in levels:
+        return True
+    try:
+        entry = Decimal(levels["entry"])
+        tp = Decimal(levels["tp1"])
+        if entry <= 0:
+            return False
+        reward_pct = abs(tp - entry) / entry * 100
+        return reward_pct >= MIN_REWARD_PCT
+    except (InvalidOperation, TypeError):
+        return True
 
 
 def _compute_levels(analysis: dict, direction: str) -> dict:
@@ -266,7 +297,7 @@ def _price_precision(price: Decimal) -> int:
 
 # ── Message generation ────────────────────────────────────────
 
-def _build_opportunity(analysis: dict, score: float, details: dict, now: datetime) -> dict:
+def _build_opportunity(analysis: dict, score: float, details: dict, now: datetime, levels: dict | None = None) -> dict:
     bias = analysis["bias"]
     symbol = analysis["symbol"]
     direction = bias["direction"]
@@ -275,7 +306,8 @@ def _build_opportunity(analysis: dict, score: float, details: dict, now: datetim
     key_signals = _extract_key_signals(direction, confidence, details)
     ts = int(now.timestamp())
 
-    levels = _compute_levels(analysis, direction)
+    if levels is None:
+        levels = _compute_levels(analysis, direction)
 
     timing = analysis.get("timing")
     if not timing:

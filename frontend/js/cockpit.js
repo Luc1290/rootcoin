@@ -210,7 +210,15 @@ const Cockpit = (() => {
             if (chartId) {
                 _posChartIds[p.id] = chartId;
                 if (p.opened_at) MiniTradeChart.addMarker(chartId, p.opened_at, p.side || 'LONG');
-                MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', 288);
+
+                // Dynamic lookback: enough candles to show entry + 20% buffer, clamped 36-288
+                let lookback = 288;
+                if (p.opened_at) {
+                    const ageMin = (Date.now() - new Date(p.opened_at).getTime()) / 60000;
+                    const candles = Math.ceil(ageMin / 5);
+                    lookback = Math.max(36, Math.min(288, Math.ceil(candles * 1.2) + 12));
+                }
+                MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', lookback);
             }
         }
     }
@@ -360,7 +368,7 @@ const Cockpit = (() => {
             const dirIcon = r.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
             const dirClass = r.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
             const statusCls = r.status;
-            const statusLabel = r.status === 'tp_hit' ? 'TP' : r.status === 'sl_hit' ? 'SL' : r.status === 'expired' ? 'Exp' : r.status === 'taken' ? 'Pris' : r.status;
+            const statusLabel = r.status === 'tp_hit' ? 'TP' : r.status === 'sl_hit' ? 'SL' : r.status === 'expired' ? 'Exp' : r.status === 'taken' ? 'Ouvert' : r.status;
             const pnl = r.outcome_pnl_pct ? parseFloat(r.outcome_pnl_pct) : null;
             const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
             const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
@@ -368,17 +376,17 @@ const Cockpit = (() => {
             const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(0)}` : '';
             const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
 
-            const entry = r.entry_price ? Utils.fmtPriceCompact(r.entry_price) : '';
-            const sl = r.sl_price ? Utils.fmtPriceCompact(r.sl_price) : '';
-            const tp = r.tp_price ? Utils.fmtPriceCompact(r.tp_price) : '';
-            const levelsStr = entry ? `<span style="color:#3b82f6">${entry}</span> <span style="color:#ef4444">${sl}</span> <span style="color:#22c55e">${tp}</span>` : '';
+            // R:R badge
+            const rr = r.rr ? parseFloat(r.rr) : null;
+            const rrStr = rr !== null ? `${rr.toFixed(1)}` : '';
+            const rrColor = rr !== null ? (rr >= 2 ? '#a855f7' : rr >= 1.5 ? '#3b82f6' : '#6b7280') : '';
 
             return `<div class="track-record-row">
-                <div class="flex items-center gap-2" style="min-width:0">
+                <div class="flex items-center gap-1" style="min-width:0">
                     <span class="text-xs font-bold">${sym}</span>
                     <span class="text-xs ${dirClass}">${dirIcon}</span>
                     <span class="track-record-status ${statusCls}">${statusLabel}</span>
-                    <span class="text-xs text-gray-500 tabular-nums truncate" style="font-size:9px">${levelsStr}</span>
+                    ${rrStr ? `<span class="text-xs tabular-nums font-semibold" style="font-size:9px;color:${rrColor}">${rrStr}R</span>` : ''}
                 </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlStr}</span>

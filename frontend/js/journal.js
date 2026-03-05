@@ -132,6 +132,29 @@ const Journal = (() => {
             if (!resp.ok) return;
             const d = await resp.json();
 
+            // ── Day & Month PnL stats ──
+            const dayPnlEl = document.getElementById('journal-day-pnl');
+            const dayDetailEl = document.getElementById('journal-day-detail');
+            const monthPnlEl = document.getElementById('journal-month-pnl');
+            const monthDetailEl = document.getElementById('journal-month-detail');
+
+            if (dayPnlEl) {
+                const dp = parseFloat(d.day_pnl) || 0;
+                dayPnlEl.textContent = `${dp >= 0 ? '+' : ''}$${dp.toFixed(2)}`;
+                dayPnlEl.className = `font-bold text-base ${dp >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+                dayDetailEl.textContent = d.day_trades > 0 ? `${d.day_trades} trade${d.day_trades > 1 ? 's' : ''}` : 'Aucun trade';
+            }
+            if (monthPnlEl) {
+                const mp = parseFloat(d.month_pnl) || 0;
+                monthPnlEl.textContent = `${mp >= 0 ? '+' : ''}$${mp.toFixed(2)}`;
+                monthPnlEl.className = `font-bold text-base ${mp >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
+                const parts = [];
+                if (d.month_trades > 0) parts.push(`${d.month_wins}/${d.month_trades}`);
+                if (d.month_win_rate > 0) parts.push(`${d.month_win_rate}% WR`);
+                monthDetailEl.textContent = parts.length ? parts.join(' · ') : 'Aucun trade';
+            }
+
+            // ── Streaks ──
             const flame = document.getElementById('streak-flame');
             const countEl = document.getElementById('streak-current-count');
             const labelEl = document.getElementById('streak-current-label');
@@ -404,11 +427,14 @@ const Journal = (() => {
     }
 
     function _buildEntryCard(e) {
-        const pnl = e.realized_pnl ? parseFloat(e.realized_pnl) : 0;
+        const grossPnl = e.realized_pnl ? parseFloat(e.realized_pnl) : 0;
+        const fees = parseFloat(e.total_fees_usd) || 0;
+        const netPnl = grossPnl - fees;
         const pnlPct = e.realized_pnl_pct ? parseFloat(e.realized_pnl_pct) : 0;
-        const isWin = pnl > 0;
+        const isWin = netPnl > 0;
         const cardCls = isWin ? 'snapshot-win' : 'snapshot-loss';
         const pnlCls = isWin ? 'pnl-positive' : 'pnl-negative';
+        const grossCls = grossPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
         const sideColor = e.side === 'LONG' ? 'text-green-400' : 'text-red-400';
 
         const exitReason = _getExitReason(e);
@@ -428,25 +454,28 @@ const Journal = (() => {
                     <span class="text-xs text-gray-500">${e.market_type}</span>
                     ${exitBadge}
                 </div>
-                <span class="${pnlCls} font-bold text-sm">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)</span>
+                <div class="text-right">
+                    <span class="${pnlCls} font-bold text-sm">${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}</span>
+                    <span class="text-xs text-gray-500 ml-1">(brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)})</span>
+                    <div class="text-xs ${pnlCls} tabular-nums">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% · fees $${fees.toFixed(2)}</div>
+                </div>
             </div>
 
             <div class="grid grid-cols-2 gap-3 text-xs mb-2">
                 <div>
                     <div class="text-gray-500 mb-1 font-medium">ENTRY</div>
                     <div class="text-gray-300">$${parseFloat(e.entry_price).toLocaleString('en-US', { maximumFractionDigits: 6 })}</div>
-                    <div class="text-gray-500">${_fmtTime(e.opened_at)}</div>
+                    <div class="text-gray-400">${_fmtTimeFull(e.opened_at)}</div>
                 </div>
                 <div>
                     <div class="text-gray-500 mb-1 font-medium">EXIT</div>
                     <div class="text-gray-300">${e.exit_price ? '$' + parseFloat(e.exit_price).toLocaleString('en-US', { maximumFractionDigits: 6 }) : '--'}</div>
-                    <div class="text-gray-500">${_fmtTime(e.closed_at)}</div>
+                    <div class="text-gray-400">${_fmtTimeFull(e.closed_at)}</div>
                 </div>
             </div>
 
             <div class="flex items-center gap-3 text-xs text-gray-500 mb-2">
                 <span>Duree: ${e.duration || '--'}</span>
-                <span>Fees: $${e.total_fees_usd}</span>
                 <span>Qty: ${parseFloat(e.quantity).toFixed(6)}</span>
             </div>
 
@@ -534,6 +563,15 @@ const Journal = (() => {
         const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
         return d.toLocaleString('fr-FR', {
             day: '2-digit', month: '2-digit',
+            hour: '2-digit', minute: '2-digit',
+        });
+    }
+
+    function _fmtTimeFull(iso) {
+        if (!iso) return '--';
+        const d = new Date(iso + (iso.endsWith('Z') ? '' : 'Z'));
+        return d.toLocaleString('fr-FR', {
+            weekday: 'short', day: '2-digit', month: 'short',
             hour: '2-digit', minute: '2-digit',
         });
     }

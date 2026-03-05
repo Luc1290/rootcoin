@@ -9,7 +9,7 @@ from backend.core.models import Balance
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
-CHANGE_THRESHOLD = Decimal("0.01")  # keep virtually all points
+CHANGE_THRESHOLD = Decimal("1")  # filter out sub-$1 noise
 
 
 def _compress(rows, threshold=CHANGE_THRESHOLD):

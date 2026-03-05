@@ -2,13 +2,17 @@ const Analysis = (() => {
     let _data = null;
     let _newsData = null;
     let _currentSymbol = null;
+    let _trackHistory = [];
+    let _trackStats = {};
 
     async function load() {
         try {
-            const [analysisResp, newsResp, oppResp] = await Promise.all([
+            const [analysisResp, newsResp, oppResp, histResp, statsResp] = await Promise.all([
                 fetch('/api/analysis'),
                 fetch('/api/news'),
                 fetch('/api/opportunities'),
+                fetch('/api/opportunities/history?limit=10'),
+                fetch('/api/opportunities/stats'),
             ]);
             if (analysisResp.ok) {
                 _data = await analysisResp.json();
@@ -21,6 +25,8 @@ const Analysis = (() => {
                 const oppData = await oppResp.json();
                 Opportunities.update(oppData.opportunities || []);
             }
+            if (histResp.ok) _trackHistory = (await histResp.json()).history || [];
+            if (statsResp.ok) _trackStats = await statsResp.json();
             render();
         } catch (e) {
             console.error('Analysis load failed', e);
@@ -50,6 +56,7 @@ const Analysis = (() => {
         _renderFreshness();
         _renderBias(analysis);
         _renderOpportunities();
+        _renderTrackRecord();
         _renderLevels(analysis);
         _renderMacro(_data.macro);
         _renderAlerts(analysis);
@@ -184,7 +191,75 @@ const Analysis = (() => {
 
     function _renderOpportunities() {
         const el = document.getElementById('analysis-opportunities');
-        if (el) Opportunities.render(el);
+        if (el) Opportunities.renderCompact(el);
+    }
+
+    // ── Track Record ─────────────────────────────────────
+
+    const REF_SIZE = 40000;
+
+    function _renderTrackRecord() {
+        const el = document.getElementById('analysis-track-record');
+        if (!el) return;
+
+        const history = _trackHistory;
+        const stats = _trackStats;
+        if (!history.length && !stats.total) { el.innerHTML = ''; return; }
+
+        const winRate = stats.win_rate || 0;
+        const total = stats.total || 0;
+        const tpHit = stats.tp_hit || 0;
+        const slHit = stats.sl_hit || 0;
+        const avgPnl = stats.avg_pnl_pct || 0;
+        const avgDisplay = Math.abs(avgPnl) < 0.05 ? 0 : avgPnl;
+        const avgPnlClass = avgDisplay >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const avgUsd = avgPnl / 100 * REF_SIZE;
+        const avgUsdSign = avgUsd >= 0 ? '+' : '-';
+        const avgUsdStr = `${avgUsdSign}$${Math.abs(avgUsd).toFixed(0)}`;
+
+        const rows = history.slice(0, 6).map(r => {
+            const sym = r.symbol.replace('USDC', '');
+            const dirIcon = r.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
+            const dirClass = r.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
+            const statusLabel = r.status === 'tp_hit' ? 'TP' : r.status === 'sl_hit' ? 'SL' : r.status === 'expired' ? 'Exp' : r.status === 'taken' ? 'Ouvert' : r.status;
+            const pnl = r.outcome_pnl_pct ? parseFloat(r.outcome_pnl_pct) : null;
+            const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
+            const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
+            const pnlUsd = pnl !== null ? pnl / 100 * REF_SIZE : null;
+            const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(0)}` : '';
+            const rr = r.rr ? parseFloat(r.rr) : null;
+            const rrStr = rr !== null ? `${rr.toFixed(1)}` : '';
+            const rrColor = rr !== null ? (rr >= 2 ? '#a855f7' : rr >= 1.5 ? '#3b82f6' : '#6b7280') : '';
+            const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
+
+            return `<div class="track-record-row">
+                <div class="flex items-center gap-1" style="min-width:0">
+                    <span class="text-xs font-bold">${sym}</span>
+                    <span class="text-xs ${dirClass}">${dirIcon}</span>
+                    <span class="track-record-status ${r.status}">${statusLabel}</span>
+                    ${rrStr ? `<span class="text-xs tabular-nums font-semibold" style="font-size:9px;color:${rrColor}">${rrStr}R</span>` : ''}
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
+                    ${pnlUsdStr ? `<span class="text-xs tabular-nums ${pnlClass}" style="font-size:9px;opacity:0.8">${pnlUsdStr}</span>` : ''}
+                    <span class="text-xs text-gray-500">${ago}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        el.innerHTML = `<div class="card" style="border-left:3px solid #a855f7">
+            <div class="flex items-center justify-between mb-1">
+                <div class="metric-label">Track Record</div>
+                <span class="text-xs text-gray-500">/ $${(REF_SIZE/1000).toFixed(0)}k</span>
+            </div>
+            <div class="flex items-center gap-3 text-xs mb-2">
+                <span class="text-gray-400">${total} sig</span>
+                <span class="text-gray-400">${tpHit}W / ${slHit}L</span>
+                <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}%</span>
+                <span class="font-bold ${avgPnlClass}">${avgDisplay >= 0 ? '+' : ''}${avgDisplay.toFixed(2)}% <span style="opacity:0.7">${avgUsdStr}</span></span>
+            </div>
+            ${rows}
+        </div>`;
     }
 
     // ── Block 2: Key levels ────────────────────────────────

@@ -184,5 +184,133 @@ const Opportunities = (() => {
         } catch {}
     }
 
-    return { update, render, dismiss };
+    // ── Compact list mode (analysis page) ──────────────────
+
+    let _expandedId = null;
+
+    function renderCompact(container) {
+        if (!container) return;
+        const cid = container.id;
+        const visible = _opportunities.filter(o => !_dismissedIds.has(o.id));
+
+        if (!visible.length) {
+            _destroyContainerCharts(cid);
+            _prevKeys[cid] = '';
+            container.innerHTML = '';
+            return;
+        }
+
+        // Sort newest first
+        const sorted = [...visible].sort((a, b) => {
+            const tA = a.detected_at ? new Date(a.detected_at).getTime() : 0;
+            const tB = b.detected_at ? new Date(b.detected_at).getTime() : 0;
+            return tB - tA;
+        });
+
+        const activeSymbols = (typeof Positions !== 'undefined' && Positions.getActiveSymbols)
+            ? Positions.getActiveSymbols() : {};
+
+        const takenKey = Object.keys(activeSymbols).sort().join(',');
+        const newKey = 'c|' + sorted.map(o => o.id).join(',') + '|' + takenKey + '|' + (_expandedId || '');
+        if (_prevKeys[cid] === newKey) {
+            _refreshAgo(container);
+            return;
+        }
+        _prevKeys[cid] = newKey;
+
+        _destroyContainerCharts(cid);
+
+        const rows = sorted.map(o => {
+            const sym = o.symbol.replace('USDC', '');
+            const sideClass = o.direction === 'LONG' ? 'side-long' : 'side-short';
+            const dirBadge = `<span class="cockpit-side ${sideClass}" style="font-size:9px;padding:1px 4px">${o.direction}</span>`;
+            const lvl = o.levels || {};
+            const rrVal = lvl.rr ? parseFloat(lvl.rr) : null;
+            const rrColor = rrVal !== null ? (rrVal >= 2 ? '#a855f7' : rrVal >= 1.5 ? '#3b82f6' : '#6b7280') : '';
+            const rrBadge = rrVal !== null ? `<span class="text-xs tabular-nums font-semibold" style="color:${rrColor}">${rrVal.toFixed(1)}R</span>` : '';
+
+            const takenSide = activeSymbols[o.symbol];
+            const takenBadge = takenSide
+                ? `<span style="background:${takenSide === 'LONG' ? '#22c55e' : '#ef4444'};color:#fff;font-size:8px;padding:1px 4px;border-radius:3px;font-weight:600">Pris</span>`
+                : '';
+
+            const ago = Utils.timeAgoShort(o.detected_at);
+            const isExpanded = _expandedId === o.id;
+            const chartContainerId = `${cid}-chart-${o.id}`;
+            const dirClass = o.direction === 'LONG' ? 'long' : 'short';
+
+            let levelsLine = '';
+            if (lvl.entry) {
+                levelsLine = `<span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span>`;
+            }
+
+            return `<div class="opp-compact-item ${dirClass}" data-opp-id="${o.id}">
+                <div class="opp-compact-row" onclick="Opportunities.toggle('${o.id}','${cid}')">
+                    <div class="flex items-center gap-2" style="min-width:0">
+                        <span class="text-xs font-bold">${sym}</span>
+                        ${dirBadge}
+                        ${rrBadge}
+                        ${takenBadge}
+                        <span class="text-xs text-gray-500 tabular-nums truncate" style="font-size:9px">${levelsLine}</span>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span class="text-xs text-gray-400 opp-ago" data-ts="${o.detected_at || ''}">${ago}</span>
+                        <button class="opp-dismiss" onclick="event.stopPropagation();Opportunities.dismiss('${o.id}')" title="Masquer">&#x2715;</button>
+                    </div>
+                </div>
+                ${isExpanded ? `<div id="${chartContainerId}" style="height:140px;width:100%;margin-top:4px"></div>
+                    <div class="opp-levels" style="margin-top:2px">
+                        ${lvl.entry ? `<span class="opp-lvl"><span style="color:#3b82f6">E</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
+                        <span class="opp-lvl"><span style="color:#ef4444">SL</span> ${Utils.fmtPriceCompact(lvl.sl)}</span>
+                        <span class="opp-lvl"><span style="color:#22c55e">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)}</span>` : ''}
+                        ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)}</span>` : ''}
+                        ${rrVal ? `<span class="opp-rr">R:R ${rrVal.toFixed(1)}</span>` : ''}
+                    </div>` : ''}
+            </div>`;
+        }).join('');
+
+        container.innerHTML = `<div class="card" style="padding:8px">
+            <div class="flex items-center justify-between mb-2">
+                <span class="metric-label">Signaux actifs</span>
+                <span class="text-xs text-gray-500">${sorted.length}</span>
+            </div>
+            <div class="opp-compact-list">${rows}</div>
+        </div>`;
+
+        // Create chart for expanded item
+        if (_expandedId) {
+            const o = sorted.find(x => x.id === _expandedId);
+            if (o) {
+                const chartContainerId = `${cid}-chart-${o.id}`;
+                const lvl = o.levels || {};
+                const newCharts = {};
+                const chartId = MiniTradeChart.create(chartContainerId, {
+                    symbol: o.symbol,
+                    height: 140,
+                    entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
+                    slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
+                    tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
+                    showLineLabels: false,
+                });
+                if (chartId) {
+                    newCharts[o.id] = chartId;
+                    if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction);
+                    if (o.timing) MiniTradeChart.addTiming(chartId, o.timing);
+                    MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', 288);
+                }
+                _containerCharts[cid] = newCharts;
+            }
+        }
+
+        _ensureAgoTimer();
+    }
+
+    function toggle(id, cid) {
+        _expandedId = _expandedId === id ? null : id;
+        _prevKeys[cid] = ''; // force rebuild
+        const el = document.getElementById(cid);
+        if (el) renderCompact(el);
+    }
+
+    return { update, render, renderCompact, toggle, dismiss };
 })();

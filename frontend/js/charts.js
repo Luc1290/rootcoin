@@ -159,7 +159,15 @@ const Charts = (() => {
 
     async function _loadPriceHistory(positionId, symbol) {
         try {
-            const resp = await fetch(`/api/prices/${symbol}?hours=24&order=asc&limit=1440`);
+            // Dynamic lookback: position age + 20% buffer, clamped 1-24h
+            let hours = 24;
+            const info = _posCharts[positionId] && _posCharts[positionId].entryInfo;
+            if (info && info.openedAt) {
+                const ageH = (Date.now() - new Date(info.openedAt + 'Z').getTime()) / 3600000;
+                hours = Math.max(1, Math.min(24, Math.ceil(ageH * 1.2) + 1));
+            }
+            const limit = Math.min(1440, hours * 60);
+            const resp = await fetch(`/api/prices/${symbol}?hours=${hours}&order=asc&limit=${limit}`);
             const data = await resp.json();
             if (!data.length) return;
 
@@ -342,7 +350,7 @@ const Charts = (() => {
 
     async function loadCockpitData() {
         try {
-            const resp = await fetch('/api/portfolio/history?hours=24&limit=2000');
+            const resp = await fetch('/api/portfolio/history?hours=24');
             const data = await resp.json();
             if (!_cockpitSeries) return;
 

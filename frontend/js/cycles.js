@@ -25,7 +25,7 @@ const Cycles = (() => {
         const qty = parseFloat(c.quantity) || 0;
         const fees = parseFloat(c.total_fees_usd) || 0;
 
-        let pnlValue, pnlPct, priceLabel, priceValue, statusBadge, cardBorder;
+        let pnlValue, pnlPct, priceLabel, priceValue, statusBadge, cardBorder, grossPnl = null;
 
         if (isOpen) {
             const current = parseFloat(c.current_price || 0) || 0;
@@ -39,9 +39,9 @@ const Cycles = (() => {
             cardBorder = 'cycle-open';
         } else {
             const exit = parseFloat(c.exit_price) || 0;
-            const realPnl = parseFloat(c.realized_pnl) || 0;
+            grossPnl = parseFloat(c.realized_pnl) || 0;
             const realPct = parseFloat(c.realized_pnl_pct) || 0;
-            const netPnl = realPnl - fees;
+            const netPnl = grossPnl - fees;
             pnlValue = netPnl;
             pnlPct = realPct;
             priceLabel = 'Exit';
@@ -71,7 +71,7 @@ const Cycles = (() => {
                     ${statusBadge}
                 </div>
             </div>
-            <div class="grid grid-cols-3 gap-3 text-sm">
+            <div class="grid grid-cols-4 gap-2 text-sm">
                 <div>
                     <div class="metric-label mb-0.5">Entry</div>
                     <div class="font-medium tabular-nums">${formatPrice(entry)}</div>
@@ -81,7 +81,13 @@ const Cycles = (() => {
                     <div class="font-medium tabular-nums">${priceValue}</div>
                 </div>
                 <div>
-                    <div class="metric-label mb-0.5">PnL net</div>
+                    <div class="metric-label mb-0.5">Brut</div>
+                    <div class="${grossPnl !== null ? (grossPnl >= 0 ? 'pnl-positive' : 'pnl-negative') : pnlClass} font-medium tabular-nums">
+                        ${grossPnl !== null ? `${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)}` : '--'}
+                    </div>
+                </div>
+                <div>
+                    <div class="metric-label mb-0.5">Net</div>
                     <div class="${pnlClass} font-bold tabular-nums">
                         ${pnlSign}$${pnlValue.toFixed(2)}
                     </div>
@@ -90,7 +96,7 @@ const Cycles = (() => {
             </div>
             <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
                 <span class="tabular-nums">$${notional} | fees $${fees.toFixed(2)}</span>
-                <span class="tabular-nums">${formatDate(c.opened_at)}</span>
+                <span class="tabular-nums">${formatDate(c.opened_at)}${c.closed_at ? ' → ' + formatDate(c.closed_at) : ''}</span>
             </div>
         </div>`;
     }

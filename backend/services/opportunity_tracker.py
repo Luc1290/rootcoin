@@ -83,6 +83,7 @@ async def mark_taken(symbol: str):
         result = await session.execute(stmt)
         await session.commit()
         if result.rowcount:
+            _purge_active(symbol)
             log.info("opportunity_marked_taken", symbol=symbol, count=result.rowcount)
 
 
@@ -135,6 +136,11 @@ async def get_stats() -> dict:
     }
 
 
+def _purge_active(symbol: str):
+    from backend.market import opportunity_detector
+    opportunity_detector.remove_opportunity(symbol)
+
+
 # ── Background resolve loop ──────────────────────────────────
 
 async def _resolve_loop():
@@ -166,12 +172,14 @@ async def _resolve_pending():
         outcome = _check_outcome(record, current_price)
         if outcome:
             await _update_record(record.id, outcome["status"], outcome.get("pnl_pct"))
+            _purge_active(record.symbol)
             continue
 
         detected = record.detected_at.replace(tzinfo=None) if record.detected_at else now.replace(tzinfo=None)
         if detected < expiry_cutoff:
             pnl_pct = _calc_pnl_pct(record, current_price)
             await _update_record(record.id, "expired", pnl_pct)
+            _purge_active(record.symbol)
 
 
 async def _check_taken_positions():
@@ -255,6 +263,20 @@ async def _update_record(record_id: int, status: str, pnl_pct: Decimal | None = 
 
 
 def _to_dict(r: OpportunityRecord) -> dict:
+    rr = None
+    if r.entry_price and r.sl_price and r.tp_price:
+        try:
+            if r.direction == "LONG":
+                risk = r.entry_price - r.sl_price
+                reward = r.tp_price - r.entry_price
+            else:
+                risk = r.sl_price - r.entry_price
+                reward = r.entry_price - r.tp_price
+            if risk > 0:
+                rr = str(round(reward / risk, 2))
+        except Exception:
+            pass
+
     return {
         "id": r.id,
         "symbol": r.symbol,
@@ -263,6 +285,7 @@ def _to_dict(r: OpportunityRecord) -> dict:
         "entry_price": str(r.entry_price),
         "sl_price": str(r.sl_price),
         "tp_price": str(r.tp_price),
+        "rr": rr,
         "status": r.status,
         "outcome_pnl_pct": str(r.outcome_pnl_pct) if r.outcome_pnl_pct is not None else None,
         "detected_at": r.detected_at.isoformat() if r.detected_at else None,
