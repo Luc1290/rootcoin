@@ -8,6 +8,7 @@ const MiniTradeChart = (() => {
         entry: '#3b82f6',
         sl: '#ef4444',
         tp: '#22c55e',
+        retest: '#f59e0b',
     };
 
     function create(containerId, opts = {}) {
@@ -58,6 +59,8 @@ const MiniTradeChart = (() => {
             entryLine: null,
             slLine: null,
             tpLine: null,
+            retestLine: null,
+            retestLabel: opts.retestLabel || 'Retest',
             labelEl: null,
             timingEl: null,
             lastTs: 0,
@@ -67,6 +70,7 @@ const MiniTradeChart = (() => {
         if (opts.entryPrice) _addLine(entry, 'entryLine', opts.entryPrice, C.entry, LightweightCharts.LineStyle.Solid);
         if (opts.slPrice) _addLine(entry, 'slLine', opts.slPrice, C.sl, LightweightCharts.LineStyle.Dashed);
         if (opts.tpPrice) _addLine(entry, 'tpLine', opts.tpPrice, C.tp, LightweightCharts.LineStyle.Dashed);
+        if (opts.retestPrice) _addLine(entry, 'retestLine', opts.retestPrice, C.retest, LightweightCharts.LineStyle.Dotted);
 
         _charts[id] = entry;
         return id;
@@ -90,7 +94,7 @@ const MiniTradeChart = (() => {
         // Compute visible range including price lines
         let minVal = Infinity, maxVal = -Infinity;
         for (const d of data) { minVal = Math.min(minVal, d.value); maxVal = Math.max(maxVal, d.value); }
-        const linePrices = [entry.entryLine, entry.slLine, entry.tpLine]
+        const linePrices = [entry.entryLine, entry.slLine, entry.tpLine, entry.retestLine]
             .filter(Boolean).map(l => l.options().price);
         for (const p of linePrices) { minVal = Math.min(minVal, p); maxVal = Math.max(maxVal, p); }
 
@@ -124,6 +128,7 @@ const MiniTradeChart = (() => {
             if (entry.entryLine) _positionLineLabel(entry, 'entryLine', entry.entryLine.options().price);
             if (entry.slLine) _positionLineLabel(entry, 'slLine', entry.slLine.options().price);
             if (entry.tpLine) _positionLineLabel(entry, 'tpLine', entry.tpLine.options().price);
+            if (entry.retestLine) _positionLineLabel(entry, 'retestLine', entry.retestLine.options().price);
         });
     }
 
@@ -244,6 +249,7 @@ const MiniTradeChart = (() => {
         if (entry.entryLine_label) entry.entryLine_label.remove();
         if (entry.slLine_label) entry.slLine_label.remove();
         if (entry.tpLine_label) entry.tpLine_label.remove();
+        if (entry.retestLine_label) entry.retestLine_label.remove();
         if (entry.ro) entry.ro.disconnect();
         entry.chart.remove();
         delete _charts[chartId];
@@ -274,6 +280,7 @@ const MiniTradeChart = (() => {
         entryLine: 'Entry',
         slLine: 'SL',
         tpLine: 'TP',
+        retestLine: null, // set dynamically via _retestLabel
     };
 
     function _addLine(entry, key, price, color, style) {
@@ -296,7 +303,7 @@ const MiniTradeChart = (() => {
         const el = document.createElement('div');
         el.className = 'mini-chart-line-label';
         el.style.color = color;
-        const label = _lineLabels[key] || '';
+        const label = key === 'retestLine' ? (entry.retestLabel || 'Retest') : (_lineLabels[key] || '');
         const priceStr = Utils && Utils.fmtPriceCompact ? Utils.fmtPriceCompact(price) : price.toString();
         el.textContent = `${label} ${priceStr}`;
         entry.el.style.position = 'relative';

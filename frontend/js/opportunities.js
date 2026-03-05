@@ -66,6 +66,9 @@ const Opportunities = (() => {
             }
 
             const lvl = o.levels || {};
+            const retestPrice = o.timing && o.timing.retest_price ? o.timing.retest_price : null;
+            const retestType = o.timing && o.timing.retest_type ? o.timing.retest_type : null;
+            const retestLabel = retestType === 'plancher' ? 'Attendre plancher ↓' : retestType === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
             let levelsHtml = '';
             if (lvl.entry) {
                 levelsHtml = `<div class="opp-levels">
@@ -73,6 +76,7 @@ const Opportunities = (() => {
                 <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span></span>
                 <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span></span>
                 ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span></span>` : ''}
+                ${retestPrice ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
                 <span class="opp-rr">R:R ${lvl.rr}</span>
             </div>`;
             }
@@ -106,12 +110,17 @@ const Opportunities = (() => {
             const chartContainerId = `${cid}-chart-${o.id}`;
             const lvl = o.levels || {};
 
+            const rp = o.timing && o.timing.retest_price ? parseFloat(o.timing.retest_price) : 0;
+            const rt = o.timing && o.timing.retest_type;
+            const rl = rt === 'plancher' ? 'Attendre plancher ↓' : rt === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
             const chartId = MiniTradeChart.create(chartContainerId, {
                 symbol: o.symbol,
                 height: 140,
                 entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
                 slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                 tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
+                retestPrice: rp,
+                retestLabel: rl,
                 showLineLabels: false,
             });
 
@@ -239,9 +248,20 @@ const Opportunities = (() => {
             const chartContainerId = `${cid}-chart-${o.id}`;
             const dirClass = o.direction === 'LONG' ? 'long' : 'short';
 
+            const retestPrice = o.timing && o.timing.retest_price ? o.timing.retest_price : null;
+            const retestType = o.timing && o.timing.retest_type ? o.timing.retest_type : null;
+            const retestLabel = retestType === 'plancher' ? 'Attendre plancher ↓' : retestType === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
+            const timingStatus = o.timing ? o.timing.status : null;
+            const timingTitle = timingStatus === 'ready' ? 'Entrer maintenant'
+                : timingStatus === 'wait' ? (o.timing.summary || 'Attendre') : 'Prudence';
+            const timingDot = timingStatus === 'ready' ? `<span style="color:#4ade80" title="${timingTitle}">&#9679;</span>`
+                : timingStatus === 'wait' ? `<span style="color:#f59e0b" title="${timingTitle}">&#9679;</span>`
+                : timingStatus === 'caution' ? `<span style="color:#fb923c" title="${timingTitle}">&#9679;</span>` : '';
+
             let levelsLine = '';
             if (lvl.entry) {
                 levelsLine = `<span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span>`;
+                if (retestPrice) levelsLine += ` <span style="color:#f59e0b">${retestLabel} ${Utils.fmtPriceCompact(retestPrice)}</span>`;
             }
 
             return `<div class="opp-compact-item ${dirClass}" data-opp-id="${o.id}">
@@ -250,6 +270,7 @@ const Opportunities = (() => {
                         <span class="text-xs font-bold">${sym}</span>
                         ${dirBadge}
                         ${rrBadge}
+                        ${timingDot}
                         ${takenBadge}
                         <span class="text-xs text-gray-500 tabular-nums truncate" style="font-size:9px">${levelsLine}</span>
                     </div>
@@ -264,6 +285,7 @@ const Opportunities = (() => {
                         <span class="opp-lvl"><span style="color:#ef4444">SL</span> ${Utils.fmtPriceCompact(lvl.sl)}</span>
                         <span class="opp-lvl"><span style="color:#22c55e">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)}</span>` : ''}
                         ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)}</span>` : ''}
+                        ${retestPrice ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
                         ${rrVal ? `<span class="opp-rr">R:R ${rrVal.toFixed(1)}</span>` : ''}
                     </div>` : ''}
             </div>`;
@@ -284,12 +306,17 @@ const Opportunities = (() => {
                 const chartContainerId = `${cid}-chart-${o.id}`;
                 const lvl = o.levels || {};
                 const newCharts = {};
+                const rp = o.timing && o.timing.retest_price ? parseFloat(o.timing.retest_price) : 0;
+                const rt = o.timing && o.timing.retest_type;
+                const rl = rt === 'plancher' ? 'Attendre plancher ↓' : rt === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
                 const chartId = MiniTradeChart.create(chartContainerId, {
                     symbol: o.symbol,
                     height: 140,
                     entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
                     slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                     tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
+                    retestPrice: rp,
+                    retestLabel: rl,
                     showLineLabels: false,
                 });
                 if (chartId) {

@@ -67,12 +67,23 @@ def evaluate(analysis: dict, symbol: str) -> dict:
     # Strip internal 'critical' flag from output
     clean_conditions = [{"label": c["label"], "met": c["met"]} for c in conditions]
 
+    # Extract retest price + type from conditions if any
+    retest_price = None
+    retest_type = None
+    for c in conditions:
+        if c.get("_retest_price"):
+            retest_price = str(c["_retest_price"])
+            retest_type = c.get("_retest_type")
+            break
+
     return {
         "status": status,
         "conditions": clean_conditions,
         "conditions_met": sum(1 for c in conditions if c["met"]),
         "conditions_total": len(conditions),
         "summary": summary,
+        "retest_price": retest_price,
+        "retest_type": retest_type,
     }
 
 
@@ -104,18 +115,23 @@ def _check_retest(conditions: list, direction: str, price: Decimal, key_levels: 
                 best_dist = abs_dist
                 target = level
 
+    level_type = "plancher" if direction == "LONG" else "plafond"
     if target and best_dist > RETEST_THRESHOLD:
         label_price = target.get("label", target.get("price", ""))
         conditions.append({
-            "label": f"Attendre retest {label_price}",
+            "label": f"Attendre {level_type} {label_price}",
             "met": False,
             "critical": True,
+            "_retest_price": str(target.get("price", "")),
+            "_retest_type": level_type,
         })
     elif target:
         conditions.append({
-            "label": f"Retest {target.get('label', '')}",
+            "label": f"Retest {level_type} {target.get('label', '')}",
             "met": True,
             "critical": True,
+            "_retest_price": str(target.get("price", "")),
+            "_retest_type": level_type,
         })
 
 

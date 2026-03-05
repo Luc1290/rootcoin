@@ -754,7 +754,7 @@ const KlineChart = (() => {
                 // Add padding above candle highs so area visibly exceeds them
                 let maxHigh = 0;
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
-                const pad = maxHigh * 0.004; // 0.4% above highs
+                const pad = maxHigh * 0.10; // 10% above highs
 
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,
