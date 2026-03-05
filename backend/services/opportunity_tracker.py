@@ -17,7 +17,7 @@ from backend.trading import position_tracker
 
 log = structlog.get_logger()
 
-EXPIRY_HOURS = 4
+EXPIRY_HOURS = 1
 RESOLVE_INTERVAL = 60  # seconds
 
 _loop_task: asyncio.Task | None = None
@@ -123,7 +123,12 @@ async def get_stats() -> dict:
         for r in rows
         if r.outcome_pnl_pct is not None and r.status in ("tp_hit", "sl_hit", "expired")
     ]
-    avg_pnl = round(sum(pnls) / len(pnls), 3) if pnls else 0
+    total_pnl = round(sum(pnls), 4) if pnls else 0
+    avg_pnl = round(total_pnl / len(pnls), 4) if pnls else 0
+    wins = [p for p in pnls if p > 0]
+    losses = [p for p in pnls if p < 0]
+    avg_win = round(sum(wins) / len(wins), 4) if wins else 0
+    avg_loss = round(sum(losses) / len(losses), 4) if losses else 0
 
     return {
         "total": total,
@@ -133,6 +138,9 @@ async def get_stats() -> dict:
         "taken": taken,
         "win_rate": win_rate,
         "avg_pnl_pct": avg_pnl,
+        "total_pnl_pct": total_pnl,
+        "avg_win_pct": avg_win,
+        "avg_loss_pct": avg_loss,
     }
 
 
@@ -183,10 +191,11 @@ async def _resolve_pending():
 
 
 async def _check_taken_positions():
-    open_symbols = {
-        p.symbol for p in position_tracker.get_positions() if p.is_active
+    open_positions = {
+        p.symbol: p.side
+        for p in position_tracker.get_positions() if p.is_active
     }
-    if not open_symbols:
+    if not open_positions:
         return
 
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=30)
@@ -198,7 +207,8 @@ async def _check_taken_positions():
         rows = (await session.execute(stmt)).scalars().all()
 
     for record in rows:
-        if record.symbol in open_symbols:
+        pos_side = open_positions.get(record.symbol)
+        if pos_side and pos_side == record.direction:
             await mark_taken(record.symbol)
 
 

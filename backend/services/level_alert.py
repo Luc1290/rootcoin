@@ -19,7 +19,11 @@ COOLDOWN_BY_TYPE = {
     "FIB_1272": 21600, "FIB_1618": 21600,  # 6h fib extensions
     "PSYCH": 28800,  # 8h psychological levels
 }
-SYMBOL_COOLDOWN = 900  # 15min min between alerts for same symbol
+# Types where price changes often (new daily high/low, recent swing) →
+# cooldown keyed on (symbol, type) instead of (symbol, exact_price)
+_TYPE_KEYED_COOLDOWNS = {"D_H", "D_L", "RH1", "RH2", "RH3", "RL1", "RL2", "RL3"}
+SYMBOL_COOLDOWN = 3600  # 1h min between alerts for same symbol
+ALERT_SYMBOLS = {"BTCUSDC"}  # only these symbols send Telegram level alerts
 
 _last_prices: dict[str, Decimal] = {}
 _cooldowns: dict[tuple[str, str], float] = {}
@@ -44,6 +48,8 @@ async def _on_price(msg: dict):
     symbol = msg.get("s", "")
     price_str = msg.get("c", "")
     if not symbol or not price_str:
+        return
+    if ALERT_SYMBOLS and symbol not in ALERT_SYMBOLS:
         return
 
     try:
@@ -90,8 +96,12 @@ def _try_alert(symbol: str, price: Decimal, level: dict):
     # Global per-symbol rate limit
     if now - _symbol_last_alert.get(symbol, 0) < SYMBOL_COOLDOWN:
         return
-    key = (symbol, level.get("price", ""))
     level_type = level.get("type", "")
+    # For types where price shifts often, key on type not exact price
+    if level_type in _TYPE_KEYED_COOLDOWNS:
+        key = (symbol, level_type)
+    else:
+        key = (symbol, level.get("price", ""))
     cooldown = COOLDOWN_BY_TYPE.get(level_type, COOLDOWN_DEFAULT)
     if now - _cooldowns.get(key, 0) < cooldown:
         return

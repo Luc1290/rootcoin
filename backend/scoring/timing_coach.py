@@ -62,7 +62,7 @@ def evaluate(analysis: dict, symbol: str) -> dict:
         summary = caution_unmet[0]["label"]
     else:
         status = "ready"
-        summary = "Conditions remplies"
+        summary = "Entrer maintenant"
 
     # Strip internal 'critical' flag from output
     clean_conditions = [{"label": c["label"], "met": c["met"]} for c in conditions]

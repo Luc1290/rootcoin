@@ -56,6 +56,7 @@ const MiniTradeChart = (() => {
             el,
             symbol: opts.symbol || '',
             showLineLabels: showLabels,
+            entryLabel: opts.entryLabel || 'Entry',
             entryLine: null,
             slLine: null,
             tpLine: null,
@@ -303,7 +304,9 @@ const MiniTradeChart = (() => {
         const el = document.createElement('div');
         el.className = 'mini-chart-line-label';
         el.style.color = color;
-        const label = key === 'retestLine' ? (entry.retestLabel || 'Retest') : (_lineLabels[key] || '');
+        const label = key === 'retestLine' ? (entry.retestLabel || 'Retest')
+            : key === 'entryLine' ? (entry.entryLabel || 'Entry')
+            : (_lineLabels[key] || '');
         const priceStr = Utils && Utils.fmtPriceCompact ? Utils.fmtPriceCompact(price) : price.toString();
         el.textContent = `${label} ${priceStr}`;
         entry.el.style.position = 'relative';

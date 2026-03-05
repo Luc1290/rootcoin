@@ -1,4 +1,5 @@
 const Opportunities = (() => {
+    const POSITION_SIZE = 40000; // $ position size for gain estimation
     let _opportunities = [];
     let _dismissedIds = _loadDismissed();
     // Per-container chart tracking: { containerId: { oppId: chartId } }
@@ -71,11 +72,18 @@ const Opportunities = (() => {
             const retestLabel = retestType === 'plancher' ? 'Attendre plancher ↓' : retestType === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
             let levelsHtml = '';
             if (lvl.entry) {
+                const e = parseFloat(lvl.entry);
+                const slPct = e ? ((parseFloat(lvl.sl) - e) / e * 100) : 0;
+                const tpPct = e ? ((parseFloat(lvl.tp1) - e) / e * 100) : 0;
+                const tp2Pct = lvl.tp2 && e ? ((parseFloat(lvl.tp2) - e) / e * 100) : 0;
+                const slGain = Math.round(POSITION_SIZE * slPct / 100);
+                const tpGain = Math.round(POSITION_SIZE * tpPct / 100);
+                const tp2Gain = Math.round(POSITION_SIZE * tp2Pct / 100);
                 levelsHtml = `<div class="opp-levels">
-                <span class="opp-lvl"><span style="color:#3b82f6">Entry</span> <span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span></span>
-                <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span></span>
-                <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span></span>
-                ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span></span>` : ''}
+                <span class="opp-lvl"><span style="color:#3b82f6">Entrer&agrave;</span> <span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span></span>
+                <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#ef4444;font-size:10px">${slPct.toFixed(2)}% ${slGain}$</span></span>
+                <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span> <span style="color:#22c55e;font-size:10px">+${tpPct.toFixed(2)}% +${tpGain}$</span></span>
+                ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span> <span style="color:#22c55e;font-size:10px">+${tp2Pct.toFixed(2)}% +${tp2Gain}$</span></span>` : ''}
                 ${retestPrice ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
                 <span class="opp-rr">R:R ${lvl.rr}</span>
             </div>`;
@@ -117,6 +125,7 @@ const Opportunities = (() => {
                 symbol: o.symbol,
                 height: 140,
                 entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
+                entryLabel: 'Entrer à',
                 slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                 tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
                 retestPrice: rp,
@@ -281,10 +290,19 @@ const Opportunities = (() => {
                 </div>
                 ${isExpanded ? `<div id="${chartContainerId}" style="height:140px;width:100%;margin-top:4px"></div>
                     <div class="opp-levels" style="margin-top:2px">
-                        ${lvl.entry ? `<span class="opp-lvl"><span style="color:#3b82f6">E</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
-                        <span class="opp-lvl"><span style="color:#ef4444">SL</span> ${Utils.fmtPriceCompact(lvl.sl)}</span>
-                        <span class="opp-lvl"><span style="color:#22c55e">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)}</span>` : ''}
-                        ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)}</span>` : ''}
+                        ${lvl.entry ? (() => {
+                            const e = parseFloat(lvl.entry);
+                            const slP = e ? ((parseFloat(lvl.sl) - e) / e * 100) : 0;
+                            const tpP = e ? ((parseFloat(lvl.tp1) - e) / e * 100) : 0;
+                            return `<span class="opp-lvl"><span style="color:#3b82f6">Entrer&agrave;</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
+                            <span class="opp-lvl"><span style="color:#ef4444">SL</span> ${Utils.fmtPriceCompact(lvl.sl)} <span style="font-size:10px;color:#ef4444">${slP.toFixed(2)}% ${Math.round(POSITION_SIZE * slP / 100)}$</span></span>
+                            <span class="opp-lvl"><span style="color:#22c55e">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)} <span style="font-size:10px;color:#22c55e">+${tpP.toFixed(2)}% +${Math.round(POSITION_SIZE * tpP / 100)}$</span></span>`;
+                        })() : ''}
+                        ${lvl.tp2 ? (() => {
+                            const e = parseFloat(lvl.entry);
+                            const tp2P = e ? ((parseFloat(lvl.tp2) - e) / e * 100) : 0;
+                            return `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)} <span style="font-size:10px;color:#22c55e">+${tp2P.toFixed(2)}% +${Math.round(POSITION_SIZE * tp2P / 100)}$</span></span>`;
+                        })() : ''}
                         ${retestPrice ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
                         ${rrVal ? `<span class="opp-rr">R:R ${rrVal.toFixed(1)}</span>` : ''}
                     </div>` : ''}
@@ -313,6 +331,7 @@ const Opportunities = (() => {
                     symbol: o.symbol,
                     height: 140,
                     entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
+                    entryLabel: 'Entrer à',
                     slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                     tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
                     retestPrice: rp,

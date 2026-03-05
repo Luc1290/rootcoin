@@ -356,12 +356,12 @@ const Cockpit = (() => {
 
         const winRate = stats.win_rate || 0;
         const total = stats.total || 0;
-        const avgPnl = stats.avg_pnl_pct || 0;
-        const avgDisplay = Math.abs(avgPnl) < 0.05 ? 0 : avgPnl;
-        const avgPnlClass = avgDisplay >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const avgUsd = avgPnl / 100 * REF_SIZE;
-        const avgUsdSign = avgUsd >= 0 ? '+' : '-';
-        const avgUsdStr = `${avgUsdSign}$${Math.abs(avgUsd).toFixed(0)}`;
+        const totalPnl = stats.total_pnl_pct || 0;
+        const totalPnlClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        const totalUsd = totalPnl / 100 * REF_SIZE;
+        const totalUsdStr = `${totalUsd >= 0 ? '+' : '-'}$${Math.abs(totalUsd).toFixed(0)}`;
+        const avgWin = stats.avg_win_pct || 0;
+        const avgLoss = stats.avg_loss_pct || 0;
 
         const rows = history.slice(0, 8).map(r => {
             const sym = r.symbol.replace('USDC', '');
@@ -404,7 +404,8 @@ const Cockpit = (() => {
             <div class="flex items-center gap-3 text-xs mb-2">
                 <span class="text-gray-400">${total} sig</span>
                 <span class="font-bold ${winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}">${winRate}%</span>
-                <span class="font-bold ${avgPnlClass}">${avgDisplay >= 0 ? '+' : ''}${avgDisplay.toFixed(2)}% <span style="opacity:0.7">${avgUsdStr}</span></span>
+                <span class="font-bold ${totalPnlClass}">${totalUsdStr}</span>
+                <span class="text-gray-500" style="font-size:9px">moy W <span class="pnl-positive">+${avgWin.toFixed(2)}%</span> L <span class="pnl-negative">${avgLoss.toFixed(2)}%</span></span>
             </div>
             ${rows}
         </div>`;
