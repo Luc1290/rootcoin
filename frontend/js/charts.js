@@ -350,7 +350,7 @@ const Charts = (() => {
 
     async function loadCockpitData() {
         try {
-            const resp = await fetch('/api/portfolio/history?hours=24');
+            const resp = await fetch('/api/portfolio/history?hours=24&limit=1500');
             const data = await resp.json();
             if (!_cockpitSeries) return;
 
