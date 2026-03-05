@@ -63,7 +63,7 @@ const Cockpit = (() => {
         const el = document.getElementById('cockpit-portfolio');
         const totalPnl = _positions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
         const portfolioTotal = BalanceStore.getTotal();
-        const portfolioStr = portfolioTotal !== null ? '$' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
+        const portfolioStr = portfolioTotal !== null ? 'Solde $' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 
         // 24h PnL (realized + unrealized)
         const dayTotal = (_dayPnl || 0) + totalPnl;
@@ -73,7 +73,7 @@ const Cockpit = (() => {
             ? `${dayTotal >= 0 ? '+' : ''}${(dayTotal / portfolioTotal * 100).toFixed(2)}%`
             : '';
         const dayStr = _dayPnl !== null
-            ? `24h ${daySign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr ? '  ·  ' + dayPctStr : ''}${_dayTrades > 0 ? '  ·  ' + _dayTrades + ' trade' + (_dayTrades > 1 ? 's' : '') : ''}`
+            ? `Gains 24h ${daySign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr ? ' (' + dayPctStr + ')' : ''}${_dayTrades > 0 ? '  ·  ' + _dayTrades + ' trade' + (_dayTrades > 1 ? 's' : '') : ''}`
             : '';
 
         // PnL ouvert (only if positions)
