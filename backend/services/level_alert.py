@@ -21,7 +21,7 @@ COOLDOWN_BY_TYPE = {
 }
 # Types where price changes often (new daily high/low, recent swing) →
 # cooldown keyed on (symbol, type) instead of (symbol, exact_price)
-_TYPE_KEYED_COOLDOWNS = {"D_H", "D_L", "RH1", "RH2", "RH3", "RL1", "RL2", "RL3"}
+_TYPE_KEYED_COOLDOWNS = {"D_H", "D_L", "RH1", "RH2", "RH3", "RL1", "RL2", "RL3", "PP"}
 SYMBOL_COOLDOWN = 3600  # 1h min between alerts for same symbol
 ALERT_SYMBOLS = {"BTCUSDC"}  # only these symbols send Telegram level alerts
 
