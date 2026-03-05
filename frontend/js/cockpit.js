@@ -68,7 +68,7 @@ const Cockpit = (() => {
         // 24h PnL (realized + unrealized)
         const dayTotal = (_dayPnl || 0) + totalPnl;
         const dayPnlClass = dayTotal >= 0 ? 'pnl-positive' : 'pnl-negative';
-        const daySign = dayTotal >= 0 ? '+' : '';
+        const daySign = dayTotal >= 0 ? '+' : '-';
         const dayPctStr = (portfolioTotal && portfolioTotal > 0 && _dayPnl !== null)
             ? `${dayTotal >= 0 ? '+' : ''}${(dayTotal / portfolioTotal * 100).toFixed(2)}%`
             : '';
