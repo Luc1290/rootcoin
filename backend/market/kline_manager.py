@@ -361,16 +361,31 @@ def _stoch_rsi(closes: list[float], rsi_period: int = 14, k_period: int = 3, d_p
 
     k_line: list[float | None] = []
     for i in range(len(rsi_vals)):
-        if rsi[i] is None or i < rsi_period + k_period - 1:
+        if rsi[i] is None or i < rsi_period + rsi_period - 1:
             k_line.append(None)
         else:
-            window = rsi_vals[i - k_period + 1 : i + 1]
+            window = rsi_vals[i - rsi_period + 1 : i + 1]
             lo = min(window)
             hi = max(window)
             if hi == lo:
                 k_line.append(50.0)
             else:
                 k_line.append(round((rsi_vals[i] - lo) / (hi - lo) * 100, 2))
+
+    # Smooth K with SMA(k_period)
+    k_raw = k_line
+    k_valid_raw = [v for v in k_raw if v is not None]
+    k_smoothed = _sma(k_valid_raw, k_period) if len(k_valid_raw) >= k_period else k_valid_raw
+
+    # Rebuild k_line with smoothed values
+    k_line = []
+    si = 0
+    for v in k_raw:
+        if v is None:
+            k_line.append(None)
+        else:
+            k_line.append(k_smoothed[si] if si < len(k_smoothed) else None)
+            si += 1
 
     k_valid = [v for v in k_line if v is not None]
     d_raw = _sma(k_valid, d_period) if len(k_valid) >= d_period else [None] * len(k_valid)
