@@ -31,6 +31,16 @@ FEEDS = {
         "lang": "fr",
         "category": "macro",
     },
+    "google_geopolitics": {
+        "url": "https://news.google.com/rss/search?q=war+OR+sanctions+OR+geopolitics+OR+conflict+OR+military+OR+attack+OR+missile&hl=en&gl=US&ceid=US:en",
+        "lang": "en",
+        "category": "geopolitics",
+    },
+    "google_economy_global": {
+        "url": "https://news.google.com/rss/search?q=central+bank+OR+interest+rate+OR+trade+war+OR+tariffs+OR+economic+crisis+OR+treasury&hl=en&gl=US&ceid=US:en",
+        "lang": "en",
+        "category": "macro",
+    },
 }
 
 _news_cache: list[dict] = []

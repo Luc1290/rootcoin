@@ -121,6 +121,7 @@ from backend.routes.api_opportunities import router as opportunities_router
 from backend.routes.api_health import router as health_router
 from backend.routes.api_settings import router as settings_router
 from backend.routes.api_alerts import router as alerts_router
+from backend.routes.api_llm import router as llm_router
 from backend.routes.ws_dashboard import router as ws_router
 
 app.include_router(dashboard_router)
@@ -141,6 +142,7 @@ app.include_router(opportunities_router)
 app.include_router(health_router)
 app.include_router(settings_router)
 app.include_router(alerts_router)
+app.include_router(llm_router)
 app.include_router(ws_router)
 
 if FRONTEND_DIR.exists():

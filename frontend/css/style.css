@@ -1192,3 +1192,84 @@ select {
     .journal-cal-months { padding-left: 30px; gap: 2px; }
     .journal-cal-months span { width: 11px; }
 }
+
+/* ===== LLM Analysis Card ===== */
+.llm-card { position: relative; }
+.llm-card-error { border-left: 3px solid #ef4444; }
+.llm-btn {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    color: #fff;
+    border: none;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    min-height: 36px;
+}
+.llm-btn:hover { opacity: 0.85; }
+.llm-btn:disabled { opacity: 0.5; cursor: wait; }
+.llm-btn-sm { padding: 0.3rem 0.6rem; font-size: 0.7rem; }
+.llm-direction { font-size: 1.5rem; font-weight: 800; letter-spacing: 0.05em; }
+.llm-confidence { font-size: 0.85rem; font-weight: 600; }
+.llm-level {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    background: #1f2937;
+    border-radius: 0.375rem;
+    padding: 0.4rem;
+}
+.llm-explanation {
+    font-size: 0.8rem;
+    color: #d1d5db;
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+}
+.llm-key-signal {
+    font-size: 0.75rem;
+    color: #a78bfa;
+    margin-bottom: 0.25rem;
+}
+.llm-invalidation {
+    font-size: 0.75rem;
+    color: #f87171;
+}
+.llm-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: llm-spin 0.6s linear infinite;
+    vertical-align: middle;
+}
+@keyframes llm-spin { to { transform: rotate(360deg); } }
+.llm-btn-preview {
+    background: transparent;
+    color: #9ca3af;
+    border: 1px solid #374151;
+    border-radius: 0.375rem;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.llm-btn-preview:hover { color: #d1d5db; border-color: #6b7280; }
+.llm-prompt-preview {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: #0f1419;
+    border: 1px solid #1f2937;
+    border-radius: 0.375rem;
+    font-size: 0.65rem;
+    line-height: 1.4;
+    color: #9ca3af;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+}

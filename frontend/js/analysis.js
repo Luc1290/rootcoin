@@ -4,6 +4,8 @@ const Analysis = (() => {
     let _currentSymbol = null;
     let _trackHistory = [];
     let _trackStats = {};
+    let _llmAnalysis = null;
+    let _llmLoading = false;
 
     async function load() {
         try {
@@ -54,7 +56,7 @@ const Analysis = (() => {
         _currentSymbol = analysis.symbol;
 
         _renderFreshness();
-        _renderBias(analysis);
+        _renderLlm();
         _renderOpportunities();
         _renderTrackRecord();
         _renderLevels(analysis);
@@ -185,6 +187,127 @@ const Analysis = (() => {
                 <span class="text-gray-400">${explanation}</span>
             </div>`;
         }).join('');
+    }
+
+    // ── LLM Analysis ─────────────────────────────────────
+
+    function _renderLlm() {
+        const el = document.getElementById('analysis-llm');
+        if (!el) return;
+
+        const btnDisabled = _llmLoading ? 'disabled' : '';
+        const btnText = _llmLoading ? '<span class="llm-spinner"></span> Analyse en cours...' : 'Analyse IA';
+
+        if (!_llmAnalysis || _llmAnalysis.symbol !== _currentSymbol) {
+            el.innerHTML = `
+            <div class="card llm-card">
+                <div class="flex items-center justify-between">
+                    <div class="metric-label">Second avis IA</div>
+                    <div class="flex items-center gap-2">
+                        <button class="llm-btn-preview" onclick="Analysis.previewPrompt()">Voir donnees</button>
+                        <button id="llm-analyze-btn" class="llm-btn" ${btnDisabled} onclick="Analysis.requestLlm()">${btnText}</button>
+                    </div>
+                </div>
+                <div class="text-xs text-gray-500 mt-2">Appuie pour obtenir une analyse Claude Opus</div>
+                <div id="llm-preview" class="hidden"></div>
+            </div>`;
+            return;
+        }
+
+        const a = _llmAnalysis;
+        if (a.error && !a.direction) {
+            el.innerHTML = `
+            <div class="card llm-card llm-card-error">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="metric-label">Second avis IA</div>
+                    <button id="llm-analyze-btn" class="llm-btn" ${btnDisabled} onclick="Analysis.requestLlm()">${btnText}</button>
+                </div>
+                <div class="text-sm text-red-400">Erreur: ${Utils.escHtml(a.error)}</div>
+            </div>`;
+            return;
+        }
+
+        const isLong = a.direction === 'LONG';
+        const dirClass = isLong ? 'pnl-positive' : 'pnl-negative';
+        const dirBorder = isLong ? '#22c55e' : '#ef4444';
+        const arrow = isLong ? '\u25B2' : '\u25BC';
+
+        const confColor = a.confidence === 'elevee' ? '#22c55e' : a.confidence === 'moderee' ? '#eab308' : '#ef4444';
+
+        const tokensInfo = a.input_tokens ? `<span class="text-xs text-gray-600">${a.input_tokens + a.output_tokens} tokens</span>` : '';
+        const timeInfo = a.analyzed_at ? `<span class="text-xs text-gray-500">${Utils.timeAgo(a.analyzed_at)}</span>` : '';
+
+        el.innerHTML = `
+        <div class="card llm-card" style="border-left:3px solid ${dirBorder}">
+            <div class="flex items-center justify-between mb-3">
+                <div class="metric-label">Second avis IA</div>
+                <div class="flex items-center gap-2">
+                    ${timeInfo}
+                    ${tokensInfo}
+                    <button id="llm-analyze-btn" class="llm-btn llm-btn-sm" ${btnDisabled} onclick="Analysis.requestLlm()">${_llmLoading ? '...' : 'Relancer'}</button>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 mb-3">
+                <span class="llm-direction ${dirClass}">${arrow} ${a.direction}</span>
+                <span class="llm-confidence" style="color:${confColor}">Confiance: ${a.confidence || '?'}</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <div class="llm-level"><span class="text-gray-500 text-xs">Entry</span><span class="tabular-nums font-bold">${Utils.fmtPrice(a.entry)}</span></div>
+                <div class="llm-level"><span class="text-gray-500 text-xs">Stop Loss</span><span class="tabular-nums font-bold pnl-negative">${Utils.fmtPrice(a.stop_loss)}</span></div>
+                <div class="llm-level"><span class="text-gray-500 text-xs">TP1</span><span class="tabular-nums font-bold pnl-positive">${Utils.fmtPrice(a.tp1)}</span></div>
+                <div class="llm-level"><span class="text-gray-500 text-xs">TP2</span><span class="tabular-nums font-bold pnl-positive">${Utils.fmtPrice(a.tp2)}</span></div>
+            </div>
+            <div class="flex items-center gap-3 mb-3 text-xs">
+                <span class="text-gray-400">R:R <span class="font-bold text-purple-400">${a.risk_reward ? a.risk_reward.toFixed(1) : '?'}</span></span>
+            </div>
+            <div class="llm-explanation">${Utils.escHtml(a.explanation || '')}</div>
+            ${a.key_signal ? `<div class="llm-key-signal"><span class="text-xs text-gray-500 font-semibold">Signal cle:</span> ${Utils.escHtml(a.key_signal)}</div>` : ''}
+            ${a.invalidation ? `<div class="llm-invalidation"><span class="text-xs text-gray-500 font-semibold">Invalidation:</span> ${Utils.escHtml(a.invalidation)}</div>` : ''}
+            ${a.prompt_sent ? `<details class="mt-3"><summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-300">Voir donnees envoyees</summary><pre class="llm-prompt-preview">${Utils.escHtml(a.prompt_sent)}</pre></details>` : ''}
+        </div>`;
+    }
+
+    async function _previewPrompt() {
+        if (!_currentSymbol) return;
+        const el = document.getElementById('llm-preview');
+        if (!el) return;
+        if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+        el.innerHTML = '<div class="text-xs text-gray-500 py-2">Chargement...</div>';
+        el.classList.remove('hidden');
+        try {
+            const resp = await fetch(`/api/llm/preview/${_currentSymbol}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                el.innerHTML = `<pre class="llm-prompt-preview">${Utils.escHtml(data.prompt)}</pre>`;
+            } else {
+                el.innerHTML = '<div class="text-xs text-red-400 py-2">Erreur chargement</div>';
+            }
+        } catch (e) {
+            el.innerHTML = `<div class="text-xs text-red-400 py-2">${e.message}</div>`;
+        }
+    }
+
+    async function _requestLlm() {
+        if (_llmLoading || !_currentSymbol) return;
+        _llmLoading = true;
+        _renderLlm();
+        try {
+            const resp = await fetch('/api/llm/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: _currentSymbol }),
+            });
+            if (resp.ok) {
+                _llmAnalysis = await resp.json();
+            } else {
+                const err = await resp.json().catch(() => ({ detail: 'Erreur inconnue' }));
+                _llmAnalysis = { error: err.detail || 'Erreur serveur', symbol: _currentSymbol };
+            }
+        } catch (e) {
+            _llmAnalysis = { error: e.message, symbol: _currentSymbol };
+        }
+        _llmLoading = false;
+        _renderLlm();
     }
 
     // ── Opportunities ──────────────────────────────────────
@@ -582,5 +705,5 @@ const Analysis = (() => {
         _throttledRenderLevels(analysis);
     });
 
-    return { load };
+    return { load, requestLlm: _requestLlm, previewPrompt: _previewPrompt };
 })();

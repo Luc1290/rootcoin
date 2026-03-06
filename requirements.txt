@@ -14,3 +14,4 @@ aiohttp==3.11.*
 psutil==6.*
 websockets==14.*
 defusedxml==0.7.*
+anthropic==0.52.*

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr = SecretStr("")
     telegram_chat_id: SecretStr = SecretStr("")
 
+    # LLM (Claude API)
+    anthropic_api_key: SecretStr = SecretStr("")
+
     # Market analysis
     analysis_refresh_interval: int = 60
     macro_refresh_interval: int = 300
