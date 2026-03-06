@@ -1,3 +1,4 @@
+import time as _time
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from backend.core.database import async_session
 from backend.core.models import Order
 from backend.trading.pnl import estimated_exit_fees
+from backend.trading import position_tracker
 
 
 def format_duration(total_secs: int) -> str:
@@ -58,6 +60,9 @@ def pos_to_dict(pos, order_prices=None) -> dict:
     exit_fees_est = estimated_exit_fees(qty, current)
     prices = (order_prices or {}).get(pos.id, {})
 
+    last_price_at = position_tracker.get_last_price_at(pos.symbol)
+    price_age = round(_time.time() - last_price_at, 1) if last_price_at else None
+
     return {
         "id": pos.id,
         "symbol": pos.symbol,
@@ -77,4 +82,5 @@ def pos_to_dict(pos, order_prices=None) -> dict:
         "tp_price": prices.get("tp_price"),
         "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
         "duration": duration,
+        "price_age": price_age,
     }

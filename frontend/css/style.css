@@ -352,6 +352,22 @@ select {
     letter-spacing: 0.05em;
 }
 
+/* ===== Stale price dot ===== */
+.stale-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    vertical-align: middle;
+    margin-left: 2px;
+}
+.stale-dot.fresh { background: #10b981; }
+.stale-dot.stale { background: #ef4444; animation: stale-blink 1.5s infinite; }
+@keyframes stale-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
 /* ===== Portfolio hero ===== */
 .portfolio-hero {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(16, 185, 129, 0.06));
@@ -1164,6 +1180,48 @@ select {
 }
 .journal-snapshot-card.snapshot-win { border-left: 3px solid #22c55e; }
 .journal-snapshot-card.snapshot-loss { border-left: 3px solid #ef4444; }
+
+/* ===== Journal compact list ===== */
+.journal-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(17, 24, 39, 0.6);
+    border: 1px solid #1f2937;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.journal-row:hover { background: rgba(31, 41, 55, 0.8); }
+.journal-row.row-win { border-left: 3px solid #22c55e; }
+.journal-row.row-loss { border-left: 3px solid #ef4444; }
+.journal-row .note-mark {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #facc15; flex-shrink: 0;
+}
+.journal-detail {
+    background: rgba(17, 24, 39, 0.4);
+    border: 1px solid #1f2937;
+    border-top: none;
+    border-radius: 0 0 0.5rem 0.5rem;
+    padding: 0.75rem;
+    margin-top: -0.25rem;
+}
+.journal-note-area {
+    width: 100%;
+    background: rgba(17, 24, 39, 0.8);
+    border: 1px solid #374151;
+    border-radius: 0.375rem;
+    color: #e5e7eb;
+    font-size: 0.8125rem;
+    padding: 0.5rem;
+    resize: vertical;
+    min-height: 3rem;
+    font-family: inherit;
+}
+.journal-note-area:focus { outline: none; border-color: #6366f1; }
+.journal-note-area::placeholder { color: #4b5563; }
 .journal-context-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

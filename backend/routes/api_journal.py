@@ -2,7 +2,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 
 from backend.core.database import async_session
@@ -207,6 +208,7 @@ async def get_journal_entries(
             "opened_at": p.opened_at.isoformat() if p.opened_at else None,
             "closed_at": p.closed_at.isoformat() if p.closed_at else None,
             "duration": duration,
+            "note": p.note,
             "open_snapshot": _snap_to_dict(open_snap) if open_snap else None,
             "close_snapshot": _snap_to_dict(close_snap) if close_snap else None,
         })
@@ -350,6 +352,24 @@ async def get_streaks():
         "best_streak": best_streak,
         "best_streak_month": best_month_str,
     }
+
+
+class NoteBody(BaseModel):
+    note: str
+
+
+@router.put("/note/{position_id}")
+async def update_note(position_id: int, body: NoteBody):
+    async with async_session() as session:
+        result = await session.execute(
+            select(Position).where(Position.id == position_id)
+        )
+        pos = result.scalar_one_or_none()
+        if not pos:
+            raise HTTPException(404, "Position not found")
+        pos.note = body.note.strip() or None
+        await session.commit()
+    return {"status": "ok"}
 
 
 def _snap_to_dict(s: TradeSnapshot) -> dict:

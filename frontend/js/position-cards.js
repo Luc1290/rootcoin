@@ -21,6 +21,12 @@ const PositionCards = (() => {
         return q.toFixed(8);
     }
 
+    function _staleDot(priceAge) {
+        if (priceAge == null) return '<span class="stale-dot stale" title="Pas de prix"></span>';
+        if (priceAge > 10) return `<span class="stale-dot stale" title="Prix: ${Math.round(priceAge)}s"></span>`;
+        return '<span class="stale-dot fresh" title="Prix live"></span>';
+    }
+
     function buildCardHtml(p) {
         const pnl = parseFloat(p.pnl_usd) || 0;
         const pnlPct = parseFloat(p.pnl_pct) || 0;
@@ -55,7 +61,7 @@ const PositionCards = (() => {
                     <div class="font-medium tabular-nums" data-field="entry">${formatPrice(entry)}</div>
                 </div>
                 <div>
-                    <div class="metric-label mb-0.5">Actuel</div>
+                    <div class="metric-label mb-0.5">Actuel <span data-field="stale-dot">${_staleDot(p.price_age)}</span></div>
                     <div class="font-medium tabular-nums" data-field="current">${formatPrice(current)}</div>
                 </div>
                 <div>
@@ -144,6 +150,9 @@ const PositionCards = (() => {
 
         const curEl = f('current');
         if (curEl) curEl.textContent = formatPrice(current);
+
+        const dotEl = f('stale-dot');
+        if (dotEl) dotEl.innerHTML = _staleDot(p.price_age);
 
         const valEl = f('value');
         if (valEl) valEl.textContent = `$${value}`;

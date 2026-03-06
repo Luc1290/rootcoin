@@ -83,6 +83,10 @@ def get_positions() -> list[Position]:
     return list(_positions.values())
 
 
+def get_last_price_at(symbol: str) -> float | None:
+    return _last_price_at.get(symbol)
+
+
 def is_reconciled() -> bool:
     return _reconciled
 
@@ -566,6 +570,7 @@ async def _handle_list_status(msg: dict):
 
 _PNL_THRESHOLDS = [-2.0, -1.7, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.7, 2.0]
 _PNL_COOLDOWN = 600  # 10 min cooldown per (position, threshold)
+_last_price_at: dict[str, float] = {}  # symbol -> epoch timestamp of last price update
 _pnl_cooldowns: dict[tuple[int, float], float] = {}  # (pos_id, threshold) -> monotonic ts
 
 
@@ -576,6 +581,7 @@ async def _handle_price_update(msg: dict):
     if price <= 0:
         return
 
+    updated = False
     for pos in _positions.values():
         if pos.symbol == symbol and pos.is_active:
             prev_pct = pos.pnl_pct
@@ -585,6 +591,9 @@ async def _handle_price_update(msg: dict):
             )
             if prev_pct is not None:
                 _check_pnl_thresholds(pos, float(prev_pct), float(pos.pnl_pct))
+            updated = True
+    if updated:
+        _last_price_at[symbol] = _time.time()
 
 
 def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):

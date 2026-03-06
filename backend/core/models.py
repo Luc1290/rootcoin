@@ -35,6 +35,7 @@ class Position(Base):
     realized_pnl_pct: Mapped[Decimal | None] = mapped_column(Numeric)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[str | None] = mapped_column(String)
 
 
 class Trade(Base):

@@ -10,6 +10,12 @@ const Cockpit = (() => {
     let _marketSymbol = null;
     let _marketFirstPrice = null;
 
+    function _cockpitStaleDot(priceAge) {
+        if (priceAge == null) return '<span class="stale-dot stale"></span>';
+        if (priceAge > 10) return '<span class="stale-dot stale"></span>';
+        return '<span class="stale-dot fresh"></span>';
+    }
+
     async function load() {
         try {
             const [, anaResp, oppResp, streaksResp, newsResp, cyclesResp] = await Promise.all([
@@ -179,7 +185,7 @@ const Cockpit = (() => {
                         <span class="cockpit-side side-${p.side.toLowerCase()}">${p.side}</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-400 tabular-nums" data-field="price">${Utils.fmtPriceCompact(p.current_price)}</span>
+                        <span class="text-xs text-gray-400 tabular-nums" data-field="price">${Utils.fmtPriceCompact(p.current_price)}</span><span data-field="stale-dot">${_cockpitStaleDot(p.price_age)}</span>
                         <span class="text-sm font-bold tabular-nums ${pnlClass}" data-field="pnl-pct">${pnlSign}${pnl.toFixed(1)}%</span>
                         <span class="text-xs tabular-nums ${pnlClass}" data-field="pnl-usd">${pnlUsdSign}$${Math.abs(pnlUsd).toFixed(0)}</span>
                     </div>
@@ -238,6 +244,8 @@ const Cockpit = (() => {
             const usdEl = card.querySelector('[data-field="pnl-usd"]');
 
             if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(p.current_price);
+            const dotEl = card.querySelector('[data-field="stale-dot"]');
+            if (dotEl) dotEl.innerHTML = _cockpitStaleDot(p.price_age);
             if (pctEl) {
                 pctEl.textContent = `${pnlSign}${pnl.toFixed(1)}%`;
                 pctEl.className = `text-sm font-bold tabular-nums ${pnlClass}`;

@@ -29,6 +29,7 @@ _MIGRATIONS = [
     ("positions", "realized_pnl", "NUMERIC"),
     ("positions", "realized_pnl_pct", "NUMERIC"),
     ("positions", "closed_at", "DATETIME"),
+    ("positions", "note", "TEXT"),
 ]
 
 _INDEXES = [

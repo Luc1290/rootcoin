@@ -387,9 +387,10 @@ const Journal = (() => {
             for (const e of data) _symbols.add(e.symbol);
             _updateSymbolFilter();
 
+            const startIdx = _entries.length;
             _entries = _entries.concat(data);
             _offset += data.length;
-            _renderEntries();
+            _renderEntries(startIdx);
 
             const btn = document.getElementById('journal-load-more');
             if (data.length < PAGE_SIZE) {
@@ -413,7 +414,7 @@ const Journal = (() => {
         sel.innerHTML = opts.join('');
     }
 
-    function _renderEntries() {
+    function _renderEntries(startIdx = 0) {
         const container = document.getElementById('journal-entries');
         const empty = document.getElementById('journal-empty');
 
@@ -423,44 +424,66 @@ const Journal = (() => {
             return;
         }
         empty.classList.add('hidden');
-        container.innerHTML = _entries.map(_buildEntryCard).join('');
+
+        if (startIdx === 0) container.innerHTML = '';
+        const fragment = document.createDocumentFragment();
+        for (let i = startIdx; i < _entries.length; i++) {
+            const div = document.createElement('div');
+            div.innerHTML = _buildEntryRow(_entries[i], i);
+            const row = div.firstElementChild;
+            row.addEventListener('click', () => {
+                const detail = container.querySelector(`#journal-detail-${i}`);
+                if (detail) {
+                    detail.classList.toggle('hidden');
+                } else {
+                    _expandEntry(row, _entries[i], i);
+                }
+            });
+            fragment.appendChild(row);
+        }
+        container.appendChild(fragment);
     }
 
-    function _buildEntryCard(e) {
+    function _buildEntryRow(e, idx) {
         const grossPnl = e.realized_pnl ? parseFloat(e.realized_pnl) : 0;
         const fees = parseFloat(e.total_fees_usd) || 0;
         const netPnl = grossPnl - fees;
         const pnlPct = e.realized_pnl_pct ? parseFloat(e.realized_pnl_pct) : 0;
         const isWin = netPnl > 0;
-        const cardCls = isWin ? 'snapshot-win' : 'snapshot-loss';
+        const rowCls = isWin ? 'row-win' : 'row-loss';
         const pnlCls = isWin ? 'pnl-positive' : 'pnl-negative';
-        const grossCls = grossPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
         const sideColor = e.side === 'LONG' ? 'text-green-400' : 'text-red-400';
-
         const exitReason = _getExitReason(e);
         const exitBadge = exitReason
             ? `<span class="exit-badge exit-badge-${exitReason.toLowerCase()}">${exitReason}</span>`
             : '';
+        const noteMark = e.note ? '<span class="note-mark" title="Note"></span>' : '';
 
+        return `
+        <div class="journal-row ${rowCls}" data-idx="${idx}">
+            ${noteMark}
+            <span class="font-bold text-sm" style="min-width:80px">${e.symbol}</span>
+            <span class="text-xs font-bold ${sideColor}" style="min-width:38px">${e.side}</span>
+            ${exitBadge}
+            <span class="text-xs text-gray-500 tabular-nums hidden sm:inline">${_fmtTime(e.closed_at)}</span>
+            <span class="text-xs text-gray-500 tabular-nums">${e.duration || ''}</span>
+            <span class="flex-1"></span>
+            <span class="${pnlCls} font-bold text-sm tabular-nums">${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}</span>
+            <span class="text-xs ${pnlCls} tabular-nums" style="min-width:50px;text-align:right">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%</span>
+        </div>`;
+    }
+
+    function _expandEntry(row, e, idx) {
+        const grossPnl = e.realized_pnl ? parseFloat(e.realized_pnl) : 0;
+        const fees = parseFloat(e.total_fees_usd) || 0;
+        const netPnl = grossPnl - fees;
+        const pnlPct = e.realized_pnl_pct ? parseFloat(e.realized_pnl_pct) : 0;
+        const pnlCls = netPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
         const openCtx = _formatContext(e.open_snapshot);
         const closeCtx = _formatContext(e.close_snapshot);
 
-        return `
-        <div class="journal-snapshot-card ${cardCls}">
-            <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-2">
-                    <span class="font-bold text-sm">${e.symbol}</span>
-                    <span class="text-xs font-bold ${sideColor}">${e.side}</span>
-                    <span class="text-xs text-gray-500">${e.market_type}</span>
-                    ${exitBadge}
-                </div>
-                <div class="text-right">
-                    <span class="${pnlCls} font-bold text-sm">${netPnl >= 0 ? '+' : ''}$${netPnl.toFixed(2)}</span>
-                    <span class="text-xs text-gray-500 ml-1">(brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)})</span>
-                    <div class="text-xs ${pnlCls} tabular-nums">${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% · fees $${fees.toFixed(2)}</div>
-                </div>
-            </div>
-
+        const html = `
+        <div id="journal-detail-${idx}" class="journal-detail">
             <div class="grid grid-cols-2 gap-3 text-xs mb-2">
                 <div>
                     <div class="text-gray-500 mb-1 font-medium">ENTRY</div>
@@ -475,16 +498,56 @@ const Journal = (() => {
             </div>
 
             <div class="flex items-center gap-3 text-xs text-gray-500 mb-2">
-                <span>Duree: ${e.duration || '--'}</span>
                 <span>Qty: ${parseFloat(e.quantity).toFixed(6)}</span>
+                <span>Brut: <span class="${pnlCls}">${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)}</span></span>
+                <span>Fees: $${fees.toFixed(2)}</span>
             </div>
 
             ${(openCtx || closeCtx) ? `
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2 pt-2 border-t border-gray-800">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 pt-2 border-t border-gray-800">
                 ${openCtx ? `<div><div class="text-xs text-blue-400 font-medium mb-1">Contexte ouverture</div>${openCtx}</div>` : ''}
                 ${closeCtx ? `<div><div class="text-xs text-purple-400 font-medium mb-1">Contexte fermeture</div>${closeCtx}</div>` : ''}
             </div>` : ''}
+
+            <div class="pt-2 border-t border-gray-800">
+                <div class="text-xs text-gray-500 mb-1 font-medium">Note</div>
+                <textarea class="journal-note-area" data-pos-id="${e.id}" placeholder="Annoter ce trade...">${e.note || ''}</textarea>
+            </div>
         </div>`;
+
+        row.insertAdjacentHTML('afterend', html);
+
+        const textarea = row.nextElementSibling.querySelector('.journal-note-area');
+        let _saveTimer = null;
+        textarea.addEventListener('input', () => {
+            clearTimeout(_saveTimer);
+            _saveTimer = setTimeout(() => _saveNote(e, idx, textarea.value), 800);
+        });
+        textarea.addEventListener('click', ev => ev.stopPropagation());
+    }
+
+    async function _saveNote(entry, idx, text) {
+        try {
+            const resp = await fetch(`/api/journal/note/${entry.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: text }),
+            });
+            if (resp.ok) {
+                entry.note = text.trim() || null;
+                const row = document.querySelector(`.journal-row[data-idx="${idx}"]`);
+                if (row) {
+                    const existing = row.querySelector('.note-mark');
+                    if (entry.note && !existing) {
+                        row.insertAdjacentHTML('afterbegin', '<span class="note-mark" title="Note"></span>');
+                    } else if (!entry.note && existing) {
+                        existing.remove();
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Failed to save note', e);
+        }
     }
 
     function _getExitReason(e) {
