@@ -10,7 +10,7 @@ from backend.exchange.binance_client import close_client, init_client
 from backend.core.database import close_db, init_db
 from backend.exchange import symbol_filters, ws_manager
 from backend.services import event_recorder, health_collector, level_alert, news_tracker, opportunity_tracker, telegram_notifier
-from backend.trading import balance_tracker, position_tracker, price_recorder
+from backend.trading import balance_tracker, position_tracker, price_recorder, trailing_manager
 from backend.market import (
     heatmap_manager, kline_manager, macro_tracker, market_analyzer,
     opportunity_detector, orderbook_tracker, whale_tracker,
@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
         await news_tracker.start(); started.append("news")
         await health_collector.start(); started.append("health")
         await telegram_notifier.start(); started.append("telegram")
+        await trailing_manager.start(); started.append("trailing")
         await level_alert.start(); started.append("level_alert")
     except Exception:
         log.error("startup_failed", started=started, exc_info=True)
@@ -69,6 +70,7 @@ async def lifespan(app: FastAPI):
 
 
 _SHUTDOWN_ORDER = [
+    ("trailing", trailing_manager.stop),
     ("level_alert", level_alert.stop),
     ("telegram", telegram_notifier.stop),
     ("health", health_collector.stop),
