@@ -38,6 +38,7 @@ const KlineChart = (() => {
     let _levelPriceLines = [];
     let _alertPriceLines = [];
     let _cachedPositions = null;
+    let _pendingOrders = [];
     let _cachedAnalysis = null;
     let _lastCandleTime = null;
     let _liveData = null; // cached kline arrays for live indicator updates
@@ -596,6 +597,7 @@ const KlineChart = (() => {
             }
 
             // Order + Level + Alert overlay lines
+            await _fetchPendingOrders();
             _renderOrderLines();
             _renderLevelLines();
             _renderAlertLines();
@@ -817,29 +819,68 @@ const KlineChart = (() => {
 
     function _renderOrderLines() {
         _clearOrderLines();
-        if (!_candleSeries || !_cachedPositions || !_activeIndicators.has('orders')) return;
-        const pos = _cachedPositions.find(p => p.symbol === _symbol);
-        if (!pos) return;
-        if (pos.sl_price) {
+        if (!_candleSeries || !_activeIndicators.has('orders')) return;
+
+        // Position SL/TP lines
+        if (_cachedPositions) {
+            const pos = _cachedPositions.find(p => p.symbol === _symbol);
+            if (pos) {
+                if (pos.sl_price) {
+                    _orderPriceLines.push(_candleSeries.createPriceLine({
+                        price: parseFloat(pos.sl_price),
+                        color: '#ef4444',
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Dashed,
+                        axisLabelVisible: true,
+                        title: 'SL',
+                    }));
+                }
+                if (pos.tp_price) {
+                    _orderPriceLines.push(_candleSeries.createPriceLine({
+                        price: parseFloat(pos.tp_price),
+                        color: '#22c55e',
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Dashed,
+                        axisLabelVisible: true,
+                        title: 'TP',
+                    }));
+                }
+            }
+        }
+
+        // Pending open orders (limit orders not yet filled)
+        for (const o of _pendingOrders) {
+            if (o.symbol !== _symbol) continue;
+            const price = parseFloat(o.price) || parseFloat(o.stopPrice);
+            if (!price) continue;
+            const isBuy = o.side === 'BUY';
+            const label = isBuy ? 'BUY' : 'SELL';
             _orderPriceLines.push(_candleSeries.createPriceLine({
-                price: parseFloat(pos.sl_price),
-                color: '#ef4444',
+                price,
+                color: isBuy ? '#3b82f6' : '#f59e0b',
                 lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
+                lineStyle: LightweightCharts.LineStyle.SparseDotted,
                 axisLabelVisible: true,
-                title: 'SL',
+                title: `${label} ${o.type}`,
             }));
         }
-        if (pos.tp_price) {
-            _orderPriceLines.push(_candleSeries.createPriceLine({
-                price: parseFloat(pos.tp_price),
-                color: '#22c55e',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: 'TP',
-            }));
-        }
+    }
+
+    async function _fetchPendingOrders() {
+        try {
+            const resp = await fetch(`/api/orders/open?symbol=${_symbol}`);
+            if (resp.ok) {
+                const orders = await resp.json();
+                // Filter out orders linked to existing positions (SL/TP)
+                const posOrderIds = new Set();
+                if (_cachedPositions) {
+                    for (const p of _cachedPositions) {
+                        if (p.orders) p.orders.forEach(o => posOrderIds.add(String(o.binance_order_id)));
+                    }
+                }
+                _pendingOrders = orders.filter(o => !posOrderIds.has(String(o.orderId)));
+            }
+        } catch { /* ignore */ }
     }
 
     // ── Level lines (support/resistance) ─────────────────
@@ -1083,7 +1124,9 @@ const KlineChart = (() => {
             }
         }
         _cachedPositions = data;
-        if (_activeIndicators.has('orders')) _renderOrderLines();
+        if (_activeIndicators.has('orders')) {
+            _fetchPendingOrders().then(() => _renderOrderLines());
+        }
     }
 
     function _onAnalysisUpdate(data) {
