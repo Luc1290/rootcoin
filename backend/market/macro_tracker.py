@@ -15,11 +15,16 @@ TICKERS = {
     "dxy": "DX-Y.NYB",
     "vix": "^VIX",
     "nasdaq": "^NDX",
+    "sp500": "^GSPC",
     "gold": "GC=F",
     "us10y": "^TNX",
     "us05y": "^FVX",
     "oil": "CL=F",
     "usdjpy": "USDJPY=X",
+    "mstr": "MSTR",
+    "ibit": "IBIT",
+    "googl": "GOOGL",
+    "nvda": "NVDA",
 }
 
 # Yahoo yield indices report yield * 10 (e.g. 42.5 = 4.25%)

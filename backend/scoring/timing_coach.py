@@ -145,11 +145,13 @@ def _check_macd(conditions: list, direction: str, signals_5m: dict):
             continue
         score = sig.get("score", 0)
         if direction == "LONG" and score > 0:
-            conditions.append({"label": "MACD 5min positif", "met": True, "critical": True})
+            conditions.append({"label": "MACD 5min haussier", "met": True, "critical": True})
         elif direction == "SHORT" and score < 0:
-            conditions.append({"label": "MACD 5min negatif", "met": True, "critical": True})
+            conditions.append({"label": "MACD 5min baissier", "met": True, "critical": True})
+        elif direction == "LONG":
+            conditions.append({"label": "Attendre MACD 5min haussier", "met": False, "critical": True})
         else:
-            conditions.append({"label": "MACD 5min croise +", "met": False, "critical": True})
+            conditions.append({"label": "Attendre MACD 5min baissier", "met": False, "critical": True})
         return
 
     # No MACD signal found

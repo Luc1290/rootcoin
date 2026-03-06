@@ -609,9 +609,14 @@ const Positions = (() => {
         _openPreview = null;
         showModal('Ouvrir une position', `
             <div class="mb-3">
-                <input id="open-symbol" type="text" placeholder="Symbole (ex: BTCUSDC)"
-                    class="w-full rounded px-3 py-3 text-base uppercase"
-                    oninput="Positions._previewOpen()">
+                <div class="flex gap-1 mb-2">
+                    <button type="button" class="text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('BTCUSDC')">BTC</button>
+                    <button type="button" class="text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('ETHUSDC')">ETH</button>
+                    <button type="button" class="text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('BNBUSDC')">BNB</button>
+                    <input id="open-symbol" type="text" placeholder="ou saisir..."
+                        class="flex-1 rounded px-3 py-2 text-sm uppercase min-w-0"
+                        oninput="Positions._previewOpen()" autocomplete="off">
+                </div>
             </div>
             <div class="flex gap-1 mb-3" id="open-side-toggle">
                 <button type="button" class="open-side-btn active flex-1 text-sm py-2 rounded font-medium bg-emerald-600"
@@ -632,6 +637,14 @@ const Positions = (() => {
                 <button id="open-submit-btn" onclick="Positions.submitOpen()" class="action-btn bg-emerald-600 flex-1" disabled style="opacity:0.5">Ouvrir</button>
             </div>
         `);
+    }
+
+    function _pickSymbol(symbol) {
+        const input = document.getElementById('open-symbol');
+        if (input) {
+            input.value = symbol;
+            _previewOpen();
+        }
     }
 
     function _setSide(side) {
@@ -756,6 +769,6 @@ const Positions = (() => {
         submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
         confirmCancelOrders, submitCancelOrders, selectClosePct,
         _setMode, _updateRisk, _updateRR, _fillLevel, getActiveSymbols,
-        showOpen, submitOpen, _setSide, _previewOpen,
+        showOpen, submitOpen, _setSide, _previewOpen, _pickSymbol,
     };
 })();

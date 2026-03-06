@@ -93,6 +93,14 @@ def _evaluate():
         if not _viable_reward(levels):
             continue
 
+        # Filter out low R:R opportunities
+        try:
+            rr = Decimal(levels.get("rr", "0"))
+        except InvalidOperation:
+            rr = Decimal("0")
+        if rr < MIN_RR_FILTER:
+            continue
+
         details = _extract_details(analysis)
         opp = _build_opportunity(analysis, score, details, now, levels)
         _opportunities.appendleft(opp)
@@ -172,6 +180,7 @@ ATR_FALLBACK_SL = Decimal("1.5")  # SL = entry ± 1.5×ATR if no level
 RR_MIN = Decimal("1.5")  # Minimum R:R for TP1
 RR_TP2 = Decimal("2.0")  # R:R for TP2 fallback
 MIN_REWARD_PCT = Decimal("0.25")  # Minimum reward % to cover fees + slippage
+MIN_RR_FILTER = Decimal("1.1")  # Reject opportunities below this R:R
 
 
 def _viable_reward(levels: dict) -> bool:

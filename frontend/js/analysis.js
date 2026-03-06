@@ -336,15 +336,18 @@ const Analysis = (() => {
             return;
         }
 
-        const displayOrder = ['dxy', 'vix', 'nasdaq', 'gold', 'us10y', 'spread', 'oil', 'usdjpy'];
+        const displayOrder = ['dxy', 'vix', 'nasdaq', 'sp500', 'gold', 'us10y', 'spread', 'oil', 'usdjpy', 'mstr', 'ibit', 'googl', 'nvda'];
         const names = {
-            dxy: 'DXY', vix: 'VIX', nasdaq: 'Nasdaq', gold: 'Gold',
+            dxy: 'DXY', vix: 'VIX', nasdaq: 'Nasdaq', sp500: 'S&P 500', gold: 'Gold',
             us10y: 'US 10Y', spread: 'Spread 10-5Y',
             oil: 'Petrole', usdjpy: 'USD/JPY',
+            mstr: 'MicroStrategy', ibit: 'BTC ETF (IBIT)',
+            googl: 'Google', nvda: 'Nvidia',
         };
         const cryptoImpact = {
-            dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'inverse',
+            dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', sp500: 'direct', gold: 'inverse',
             us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
+            mstr: 'direct', ibit: 'direct', googl: 'direct', nvda: 'direct',
         };
 
         let cards = '';

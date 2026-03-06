@@ -46,7 +46,8 @@ async def get_portfolio_history(
         )
         rows = result.all()
 
-    rows = _compress(rows)
+    if hours >= 48:
+        rows = _compress(rows)
 
     if len(rows) > limit:
         step = len(rows) / limit

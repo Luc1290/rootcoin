@@ -433,12 +433,14 @@ const Cockpit = (() => {
     }
 
     const _cryptoImpact = {
-        dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', gold: 'inverse',
+        dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', sp500: 'direct', gold: 'inverse',
         us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
+        mstr: 'direct', ibit: 'direct', googl: 'direct', nvda: 'direct',
     };
     const _macroLabels = {
-        dxy: 'DXY', vix: 'VIX', nasdaq: 'NDQ', gold: 'Gold',
+        dxy: 'DXY', vix: 'VIX', nasdaq: 'NDQ', sp500: 'S&P', gold: 'Gold',
         us10y: '10Y', spread: '10-5Y', oil: 'Oil', usdjpy: 'JPY',
+        mstr: 'MSTR', ibit: 'IBIT', googl: 'GOOGL', nvda: 'NVDA',
     };
 
     function _buildMacroCard(wasOpen) {

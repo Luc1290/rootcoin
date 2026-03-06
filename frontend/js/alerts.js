@@ -19,6 +19,7 @@ const Alerts = (() => {
         const sel = document.getElementById('chart-symbol');
         if (sel) sel.addEventListener('change', () => {
             _currentSymbol = sel.value;
+            _currentPrice = null;
             load();
         });
 
@@ -27,8 +28,19 @@ const Alerts = (() => {
         });
     }
 
+    async function _fetchCurrentPrice() {
+        try {
+            const r = await fetch(`/api/prices/${_currentSymbol}/current`);
+            if (r.ok) {
+                const d = await r.json();
+                if (d.price) _currentPrice = parseFloat(d.price);
+            }
+        } catch (_) {}
+    }
+
     async function load() {
         try {
+            if (!_currentPrice) _fetchCurrentPrice();
             const resp = await fetch(`/api/alerts?symbol=${_currentSymbol}`);
             if (!resp.ok) return;
             _alerts = await resp.json();
