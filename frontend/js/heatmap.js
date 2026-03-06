@@ -20,7 +20,7 @@ const Heatmap = (() => {
 
     async function load() {
         try {
-            const resp = await fetch(`/api/heatmap?limit=50&window=${_currentWindow}`);
+            const resp = await fetch(`/api/heatmap?limit=48&window=${_currentWindow}`);
             if (!resp.ok) throw new Error('Failed to load heatmap');
             _data = await resp.json();
             render();
@@ -70,8 +70,8 @@ const Heatmap = (() => {
             ${gainerInfo}
         </div>`;
 
-        // Build tiles
-        const tiles = _data.assets.map(a => _tileHtml(a)).join('');
+        // Build tiles (volume assets only in main grid)
+        const tiles = volumeAssets.map(a => _tileHtml(a)).join('');
         grid.innerHTML = tiles;
 
         // Insert summary before grid
@@ -82,6 +82,18 @@ const Heatmap = (() => {
         summaryDiv.className = 'heatmap-summary';
         summaryDiv.innerHTML = summaryHtml;
         parent.insertBefore(summaryDiv, grid);
+
+        // Top gainers row below grid
+        let gainerRow = parent.querySelector('.heatmap-gainers-row');
+        if (gainerRow) gainerRow.remove();
+        if (gainerAssets.length) {
+            gainerRow = document.createElement('div');
+            gainerRow.className = 'heatmap-gainers-row';
+            gainerRow.innerHTML = `
+                <div class="text-xs text-yellow-400 font-semibold mb-1.5 mt-3">\u{1F525} Top Gainers 24h</div>
+                <div class="flex gap-1.5 overflow-x-auto pb-1">${gainerAssets.map(a => _tileHtml(a)).join('')}</div>`;
+            parent.insertBefore(gainerRow, grid.nextSibling);
+        }
     }
 
     function _tileHtml(asset) {

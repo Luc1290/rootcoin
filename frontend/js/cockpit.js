@@ -217,14 +217,18 @@ const Cockpit = (() => {
                 _posChartIds[p.id] = chartId;
                 if (p.opened_at) MiniTradeChart.addMarker(chartId, p.opened_at, p.side || 'LONG');
 
-                // Dynamic lookback: enough candles to show entry + 20% buffer, clamped 36-288
-                let lookback = 288;
+                // Dynamic interval: 1m for <24h positions, 5m for longer
+                let interval = '1m', lookback = 1440;
                 if (p.opened_at) {
                     const ageMin = (Date.now() - new Date(p.opened_at).getTime()) / 60000;
-                    const candles = Math.ceil(ageMin / 5);
-                    lookback = Math.max(36, Math.min(288, Math.ceil(candles * 1.2) + 12));
+                    if (ageMin > 1380) { // >23h → switch to 5m
+                        interval = '5m';
+                        lookback = Math.max(60, Math.min(1440, Math.ceil(ageMin / 5 * 1.2) + 12));
+                    } else {
+                        lookback = Math.max(60, Math.min(1440, Math.ceil(ageMin * 1.2) + 30));
+                    }
                 }
-                MiniTradeChart.fetchAndRender(chartId, p.symbol, '5m', lookback);
+                MiniTradeChart.fetchAndRender(chartId, p.symbol, interval, lookback);
             }
         }
     }

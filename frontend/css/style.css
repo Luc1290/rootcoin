@@ -615,6 +615,10 @@ select {
 .heatmap-top-gainer:hover {
     box-shadow: 0 0 16px rgba(250, 204, 21, 0.4);
 }
+.heatmap-gainers-row .heatmap-tile {
+    min-width: 90px;
+    flex-shrink: 0;
+}
 .heatmap-gainer-badge {
     font-size: 0.65rem;
     margin-right: 2px;

@@ -469,7 +469,7 @@ const KlineChart = (() => {
 
         try {
             const indList = [..._activeIndicators].filter(i => i !== 'trades' && i !== 'cycles').join(',');
-            const resp = await fetch(`/api/klines/${_symbol}?interval=${_interval}&indicators=${indList}&limit=500`);
+            const resp = await fetch(`/api/klines/${_symbol}?interval=${_interval}&indicators=${indList}&limit=300`);
             if (!resp.ok) throw new Error(await resp.text());
             const data = await resp.json();
             const klines = data.klines;
@@ -780,7 +780,7 @@ const KlineChart = (() => {
                 // Add padding above candle highs so area visibly exceeds them
                 let maxHigh = 0;
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
-                const pad = maxHigh * 0.03; // 3% above highs
+                const pad = maxHigh * 0.02; // 2% above highs
 
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,
@@ -824,7 +824,7 @@ const KlineChart = (() => {
                 }
 
                 if (c.is_active) {
-                    _activeCycleRefs.push({ area, entryPrice });
+                    _activeCycleRefs.push({ area, entryPrice, pad });
                 }
             });
             _cyclesRendered = { symbol: _symbol, interval: _interval };
@@ -1101,7 +1101,7 @@ const KlineChart = (() => {
         // Extend active cycle overlays to the current candle
         const high = parseFloat(data.high);
         for (const ref of _activeCycleRefs) {
-            ref.area.update({ time: t, value: high });
+            ref.area.update({ time: t, value: high + (ref.pad || 0) });
         }
 
         // Live indicator update

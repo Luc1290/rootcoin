@@ -34,6 +34,10 @@ const Charts = (() => {
             handleScale: false,
         });
 
+        const _epVal = (entryInfo && entryInfo.entryPrice > 0) ? entryInfo.entryPrice : 0;
+        const _slVal = (entryInfo && entryInfo.slPrice > 0) ? entryInfo.slPrice : 0;
+        const _tpVal = (entryInfo && entryInfo.tpPrice > 0) ? entryInfo.tpPrice : 0;
+
         const series = chart.addAreaSeries({
             lineColor: '#3b82f6',
             topColor: 'rgba(59,130,246,0.15)',
@@ -42,6 +46,16 @@ const Charts = (() => {
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
+            autoscaleInfoProvider: () => {
+                const e = _posCharts[positionId];
+                if (!e) return null;
+                const extras = [];
+                if (e._epPrice > 0) extras.push(e._epPrice);
+                if (e._slPrice > 0) extras.push(e._slPrice);
+                if (e._tpPrice > 0) extras.push(e._tpPrice);
+                if (!extras.length) return null;
+                return { priceRange: { minValue: Math.min(...extras), maxValue: Math.max(...extras) } };
+            },
         });
 
         // Entry price horizontal line (color updated dynamically)
@@ -86,7 +100,7 @@ const Charts = (() => {
         });
         ro.observe(el);
 
-        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro };
+        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro, _epPrice: _epVal, _slPrice: _slVal, _tpPrice: _tpVal };
         _loadPriceHistory(positionId, symbol);
     }
 
@@ -95,6 +109,9 @@ const Charts = (() => {
         if (!entry) return;
         const sl = parseFloat(slPrice) || 0;
         const tp = parseFloat(tpPrice) || 0;
+
+        entry._slPrice = sl;
+        entry._tpPrice = tp;
 
         // Update or create SL line
         if (sl > 0) {
@@ -131,6 +148,9 @@ const Charts = (() => {
             entry.series.removePriceLine(entry.tpLine);
             entry.tpLine = null;
         }
+
+        // Force immediate rescale to include/exclude SL/TP
+        entry.chart.timeScale().fitContent();
     }
 
     function _isWinning(entry, currentPrice) {
@@ -165,21 +185,26 @@ const Charts = (() => {
 
     async function _loadPriceHistory(positionId, symbol) {
         try {
-            // Dynamic lookback: position age + 20% buffer, clamped 1-24h
-            let hours = 24;
+            // Dynamic interval: 1m for <24h, 5m for longer positions
+            let interval = '1m', limit = 1440;
             const info = _posCharts[positionId] && _posCharts[positionId].entryInfo;
             if (info && info.openedAt) {
-                const ageH = (Date.now() - new Date(info.openedAt + 'Z').getTime()) / 3600000;
-                hours = Math.max(1, Math.min(24, Math.ceil(ageH * 1.2) + 1));
+                const ageMin = (Date.now() - new Date(info.openedAt + 'Z').getTime()) / 60000;
+                if (ageMin > 1380) { // >23h → switch to 5m
+                    interval = '5m';
+                    limit = Math.max(60, Math.min(1440, Math.ceil(ageMin / 5 * 1.2) + 12));
+                } else {
+                    limit = Math.max(60, Math.min(1440, Math.ceil(ageMin * 1.2) + 30));
+                }
             }
-            const limit = Math.min(1440, hours * 60);
-            const resp = await fetch(`/api/prices/${symbol}?hours=${hours}&order=asc&limit=${limit}`);
+            const resp = await fetch(`/api/klines/${symbol}?interval=${interval}&limit=${limit}&indicators=`);
             const data = await resp.json();
-            if (!data.length) return;
+            const klines = data.klines || [];
+            if (!klines.length) return;
 
-            const raw = data.map(p => ({
-                time: Math.floor(new Date(p.recorded_at + 'Z').getTime() / 1000),
-                value: parseFloat(p.price),
+            const raw = klines.map(k => ({
+                time: Math.floor(new Date(k.open_time + 'Z').getTime() / 1000),
+                value: parseFloat(k.close),
             })).filter(p => isFinite(p.time) && isFinite(p.value) && p.value > 0);
             // LightweightCharts requires strictly increasing timestamps
             const points = [];
@@ -215,7 +240,7 @@ const Charts = (() => {
         }
     }
 
-    const APPEND_INTERVAL = 60; // match price_record_interval (1 point/min)
+    const APPEND_INTERVAL = 15; // 1 point every 15s for smoother charts
 
     function appendPrice(symbol, priceStr) {
         const now = Math.floor(Date.now() / 1000);
@@ -228,6 +253,7 @@ const Charts = (() => {
                 if (now - entry.lastTs >= APPEND_INTERVAL) {
                     entry.series.update({ time: now, value });
                     entry.lastTs = now;
+                    entry.chart.timeScale().fitContent();
                 } else {
                     entry.series.update({ time: entry.lastTs, value });
                 }

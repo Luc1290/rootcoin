@@ -73,9 +73,19 @@ async def _backfill_symbol(client, symbol, min_qty, cutoff_ms):
     return found
 
 
+def _whale_symbols() -> list[str]:
+    base = settings.watchlist
+    extra = []
+    for s in base:
+        usdt = s.replace("USDC", "USDT")
+        if usdt != s and usdt not in base:
+            extra.append(usdt)
+    return base + extra
+
+
 async def _backfill():
     min_qty = Decimal(str(settings.whale_min_quote_qty))
-    symbols = settings.watchlist
+    symbols = _whale_symbols()
     if not symbols:
         return
 
@@ -130,7 +140,7 @@ async def _run_stream():
 
     while True:
         try:
-            symbols = settings.watchlist
+            symbols = _whale_symbols()
             if not symbols:
                 await asyncio.sleep(5)
                 continue
