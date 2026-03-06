@@ -28,11 +28,24 @@ Format JSON attendu :
   "tp1": 00000.00,
   "tp2": 00000.00,
   "risk_reward": 0.0,
-  "confidence": "faible ou moderee ou elevee",
+  "confidence": 72,
+  "confidence_factors": {
+    "pour": ["facteur positif 1", "facteur positif 2"],
+    "contre": ["facteur negatif 1"]
+  },
   "explanation": "3-5 phrases justifiant ta decision avec les donnees",
   "key_signal": "Le signal principal en 1 phrase",
   "invalidation": "Ce qui invaliderait ce trade en 1 phrase"
-}"""
+}
+
+REGLES CONFIDENCE (score 0-100) :
+- 85-100 : Confluence forte sur 3+ timeframes, macro alignee, orderbook confirme, pas de news contraire
+- 70-84 : Confluence correcte sur 2+ TF, quelques signaux mixtes mais biais clair
+- 55-69 : Signaux contradictoires, setup present mais contexte incertain
+- 40-54 : Setup fragile, majorite des indicateurs non alignes
+- 0-39 : Contre-tendance ou quasi aucun signal favorable
+- Sois PRECIS : 72 et 78 ne sont pas la meme chose. Utilise toute l'echelle.
+- Liste dans confidence_factors les elements concrets (indicateurs, niveaux, macro) pour et contre."""
 
 INDICATORS_SET = {"ema", "rsi", "macd", "bb", "obv", "stoch_rsi", "atr", "adx", "mfi", "buy_sell", "vwap"}
 TIMEFRAMES = ["5m", "15m", "1h", "4h"]

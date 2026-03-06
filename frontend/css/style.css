@@ -607,6 +607,19 @@ select {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     z-index: 1;
 }
+.heatmap-top-gainer {
+    border: 1px solid rgba(250, 204, 21, 0.5);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.2);
+    position: relative;
+}
+.heatmap-top-gainer:hover {
+    box-shadow: 0 0 16px rgba(250, 204, 21, 0.4);
+}
+.heatmap-gainer-badge {
+    font-size: 0.65rem;
+    margin-right: 2px;
+    vertical-align: middle;
+}
 
 /* ===== Analysis bias indicator ===== */
 .bias-direction {

@@ -191,6 +191,16 @@ const Analysis = (() => {
 
     // ── LLM Analysis ─────────────────────────────────────
 
+    function _renderConfidenceFactors(factors) {
+        const pour = (factors.pour || []).map(f => `<li class="text-green-400">\u2713 ${Utils.escHtml(f)}</li>`).join('');
+        const contre = (factors.contre || []).map(f => `<li class="text-red-400">\u2717 ${Utils.escHtml(f)}</li>`).join('');
+        if (!pour && !contre) return '';
+        return `<div class="mb-3 p-2 rounded bg-gray-800/50 text-xs">
+            <div class="font-semibold text-gray-400 mb-1">Facteurs de confiance</div>
+            <ul class="space-y-0.5 list-none pl-0">${pour}${contre}</ul>
+        </div>`;
+    }
+
     function _renderLlm() {
         const el = document.getElementById('analysis-llm');
         if (!el) return;
@@ -232,7 +242,9 @@ const Analysis = (() => {
         const dirBorder = isLong ? '#22c55e' : '#ef4444';
         const arrow = isLong ? '\u25B2' : '\u25BC';
 
-        const confColor = a.confidence === 'elevee' ? '#22c55e' : a.confidence === 'moderee' ? '#eab308' : '#ef4444';
+        const confNum = typeof a.confidence === 'number' ? a.confidence : (a.confidence === 'elevee' ? 85 : a.confidence === 'moderee' ? 60 : 35);
+        const confColor = confNum >= 80 ? '#22c55e' : confNum >= 65 ? '#84cc16' : confNum >= 50 ? '#eab308' : confNum >= 35 ? '#f97316' : '#ef4444';
+        const confLabel = confNum >= 80 ? 'Elevee' : confNum >= 65 ? 'Correcte' : confNum >= 50 ? 'Moderee' : confNum >= 35 ? 'Faible' : 'Tres faible';
 
         const tokensInfo = a.input_tokens ? `<span class="text-xs text-gray-600">${a.input_tokens + a.output_tokens} tokens</span>` : '';
         const timeInfo = a.analyzed_at ? `<span class="text-xs text-gray-500">${Utils.timeAgo(a.analyzed_at)}</span>` : '';
@@ -249,7 +261,7 @@ const Analysis = (() => {
             </div>
             <div class="flex items-center gap-3 mb-3">
                 <span class="llm-direction ${dirClass}">${arrow} ${a.direction}</span>
-                <span class="llm-confidence" style="color:${confColor}">Confiance: ${a.confidence || '?'}</span>
+                <span class="llm-confidence" style="color:${confColor}">Confiance: ${confNum}% <span class="text-xs opacity-70">(${confLabel})</span></span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                 <div class="llm-level"><span class="text-gray-500 text-xs">Entry</span><span class="tabular-nums font-bold">${Utils.fmtPrice(a.entry)}</span></div>
@@ -259,7 +271,11 @@ const Analysis = (() => {
             </div>
             <div class="flex items-center gap-3 mb-3 text-xs">
                 <span class="text-gray-400">R:R <span class="font-bold text-purple-400">${a.risk_reward ? a.risk_reward.toFixed(1) : '?'}</span></span>
+                <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden ml-2" style="max-width:120px">
+                    <div class="h-full rounded-full" style="width:${confNum}%;background:${confColor}"></div>
+                </div>
             </div>
+            ${a.confidence_factors ? _renderConfidenceFactors(a.confidence_factors) : ''}
             <div class="llm-explanation">${Utils.escHtml(a.explanation || '')}</div>
             ${a.key_signal ? `<div class="llm-key-signal"><span class="text-xs text-gray-500 font-semibold">Signal cle:</span> ${Utils.escHtml(a.key_signal)}</div>` : ''}
             ${a.invalidation ? `<div class="llm-invalidation"><span class="text-xs text-gray-500 font-semibold">Invalidation:</span> ${Utils.escHtml(a.invalidation)}</div>` : ''}

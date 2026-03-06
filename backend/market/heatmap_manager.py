@@ -14,6 +14,8 @@ STALE_THRESHOLD = 900
 EXCLUDED_SUFFIXES = ("UP", "DOWN", "BEAR", "BULL")
 BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker"
 VALID_WINDOWS = ("15m", "1h", "4h")
+TOP_GAINER_THRESHOLD = Decimal("6")  # 24h change % to qualify as top gainer
+TOP_GAINERS_MAX = 10
 
 _heatmap_cache: dict[str, dict] = {}
 _active_window: str = "4h"
@@ -59,7 +61,10 @@ def get_heatmap_data(limit: int | None = None, window: str = "4h") -> dict:
         window = "4h"
     top_n = limit or settings.heatmap_top_n
     cache = _heatmap_cache.get(window, {})
-    assets = cache.get("assets", [])[:top_n]
+    all_assets = cache.get("assets", [])
+    gainers = [a for a in all_assets if a.get("top_gainer")]
+    volume_based = [a for a in all_assets if not a.get("top_gainer")]
+    assets = gainers + volume_based[:top_n]
     fetched = cache.get("fetched_at")
     is_stale = True
     if fetched:
@@ -102,15 +107,30 @@ async def _fetch_tickers(window: str = "4h"):
             continue
         try:
             volume = Decimal(t["quoteVolume"])
+            change_pct_24h = Decimal(t["priceChangePercent"])
         except Exception:
             continue
-        candidates.append({"symbol": symbol, "base_asset": base, "volume": volume})
+        candidates.append({
+            "symbol": symbol, "base_asset": base,
+            "volume": volume, "change_pct_24h": change_pct_24h,
+        })
 
     # Sort by volume, keep top N
     candidates.sort(key=lambda a: a["volume"], reverse=True)
-    top = candidates[:settings.heatmap_top_n]
-    if not top:
+    top_by_volume = candidates[:settings.heatmap_top_n]
+    if not top_by_volume:
         return
+
+    # Find top gainers not already in volume list
+    top_symbols = {a["symbol"] for a in top_by_volume}
+    gainers = [
+        c for c in candidates
+        if c["symbol"] not in top_symbols and c["change_pct_24h"] >= TOP_GAINER_THRESHOLD
+    ]
+    gainers.sort(key=lambda a: a["change_pct_24h"], reverse=True)
+    for g in gainers[:TOP_GAINERS_MAX]:
+        g["is_top_gainer"] = True
+    top = gainers[:TOP_GAINERS_MAX] + top_by_volume
 
     # Step 2: fetch rolling window for these symbols
     symbols_list = [a["symbol"] for a in top]
@@ -145,6 +165,8 @@ async def _fetch_tickers(window: str = "4h"):
             "price": data["price"],
             "change_24h": data["change"],
             "volume_24h": str(round(a["volume"], 0)),
+            "top_gainer": a.get("is_top_gainer", False),
+            "change_24h_pct": str(round(a["change_pct_24h"], 2)),
         })
 
     _heatmap_cache[window] = {

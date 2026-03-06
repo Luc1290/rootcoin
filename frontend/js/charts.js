@@ -16,6 +16,12 @@ const Charts = (() => {
         const el = document.getElementById(containerId);
         if (!el || _posCharts[positionId]) return;
 
+        // Defer if container not yet laid out (e.g. parent just became visible)
+        if (!el.clientWidth) {
+            requestAnimationFrame(() => createMiniChart(containerId, positionId, symbol, entryInfo));
+            return;
+        }
+
         const chart = LightweightCharts.createChart(el, {
             width: el.clientWidth,
             height: 120,
@@ -281,26 +287,26 @@ const Charts = (() => {
         });
         ro.observe(el);
 
-        loadPortfolioData(24);
+        loadPortfolioData(720);
     }
 
     async function loadPortfolioData(hours) {
         try {
-            const resp = await fetch(`/api/portfolio/history?hours=${hours}`);
+            const resp = await fetch(`/api/journal/equity?hours=${hours}`);
             const data = await resp.json();
             if (!_portfolioSeries) return;
 
-            if (!data.length) {
+            if (!data.points || !data.points.length) {
                 _portfolioSeries.setData([]);
                 return;
             }
 
             const seen = new Set();
             const points = [];
-            for (const d of data) {
-                const ts = d.snapshot_at;
+            for (const p of data.points) {
+                const ts = p.snapshot_at;
                 const t = Math.floor(new Date(ts + (ts.endsWith('Z') || ts.includes('+') ? '' : 'Z')).getTime() / 1000);
-                const v = parseFloat(d.total_usd);
+                const v = parseFloat(p.total_usd);
                 if (!seen.has(t) && !isNaN(t) && isFinite(v)) {
                     seen.add(t);
                     points.push({ time: t, value: v });
@@ -350,21 +356,21 @@ const Charts = (() => {
 
     async function loadCockpitData() {
         try {
-            const resp = await fetch('/api/portfolio/history?hours=24');
+            const resp = await fetch('/api/journal/equity?hours=720');
             const data = await resp.json();
             if (!_cockpitSeries) return;
 
-            if (!data.length) {
+            if (!data.points || !data.points.length) {
                 _cockpitSeries.setData([]);
                 return;
             }
 
             const seen = new Set();
             const points = [];
-            for (const d of data) {
-                const ts = d.snapshot_at;
+            for (const p of data.points) {
+                const ts = p.snapshot_at;
                 const t = Math.floor(new Date(ts + (ts.endsWith('Z') || ts.includes('+') ? '' : 'Z')).getTime() / 1000);
-                const v = parseFloat(d.total_usd);
+                const v = parseFloat(p.total_usd);
                 if (!seen.has(t) && !isNaN(t) && isFinite(v)) {
                     seen.add(t);
                     points.push({ time: t, value: v });

@@ -52,16 +52,22 @@ const Heatmap = (() => {
         }
 
         // Summary stats
-        const changes = _data.assets.map(a => parseFloat(a.change_24h));
-        const avgChange = changes.reduce((s, v) => s + v, 0) / changes.length;
+        const volumeAssets = _data.assets.filter(a => !a.top_gainer);
+        const gainerAssets = _data.assets.filter(a => a.top_gainer);
+        const changes = volumeAssets.map(a => parseFloat(a.change_24h));
+        const avgChange = changes.length ? changes.reduce((s, v) => s + v, 0) / changes.length : 0;
         const positive = changes.filter(c => c > 0).length;
         const negative = changes.filter(c => c < 0).length;
+        const gainerInfo = gainerAssets.length
+            ? `<span class="text-yellow-400">\u{1F525} ${gainerAssets.length} pump${gainerAssets.length > 1 ? 's' : ''} 24h</span>`
+            : '';
 
         let summaryHtml = `
-        <div class="flex gap-4 mb-3 text-sm">
+        <div class="flex flex-wrap gap-4 mb-3 text-sm">
             <span class="text-gray-400">Moyenne: <span class="${avgChange >= 0 ? 'pnl-positive' : 'pnl-negative'} font-bold">${avgChange >= 0 ? '+' : ''}${avgChange.toFixed(2)}%</span></span>
             <span class="pnl-positive">${positive} en hausse</span>
             <span class="pnl-negative">${negative} en baisse</span>
+            ${gainerInfo}
         </div>`;
 
         // Build tiles
@@ -84,12 +90,20 @@ const Heatmap = (() => {
         const textColor = Math.abs(change) > 3 ? '#fff' : (Math.abs(change) > 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)');
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
         const price = Utils.fmtPrice(asset.price);
+        const isGainer = asset.top_gainer;
+        const gainerClass = isGainer ? ' heatmap-top-gainer' : '';
+        const gainerBadge = isGainer ? `<span class="heatmap-gainer-badge">\u{1F525}</span>` : '';
+        const change24h = isGainer ? parseFloat(asset.change_24h_pct) : null;
+        const subtitle = isGainer && change24h !== null
+            ? `<div class="text-xs opacity-50" style="color:${textColor}">24h: +${change24h.toFixed(0)}%</div>`
+            : '';
 
         return `
-        <div class="heatmap-tile" style="background:${bgColor}" title="${asset.symbol} — ${price}">
-            <div class="font-bold text-sm" style="color:${textColor}">${asset.base_asset}</div>
+        <div class="heatmap-tile${gainerClass}" style="background:${bgColor}" title="${asset.symbol} — ${price}${isGainer ? ' — Top Gainer 24h' : ''}">
+            <div class="font-bold text-sm" style="color:${textColor}">${gainerBadge}${asset.base_asset}</div>
             <div class="text-xs tabular-nums font-semibold" style="color:${textColor}">${changeStr}</div>
             <div class="text-xs tabular-nums opacity-60" style="color:${textColor}">${price}</div>
+            ${subtitle}
         </div>`;
     }
 

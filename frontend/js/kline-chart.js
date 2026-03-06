@@ -623,10 +623,10 @@ const KlineChart = (() => {
             _renderLevelLines();
             _renderAlertLines();
 
-            // Show last ~100 candles with 1/4 empty space on the right
+            // Show last ~360 candles with 1/14 empty space on the right
             const total = candles.length;
-            const visible = Math.min(total, 100);
-            const rightPad = Math.round(visible / 4);
+            const visible = Math.min(total, 360);
+            const rightPad = Math.round(visible / 13);
             _mainChart.timeScale().setVisibleLogicalRange({
                 from: total - visible,
                 to: total - 1 + rightPad,
@@ -773,7 +773,8 @@ const KlineChart = (() => {
                     color = 'rgba(239,83,80,';    // warm red
                 }
 
-                const cycleCandles = candles.filter(cd => cd.time >= openTs && cd.time <= closeTs);
+                const intSec = (_intervalMs[_interval] || 900000) / 1000;
+                const cycleCandles = candles.filter(cd => cd.time + intSec > openTs && cd.time <= closeTs);
                 if (!cycleCandles.length) return;
 
                 // Add padding above candle highs so area visibly exceeds them
