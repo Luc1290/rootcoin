@@ -65,7 +65,26 @@ async def open_preview(symbol: str = Query(...)):
         ticker = await client.get_symbol_ticker(symbol=symbol)
         current_price = Decimal(ticker["price"])
 
-        notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
+        naive_notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
+
+        # Query max borrow for both sides to show accurate limits
+        base_asset = symbol.replace("USDC", "").replace("USDT", "")
+        max_borrow_usdc = Decimal("0")
+        max_borrow_base = Decimal("0")
+        try:
+            info_usdc = await client.get_max_margin_loan(asset="USDC")
+            max_borrow_usdc = Decimal(str(info_usdc.get("amount", "0")))
+        except Exception:
+            pass
+        try:
+            info_base = await client.get_max_margin_loan(asset=base_asset)
+            max_borrow_base = Decimal(str(info_base.get("amount", "0")))
+        except Exception:
+            pass
+
+        long_notional = min(naive_notional, (usdc_free + max_borrow_usdc) * OPEN_SAFETY)
+        short_notional = min(naive_notional, max_borrow_base * current_price * OPEN_SAFETY)
+        notional = max(long_notional, short_notional)
         max_qty = round_quantity(symbol, notional / current_price)
 
         return {
@@ -105,7 +124,19 @@ async def open_position(body: OpenBody):
             ticker = await client.get_symbol_ticker(symbol=symbol)
             price = Decimal(ticker["price"])
 
-        notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
+        # Query Binance max borrow to cap quantity
+        base_asset = symbol.replace("USDC", "").replace("USDT", "")
+        borrow_asset = base_asset if side == "SHORT" else "USDC"
+        max_borrow_info = await client.get_max_margin_loan(asset=borrow_asset)
+        max_borrow = Decimal(str(max_borrow_info.get("amount", "0")))
+
+        naive_notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
+        if side == "SHORT":
+            max_borrow_notional = max_borrow * price * OPEN_SAFETY
+        else:
+            max_borrow_notional = (usdc_free + max_borrow) * OPEN_SAFETY
+
+        notional = min(naive_notional, max_borrow_notional)
         qty = round_quantity(symbol, notional / price)
         if body.price:
             price = round_price(symbol, price)

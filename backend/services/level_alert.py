@@ -133,9 +133,9 @@ async def _check_custom_alerts(symbol: str, prev: Decimal, price: Decimal):
         if alert.symbol != symbol:
             continue
         tp = alert.target_price
-        if alert.direction == "above" and prev < tp <= price:
+        if alert.direction == "above" and prev < tp and price >= tp:
             triggered_ids.append(alert)
-        elif alert.direction == "below" and prev > tp >= price:
+        elif alert.direction == "below" and prev > tp and price <= tp:
             triggered_ids.append(alert)
 
     for alert in triggered_ids:
@@ -145,7 +145,25 @@ async def _check_custom_alerts(symbol: str, prev: Decimal, price: Decimal):
             symbol, price, alert.target_price, alert.direction, alert.note,
         ))
         asyncio.create_task(_deactivate_alert(alert.id))
+        asyncio.create_task(_broadcast_alert_triggered(alert, price))
         _custom_alerts.remove(alert)
+
+
+async def _broadcast_alert_triggered(alert, price: Decimal):
+    try:
+        from backend.routes.ws_dashboard import _broadcast
+        await _broadcast({
+            "type": "alert_triggered",
+            "data": {
+                "id": alert.id,
+                "symbol": alert.symbol,
+                "target_price": str(alert.target_price),
+                "direction": alert.direction,
+                "price": str(price),
+            },
+        })
+    except Exception:
+        pass
 
 
 async def _deactivate_alert(alert_id: int):

@@ -130,5 +130,12 @@ const Alerts = (() => {
         } catch { /* ignore */ }
     }
 
+    WS.on('alert_triggered', (data) => {
+        if (data.symbol === _currentSymbol) {
+            load();
+            if (typeof App !== 'undefined') App.toast(`Alerte ${data.direction === 'above' ? '↑' : '↓'} ${Utils.fmtPrice(data.target_price)} atteinte`, 'info');
+        }
+    });
+
     return { init, load, setSymbol, getAlerts, remove };
 })();
