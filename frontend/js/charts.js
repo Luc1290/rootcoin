@@ -432,7 +432,7 @@ const Charts = (() => {
         if (!_marketSeries) return null;
 
         try {
-            const resp = await fetch(`/api/klines/${symbol}?interval=1m&limit=1440&indicators=`);
+            const resp = await fetch(`/api/klines/${symbol}?interval=1m&limit=1440`);
             const data = await resp.json();
             const klines = data.klines || [];
 

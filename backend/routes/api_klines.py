@@ -23,7 +23,7 @@ async def get_symbols():
 async def get_klines(
     symbol: str,
     interval: str = Query("1h"),
-    limit: int = Query(500, le=1000),
+    limit: int = Query(500, le=1500),
     indicators: str = Query("ma,volume"),
 ):
     if interval not in kline_manager.VALID_INTERVALS:
