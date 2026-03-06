@@ -57,24 +57,27 @@ const KlineChart = (() => {
         text: '#6b7280',
         grid: 'rgba(255, 255, 255, 0.03)',
         border: 'rgba(255, 255, 255, 0.06)',
-        upCandle: '#22c55e',
-        downCandle: '#ef4444',
-        volUp: 'rgba(34, 197, 94, 0.35)',
-        volDown: 'rgba(239, 68, 68, 0.35)',
+        // TradingView-style palette
+        upCandle: '#26a69a',
+        downCandle: '#ef5350',
+        wickUp: '#4db6ac',
+        wickDown: '#e57373',
+        volUp: 'rgba(38, 166, 154, 0.3)',
+        volDown: 'rgba(239, 83, 80, 0.3)',
         ma7: '#fbbf24',
         ma25: '#60a5fa',
         ma99: '#a78bfa',
-        bb: 'rgba(167, 139, 250, 0.5)',
+        bb: 'rgba(167, 139, 250, 0.4)',
         rsi: '#fbbf24',
         obv: '#22d3ee',
         macdLine: '#60a5fa',
         macdSignal: '#fbbf24',
-        macdHistUp: 'rgba(34,197,94,0.45)',
-        macdHistDown: 'rgba(239,68,68,0.45)',
-        bsBuy: 'rgba(34,197,94,0.5)',
-        bsSell: 'rgba(239,68,68,0.5)',
-        buy: '#22c55e',
-        sell: '#ef4444',
+        macdHistUp: 'rgba(38,166,154,0.5)',
+        macdHistDown: 'rgba(239,83,80,0.5)',
+        bsBuy: 'rgba(38,166,154,0.5)',
+        bsSell: 'rgba(239,83,80,0.5)',
+        buy: '#26a69a',
+        sell: '#ef5350',
     };
 
     function init() {
@@ -157,7 +160,7 @@ const KlineChart = (() => {
         _candleSeries = _mainChart.addCandlestickSeries({
             upColor: C.upCandle, downColor: C.downCandle,
             borderVisible: false,
-            wickUpColor: C.upCandle, wickDownColor: C.downCandle,
+            wickUpColor: C.wickUp, wickDownColor: C.wickDown,
         });
 
         // Floating % label next to crosshair
@@ -277,8 +280,8 @@ const KlineChart = (() => {
             color: C.rsi, lineWidth: 1.5,
             lastValueVisible: true, priceLineVisible: false,
         });
-        _rsiSeries.createPriceLine({ price: 70, color: 'rgba(239,68,68,0.3)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true });
-        _rsiSeries.createPriceLine({ price: 30, color: 'rgba(34,197,94,0.3)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true });
+        _rsiSeries.createPriceLine({ price: 70, color: 'rgba(239,83,80,0.3)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true });
+        _rsiSeries.createPriceLine({ price: 30, color: 'rgba(38,166,154,0.3)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true });
 
         _syncTimeScales(_mainChart, _rsiChart);
         _registerChart(_rsiChart, _rsiSeries, 'rsi');
@@ -620,12 +623,13 @@ const KlineChart = (() => {
             _renderLevelLines();
             _renderAlertLines();
 
-            // Show last ~100 candles with small right margin
+            // Show last ~100 candles with 1/4 empty space on the right
             const total = candles.length;
             const visible = Math.min(total, 100);
+            const rightPad = Math.round(visible / 4);
             _mainChart.timeScale().setVisibleLogicalRange({
                 from: total - visible,
-                to: total - 1 + 8,
+                to: total - 1 + rightPad,
             });
 
             // Position entry overlays after chart is laid out
@@ -764,9 +768,9 @@ const KlineChart = (() => {
                 if (c.is_active) {
                     color = 'rgba(99,179,255,';   // bright blue
                 } else if (c.realized_pnl && parseFloat(c.realized_pnl) > 0) {
-                    color = 'rgba(34,197,94,';    // green
+                    color = 'rgba(38,166,154,';   // teal
                 } else {
-                    color = 'rgba(239,68,68,';    // red
+                    color = 'rgba(239,83,80,';    // warm red
                 }
 
                 const cycleCandles = candles.filter(cd => cd.time >= openTs && cd.time <= closeTs);
@@ -845,7 +849,7 @@ const KlineChart = (() => {
                 if (pos.sl_price) {
                     _orderPriceLines.push(_candleSeries.createPriceLine({
                         price: parseFloat(pos.sl_price),
-                        color: '#ef4444',
+                        color: C.sell,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
@@ -855,7 +859,7 @@ const KlineChart = (() => {
                 if (pos.tp_price) {
                     _orderPriceLines.push(_candleSeries.createPriceLine({
                         price: parseFloat(pos.tp_price),
-                        color: '#22c55e',
+                        color: C.buy,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
@@ -921,7 +925,7 @@ const KlineChart = (() => {
             const above = price >= cp;
             const color = lvl.type === 'PP'
                 ? 'rgba(59,130,246,0.5)'
-                : above ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.5)';
+                : above ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
             _levelPriceLines.push(_candleSeries.createPriceLine({
                 price,
                 color,
