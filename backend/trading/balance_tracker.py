@@ -17,6 +17,8 @@ log = structlog.get_logger()
 _snapshot_task: asyncio.Task | None = None
 _debounce_task: asyncio.Task | None = None
 _DEBOUNCE_DELAY = 3
+_SKIP_THRESHOLD = Decimal("0.10")
+_last_total_usd: Decimal | None = None
 
 
 async def start():
@@ -124,6 +126,17 @@ async def _take_full_snapshot():
 
     if records:
         await _fill_usd_values(records)
+
+        global _last_total_usd
+        current_total = sum(
+            (r.usd_value for r in records if r.usd_value is not None),
+            Decimal("0"),
+        )
+        if _last_total_usd is not None and abs(current_total - _last_total_usd) < _SKIP_THRESHOLD:
+            log.debug("balance_snapshot_skipped", total=str(current_total))
+            return
+        _last_total_usd = current_total
+
         async with async_session() as session:
             session.add_all(records)
             await session.commit()

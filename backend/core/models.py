@@ -154,6 +154,20 @@ class OpportunityRecord(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
+class PriceAlert(Base):
+    __tablename__ = "price_alerts"
+    __table_args__ = (Index("ix_price_alerts_active", "is_active"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    target_price: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    direction: Mapped[str] = mapped_column(String, nullable=False)  # "above" or "below"
+    note: Mapped[str | None] = mapped_column(String)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
 class TradeSnapshot(Base):
     __tablename__ = "trade_snapshots"
     __table_args__ = (

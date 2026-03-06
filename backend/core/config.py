@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     ignored_assets: str = "BNB"
     default_watchlist: str = "BTCUSDC,ETHUSDC,BNBUSDC"
 
-    balance_snapshot_interval: int = 300
+    balance_snapshot_interval: int = 60
     price_record_interval: int = 60
     port: int = 8001
     price_retention_days: int = 30

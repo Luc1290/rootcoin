@@ -70,10 +70,12 @@ def evaluate(analysis: dict, symbol: str) -> dict:
     # Extract retest price + type from conditions if any
     retest_price = None
     retest_type = None
+    retest_met = False
     for c in conditions:
         if c.get("_retest_price"):
             retest_price = str(c["_retest_price"])
             retest_type = c.get("_retest_type")
+            retest_met = c["met"]
             break
 
     return {
@@ -84,6 +86,7 @@ def evaluate(analysis: dict, symbol: str) -> dict:
         "summary": summary,
         "retest_price": retest_price,
         "retest_type": retest_type,
+        "retest_met": retest_met,
     }
 
 

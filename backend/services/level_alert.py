@@ -1,9 +1,13 @@
 import asyncio
 import time
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
+from sqlalchemy import select
 
+from backend.core.database import async_session
+from backend.core.models import PriceAlert
 from backend.exchange import ws_manager
 from backend.exchange.ws_manager import EVENT_PRICE_UPDATE
 from backend.market import market_analyzer
@@ -29,8 +33,14 @@ _last_prices: dict[str, Decimal] = {}
 _cooldowns: dict[tuple[str, str], float] = {}
 _symbol_last_alert: dict[str, float] = {}
 
+# Custom price alerts loaded from DB, refreshed periodically
+_custom_alerts: list[PriceAlert] = []
+_custom_last_refresh: float = 0
+_CUSTOM_REFRESH_INTERVAL = 30  # reload from DB every 30s
+
 
 async def start():
+    await _refresh_custom_alerts()
     ws_manager.on(EVENT_PRICE_UPDATE, _on_price)
     log.info("level_alert_started")
 
@@ -38,18 +48,30 @@ async def start():
 async def stop():
     _last_prices.clear()
     _cooldowns.clear()
+    _custom_alerts.clear()
     log.info("level_alert_stopped")
 
 
-async def _on_price(msg: dict):
-    if not telegram_notifier.is_levels_enabled():
-        return
+async def _refresh_custom_alerts():
+    global _custom_alerts, _custom_last_refresh
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                select(PriceAlert).where(PriceAlert.is_active == True)
+            )
+            _custom_alerts = list(result.scalars().all())
+            # Detach from session
+            for a in _custom_alerts:
+                session.expunge(a)
+        _custom_last_refresh = time.monotonic()
+    except Exception:
+        log.error("custom_alerts_refresh_failed", exc_info=True)
 
+
+async def _on_price(msg: dict):
     symbol = msg.get("s", "")
     price_str = msg.get("c", "")
     if not symbol or not price_str:
-        return
-    if ALERT_SYMBOLS and symbol not in ALERT_SYMBOLS:
         return
 
     try:
@@ -61,6 +83,16 @@ async def _on_price(msg: dict):
 
     prev = _last_prices.get(symbol)
     _last_prices[symbol] = price
+
+    # Check custom price alerts for ALL symbols (no ALERT_SYMBOLS filter)
+    if prev is not None:
+        await _check_custom_alerts(symbol, prev, price)
+
+    # Existing level alerts only for allowed symbols
+    if not telegram_notifier.is_levels_enabled():
+        return
+    if ALERT_SYMBOLS and symbol not in ALERT_SYMBOLS:
+        return
     if prev is None:
         return
 
@@ -89,6 +121,43 @@ async def _on_price(msg: dict):
 
         if was_outside and is_inside:
             _try_alert(symbol, price, level)
+
+
+async def _check_custom_alerts(symbol: str, prev: Decimal, price: Decimal):
+    now = time.monotonic()
+    if now - _custom_last_refresh > _CUSTOM_REFRESH_INTERVAL:
+        await _refresh_custom_alerts()
+
+    triggered_ids = []
+    for alert in _custom_alerts:
+        if alert.symbol != symbol:
+            continue
+        tp = alert.target_price
+        if alert.direction == "above" and prev < tp <= price:
+            triggered_ids.append(alert)
+        elif alert.direction == "below" and prev > tp >= price:
+            triggered_ids.append(alert)
+
+    for alert in triggered_ids:
+        log.info("custom_price_alert_triggered", symbol=symbol,
+                 target=str(alert.target_price), direction=alert.direction)
+        asyncio.create_task(telegram_notifier.notify_price_alert(
+            symbol, price, alert.target_price, alert.direction, alert.note,
+        ))
+        asyncio.create_task(_deactivate_alert(alert.id))
+        _custom_alerts.remove(alert)
+
+
+async def _deactivate_alert(alert_id: int):
+    try:
+        async with async_session() as session:
+            alert = await session.get(PriceAlert, alert_id)
+            if alert:
+                alert.is_active = False
+                alert.triggered_at = datetime.now(timezone.utc)
+                await session.commit()
+    except Exception:
+        log.error("deactivate_alert_failed", alert_id=alert_id, exc_info=True)
 
 
 def _try_alert(symbol: str, price: Decimal, level: dict):

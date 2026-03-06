@@ -464,6 +464,22 @@ async def _send_periodic_summary():
 # ── Level notifications ───────────────────────────────────────
 
 
+async def notify_price_alert(
+    symbol: str, price: Decimal, target_price: Decimal, direction: str, note: str | None,
+):
+    if not is_levels_enabled():
+        return
+    arrow = "\u2b06\ufe0f" if direction == "above" else "\u2b07\ufe0f"
+    label = "au-dessus" if direction == "above" else "en-dessous"
+    lines = [
+        f"{arrow} <b>{symbol}</b> alerte prix atteinte",
+        f"Prix: {_fp(price)} ({label} de {_fp(target_price)})",
+    ]
+    if note:
+        lines.append(f"Note: {note}")
+    await notify("\n".join(lines))
+
+
 async def notify_level_reached(
     symbol: str, price: Decimal, level_price: str, level_type: str, label: str,
 ):

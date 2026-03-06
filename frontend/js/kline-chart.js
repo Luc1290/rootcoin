@@ -36,6 +36,7 @@ const KlineChart = (() => {
     const _observers = [];
     let _orderPriceLines = [];
     let _levelPriceLines = [];
+    let _alertPriceLines = [];
     let _cachedPositions = null;
     let _cachedAnalysis = null;
     let _lastCandleTime = null;
@@ -594,9 +595,10 @@ const KlineChart = (() => {
                 _clearCycles();
             }
 
-            // Order + Level overlay lines
+            // Order + Level + Alert overlay lines
             _renderOrderLines();
             _renderLevelLines();
+            _renderAlertLines();
 
             // Show last ~150 candles with 1/4 empty space on the right
             const total = candles.length;
@@ -1090,6 +1092,27 @@ const KlineChart = (() => {
         if (_activeIndicators.has('levels')) _renderLevelLines();
     }
 
+    // ── Custom alert price lines ───────────────────────────
+    function _renderAlertLines() {
+        _alertPriceLines.forEach(l => _candleSeries.removePriceLine(l));
+        _alertPriceLines = [];
+        if (!_candleSeries || typeof Alerts === 'undefined') return;
+        const alerts = Alerts.getAlerts();
+        for (const a of alerts) {
+            if (a.symbol !== _symbol) continue;
+            const price = parseFloat(a.target_price);
+            if (!price) continue;
+            _alertPriceLines.push(_candleSeries.createPriceLine({
+                price,
+                color: a.direction === 'above' ? 'rgba(59, 130, 246, 0.8)' : 'rgba(251, 146, 60, 0.8)',
+                lineWidth: 2,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                axisLabelVisible: true,
+                title: `🔔 ${a.direction === 'above' ? '↑' : '↓'}`,
+            }));
+        }
+    }
+
     WS.on('kline_update', Utils.throttleRAF(_onKlineUpdate));
     WS.on('positions_snapshot', _onPositionsSnapshot);
     WS.on('analysis_update', _onAnalysisUpdate);
@@ -1104,5 +1127,5 @@ const KlineChart = (() => {
         }
     });
 
-    return { init, loadChart };
+    return { init, loadChart, renderAlertLines: _renderAlertLines };
 })();

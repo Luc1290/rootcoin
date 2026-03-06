@@ -69,6 +69,7 @@ const Opportunities = (() => {
             const lvl = o.levels || {};
             const retestPrice = o.timing && o.timing.retest_price ? o.timing.retest_price : null;
             const retestType = o.timing && o.timing.retest_type ? o.timing.retest_type : null;
+            const retestMet = o.timing && o.timing.retest_met;
             const retestLabel = retestType === 'plancher' ? 'Attendre plancher ↓' : retestType === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
             let levelsHtml = '';
             if (lvl.entry) {
@@ -84,7 +85,7 @@ const Opportunities = (() => {
                 <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#ef4444;font-size:10px">${slPct.toFixed(2)}% ${slGain}$</span></span>
                 <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span> <span style="color:#22c55e;font-size:10px">+${tpPct.toFixed(2)}% +${tpGain}$</span></span>
                 ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span> <span style="color:#22c55e;font-size:10px">+${tp2Pct.toFixed(2)}% +${tp2Gain}$</span></span>` : ''}
-                ${retestPrice ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
+                ${retestPrice && !retestMet ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
                 <span class="opp-rr">R:R ${lvl.rr}</span>
             </div>`;
             }
@@ -118,7 +119,8 @@ const Opportunities = (() => {
             const chartContainerId = `${cid}-chart-${o.id}`;
             const lvl = o.levels || {};
 
-            const rp = o.timing && o.timing.retest_price ? parseFloat(o.timing.retest_price) : 0;
+            const rm = o.timing && o.timing.retest_met;
+            const rp = !rm && o.timing && o.timing.retest_price ? parseFloat(o.timing.retest_price) : 0;
             const rt = o.timing && o.timing.retest_type;
             const rl = rt === 'plancher' ? 'Attendre plancher ↓' : rt === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
             const chartId = MiniTradeChart.create(chartContainerId, {
@@ -259,6 +261,7 @@ const Opportunities = (() => {
 
             const retestPrice = o.timing && o.timing.retest_price ? o.timing.retest_price : null;
             const retestType = o.timing && o.timing.retest_type ? o.timing.retest_type : null;
+            const retestMet = o.timing && o.timing.retest_met;
             const retestLabel = retestType === 'plancher' ? 'Attendre plancher ↓' : retestType === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
             const timingStatus = o.timing ? o.timing.status : null;
             const timingTitle = timingStatus === 'ready' ? 'Entrer maintenant'
@@ -270,7 +273,7 @@ const Opportunities = (() => {
             let levelsLine = '';
             if (lvl.entry) {
                 levelsLine = `<span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span>`;
-                if (retestPrice) levelsLine += ` <span style="color:#f59e0b">${retestLabel} ${Utils.fmtPriceCompact(retestPrice)}</span>`;
+                if (retestPrice && !retestMet) levelsLine += ` <span style="color:#f59e0b">${retestLabel} ${Utils.fmtPriceCompact(retestPrice)}</span>`;
             }
 
             return `<div class="opp-compact-item ${dirClass}" data-opp-id="${o.id}">
@@ -303,7 +306,7 @@ const Opportunities = (() => {
                             const tp2P = e ? ((parseFloat(lvl.tp2) - e) / e * 100) : 0;
                             return `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> ${Utils.fmtPriceCompact(lvl.tp2)} <span style="font-size:10px;color:#22c55e">+${tp2P.toFixed(2)}% +${Math.round(POSITION_SIZE * tp2P / 100)}$</span></span>`;
                         })() : ''}
-                        ${retestPrice ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
+                        ${retestPrice && !retestMet ? `<span class="opp-lvl"><span style="color:#f59e0b">${retestLabel}</span> <span style="color:#f59e0b">${Utils.fmtPriceCompact(retestPrice)}</span></span>` : ''}
                         ${rrVal ? `<span class="opp-rr">R:R ${rrVal.toFixed(1)}</span>` : ''}
                     </div>` : ''}
             </div>`;
@@ -324,7 +327,8 @@ const Opportunities = (() => {
                 const chartContainerId = `${cid}-chart-${o.id}`;
                 const lvl = o.levels || {};
                 const newCharts = {};
-                const rp = o.timing && o.timing.retest_price ? parseFloat(o.timing.retest_price) : 0;
+                const rm2 = o.timing && o.timing.retest_met;
+                const rp = !rm2 && o.timing && o.timing.retest_price ? parseFloat(o.timing.retest_price) : 0;
                 const rt = o.timing && o.timing.retest_type;
                 const rl = rt === 'plancher' ? 'Attendre plancher ↓' : rt === 'plafond' ? 'Attendre plafond ↑' : 'Retest';
                 const chartId = MiniTradeChart.create(chartContainerId, {

@@ -599,6 +599,124 @@ const Positions = (() => {
         await apiPost(`/api/positions/${id}/cancel-orders`, {}, 'Ordres annules');
     }
 
+    // --- Open position modal ---
+
+    let _openSide = 'LONG';
+    let _openPreview = null;
+
+    function showOpen() {
+        _openSide = 'LONG';
+        _openPreview = null;
+        showModal('Ouvrir une position', `
+            <div class="mb-3">
+                <input id="open-symbol" type="text" placeholder="Symbole (ex: BTCUSDC)"
+                    class="w-full rounded px-3 py-3 text-base uppercase"
+                    oninput="Positions._previewOpen()">
+            </div>
+            <div class="flex gap-1 mb-3" id="open-side-toggle">
+                <button type="button" class="open-side-btn active flex-1 text-sm py-2 rounded font-medium bg-emerald-600"
+                    data-side="LONG" onclick="Positions._setSide('LONG')">LONG</button>
+                <button type="button" class="open-side-btn flex-1 text-sm py-2 rounded font-medium bg-gray-700"
+                    data-side="SHORT" onclick="Positions._setSide('SHORT')">SHORT</button>
+            </div>
+            <div class="mb-3">
+                <input id="open-price" type="number" step="any" placeholder="Prix (vide = Market)"
+                    class="w-full rounded px-3 py-3 text-base"
+                    oninput="Positions._previewOpen()">
+            </div>
+            <div id="open-preview" class="text-sm text-gray-400 text-center mb-4">
+                Entrez un symbole pour voir le preview
+            </div>
+            <div class="flex gap-2">
+                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button id="open-submit-btn" onclick="Positions.submitOpen()" class="action-btn bg-emerald-600 flex-1" disabled style="opacity:0.5">Ouvrir</button>
+            </div>
+        `);
+    }
+
+    function _setSide(side) {
+        _openSide = side;
+        const toggle = document.getElementById('open-side-toggle');
+        if (!toggle) return;
+        toggle.querySelectorAll('.open-side-btn').forEach(btn => {
+            const active = btn.dataset.side === side;
+            btn.classList.toggle('active', active);
+            btn.className = `open-side-btn flex-1 text-sm py-2 rounded font-medium ${
+                active ? (side === 'LONG' ? 'bg-emerald-600' : 'bg-red-600') : 'bg-gray-700'
+            }`;
+        });
+    }
+
+    let _previewTimer = null;
+
+    function _previewOpen() {
+        clearTimeout(_previewTimer);
+        _previewTimer = setTimeout(_fetchPreview, 400);
+    }
+
+    async function _fetchPreview() {
+        const symbolInput = document.getElementById('open-symbol');
+        const previewEl = document.getElementById('open-preview');
+        const submitBtn = document.getElementById('open-submit-btn');
+        if (!symbolInput || !previewEl) return;
+
+        const symbol = symbolInput.value.trim().toUpperCase();
+        if (symbol.length < 5) {
+            previewEl.textContent = 'Entrez un symbole pour voir le preview';
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.style.opacity = '0.5'; }
+            _openPreview = null;
+            return;
+        }
+
+        previewEl.innerHTML = '<span class="text-gray-500">Chargement...</span>';
+        try {
+            const resp = await fetch(`/api/positions/open/preview?symbol=${encodeURIComponent(symbol)}`);
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || 'Erreur');
+            }
+            const data = await resp.json();
+            _openPreview = data;
+
+            const priceInput = document.getElementById('open-price');
+            const usePrice = priceInput && priceInput.value ? priceInput.value : data.current_price;
+            const notional = parseFloat(data.usdc_free) * 5 * 0.98;
+            const qty = notional / parseFloat(usePrice);
+
+            previewEl.innerHTML = `
+                <div class="space-y-1">
+                    <div class="flex justify-between"><span class="text-gray-500">USDC dispo (cross)</span><span class="text-white font-medium">$${parseFloat(data.usdc_free).toFixed(2)}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Prix courant</span><span class="text-white font-medium">${Utils.fmtPrice(parseFloat(data.current_price))}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Leverage</span><span class="text-white font-medium">x${data.leverage}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Notionnel (x5 × 0.98)</span><span class="text-blue-400 font-medium">$${notional.toFixed(2)}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Quantite max</span><span class="text-emerald-400 font-medium">${qty.toFixed(6)}</span></div>
+                </div>
+            `;
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; }
+        } catch (e) {
+            previewEl.innerHTML = `<span class="text-red-400">${e.message}</span>`;
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.style.opacity = '0.5'; }
+            _openPreview = null;
+        }
+    }
+
+    async function submitOpen() {
+        const symbolInput = document.getElementById('open-symbol');
+        const priceInput = document.getElementById('open-price');
+        if (!symbolInput) return;
+
+        const symbol = symbolInput.value.trim().toUpperCase();
+        if (!symbol) return;
+
+        const body = { symbol, side: _openSide };
+        if (priceInput && priceInput.value) {
+            body.price = priceInput.value;
+        }
+
+        const typeLabel = body.price ? 'LIMIT' : 'MARKET';
+        await apiPost('/api/positions/open', body, `${_openSide} ${symbol} ${typeLabel} place`);
+    }
+
     // Real-time updates
     WS.on('positions_snapshot', render);
     BalanceStore.onChange(() => {
@@ -638,5 +756,6 @@ const Positions = (() => {
         submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
         confirmCancelOrders, submitCancelOrders, selectClosePct,
         _setMode, _updateRisk, _updateRR, _fillLevel, getActiveSymbols,
+        showOpen, submitOpen, _setSide, _previewOpen,
     };
 })();
