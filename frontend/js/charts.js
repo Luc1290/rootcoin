@@ -350,7 +350,7 @@ const Charts = (() => {
 
     async function loadCockpitData() {
         try {
-            const resp = await fetch('/api/portfolio/history?hours=48&limit=2000');
+            const resp = await fetch('/api/portfolio/history?hours=24');
             const data = await resp.json();
             if (!_cockpitSeries) return;
 
@@ -432,7 +432,7 @@ const Charts = (() => {
         if (!_marketSeries) return null;
 
         try {
-            const resp = await fetch(`/api/klines/${symbol}?interval=15m&limit=96&indicators=`);
+            const resp = await fetch(`/api/klines/${symbol}?interval=1m&limit=1440&indicators=`);
             const data = await resp.json();
             const klines = data.klines || [];
 
