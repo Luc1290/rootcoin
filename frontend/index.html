@@ -189,71 +189,77 @@
 
         <!-- Chart view -->
         <div id="view-chart" class="view p-4 hidden">
-            <div class="flex items-center gap-2 mb-3">
-                <select id="chart-symbol" class="px-3 py-2.5 text-sm flex-1">
+            <!-- Toolbar -->
+            <div class="chart-toolbar">
+                <select id="chart-symbol" class="chart-toolbar-select">
                     <option value="BTCUSDC">BTCUSDC</option>
                     <option value="ETHUSDC">ETHUSDC</option>
                 </select>
+                <div id="chart-price-header" class="chart-price-header">
+                    <span id="chart-header-price" class="chart-header-price">--</span>
+                    <span id="chart-header-change" class="chart-header-change">--</span>
+                </div>
                 <span id="candle-countdown" class="candle-countdown"></span>
-                <div class="flex gap-1" id="chart-intervals">
-                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1m">1m</button>
-                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="5m">5m</button>
-                    <button class="chart-interval-btn active text-xs px-2.5 py-1.5 font-medium" data-interval="15m">15m</button>
-                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1h">1h</button>
-                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="4h">4h</button>
-                    <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-interval="1d">1d</button>
+                <div class="flex gap-0.5" id="chart-intervals">
+                    <button class="chart-interval-btn" data-interval="1m">1m</button>
+                    <button class="chart-interval-btn" data-interval="5m">5m</button>
+                    <button class="chart-interval-btn active" data-interval="15m">15m</button>
+                    <button class="chart-interval-btn" data-interval="1h">1h</button>
+                    <button class="chart-interval-btn" data-interval="4h">4h</button>
+                    <button class="chart-interval-btn" data-interval="1d">1d</button>
                 </div>
             </div>
-            <div class="flex items-center gap-1.5 mb-3 flex-wrap">
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="ma">MA</button>
-                <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="bb">BB</button>
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="volume">Vol</button>
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="rsi">RSI</button>
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="obv">OBV</button>
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="macd">MACD</button>
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="buy_sell">B/S</button>
-                <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="trades">Fills</button>
-                <button class="indicator-toggle active text-xs px-2.5 py-1.5 font-medium" data-ind="cycles">Cycles</button>
-                <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="orders">Orders</button>
-                <button class="indicator-toggle text-xs px-2.5 py-1.5 font-medium" data-ind="levels">Levels</button>
+            <div class="flex items-center gap-1 mb-2 flex-wrap">
+                <button class="indicator-toggle active" data-ind="ma">MA</button>
+                <button class="indicator-toggle" data-ind="bb">BB</button>
+                <button class="indicator-toggle active" data-ind="volume">Vol</button>
+                <button class="indicator-toggle active" data-ind="rsi">RSI</button>
+                <button class="indicator-toggle active" data-ind="obv">OBV</button>
+                <button class="indicator-toggle active" data-ind="macd">MACD</button>
+                <button class="indicator-toggle active" data-ind="buy_sell">B/S</button>
+                <button class="indicator-toggle" data-ind="trades">Fills</button>
+                <button class="indicator-toggle active" data-ind="cycles">Cycles</button>
+                <button class="indicator-toggle" data-ind="orders">Orders</button>
+                <button class="indicator-toggle" data-ind="levels">Levels</button>
             </div>
-            <!-- Price Alerts -->
-            <div id="chart-alerts-panel" class="mb-3 p-3 rounded-lg bg-gray-900/50 border border-gray-800/50">
-                <div class="flex items-center gap-2 mb-2">
-                    <span class="text-xs font-medium text-gray-400">Alertes prix</span>
-                </div>
-                <div class="flex items-center gap-2 mb-2">
+            <!-- Price Alerts (collapsible) -->
+            <details id="chart-alerts-panel" class="mb-2">
+                <summary class="text-xs font-medium text-gray-500 cursor-pointer select-none py-1">Alertes prix</summary>
+                <div class="flex items-center gap-2 mt-1.5 mb-1.5">
                     <input id="alert-price-input" type="number" step="any" placeholder="Prix cible..."
-                           class="flex-1 px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none">
-                    <select id="alert-direction" class="px-2 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg">
+                           class="flex-1 px-3 py-1.5 text-sm bg-gray-800/80 border border-gray-700/50 rounded-md focus:border-blue-500 focus:outline-none">
+                    <select id="alert-direction" class="px-2 py-1.5 text-sm bg-gray-800/80 border border-gray-700/50 rounded-md">
                         <option value="auto">Auto</option>
                         <option value="above">Au-dessus</option>
                         <option value="below">En-dessous</option>
                     </select>
-                    <button id="alert-add-btn" class="px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 rounded-lg whitespace-nowrap">+ Alerte</button>
+                    <button id="alert-add-btn" class="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 rounded-md whitespace-nowrap">+ Alerte</button>
                 </div>
                 <div id="alert-list" class="space-y-1 text-xs"></div>
-            </div>
-            <div id="kline-chart-main" class="rounded-lg overflow-hidden" style="height:500px;width:100%"></div>
-            <div id="kline-wrap-volume" class="mt-4 hidden">
-                <div class="subchart-label">Volume</div>
-                <div id="kline-chart-volume" class="rounded-lg overflow-hidden" style="height:100px;width:100%"></div>
-            </div>
-            <div id="kline-wrap-buysell" class="mt-4 hidden">
-                <div class="subchart-label">Buy / Sell Pressure</div>
-                <div id="kline-chart-buysell" class="rounded-lg overflow-hidden" style="height:100px;width:100%"></div>
-            </div>
-            <div id="kline-wrap-rsi" class="mt-4 hidden">
-                <div class="subchart-label">RSI (14)</div>
-                <div id="kline-chart-rsi" class="rounded-lg overflow-hidden" style="height:120px;width:100%"></div>
-            </div>
-            <div id="kline-wrap-macd" class="mt-4 hidden">
-                <div class="subchart-label">MACD (12, 26, 9)</div>
-                <div id="kline-chart-macd" class="rounded-lg overflow-hidden" style="height:140px;width:100%"></div>
-            </div>
-            <div id="kline-wrap-obv" class="mt-4 hidden">
-                <div class="subchart-label">OBV</div>
-                <div id="kline-chart-obv" class="rounded-lg overflow-hidden" style="height:120px;width:100%"></div>
+            </details>
+            <!-- Chart stack -->
+            <div class="chart-stack">
+                <div id="kline-chart-main" class="overflow-hidden" style="height:500px;width:100%"></div>
+                <div id="kline-wrap-volume" class="hidden">
+                    <div class="subchart-label">Vol</div>
+                    <div id="kline-chart-volume" class="overflow-hidden" style="height:80px;width:100%"></div>
+                </div>
+                <div id="kline-wrap-buysell" class="hidden">
+                    <div class="subchart-label">B/S</div>
+                    <div id="kline-chart-buysell" class="overflow-hidden" style="height:80px;width:100%"></div>
+                </div>
+                <div id="kline-wrap-rsi" class="hidden">
+                    <div class="subchart-label">RSI</div>
+                    <div id="kline-chart-rsi" class="overflow-hidden" style="height:100px;width:100%"></div>
+                </div>
+                <div id="kline-wrap-macd" class="hidden">
+                    <div class="subchart-label">MACD</div>
+                    <div id="kline-chart-macd" class="overflow-hidden" style="height:110px;width:100%"></div>
+                </div>
+                <div id="kline-wrap-obv" class="hidden">
+                    <div class="subchart-label">OBV</div>
+                    <div id="kline-chart-obv" class="overflow-hidden" style="height:100px;width:100%"></div>
+                </div>
             </div>
         </div>
 

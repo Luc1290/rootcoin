@@ -54,25 +54,25 @@ const KlineChart = (() => {
 
     const C = {
         bg: 'transparent',
-        text: '#9ca3af',
-        grid: 'rgba(55, 65, 81, 0.3)',
-        border: '#374151',
+        text: '#6b7280',
+        grid: 'rgba(255, 255, 255, 0.03)',
+        border: 'rgba(255, 255, 255, 0.06)',
         upCandle: '#22c55e',
         downCandle: '#ef4444',
-        volUp: 'rgba(34, 197, 94, 0.4)',
-        volDown: 'rgba(239, 68, 68, 0.4)',
-        ma7: '#f59e0b',
-        ma25: '#3b82f6',
-        ma99: '#a855f7',
-        bb: 'rgba(167, 139, 250, 0.7)',
-        rsi: '#f59e0b',
-        obv: '#06b6d4',
-        macdLine: '#3b82f6',
-        macdSignal: '#f59e0b',
-        macdHistUp: 'rgba(34,197,94,0.5)',
-        macdHistDown: 'rgba(239,68,68,0.5)',
-        bsBuy: 'rgba(34,197,94,0.6)',
-        bsSell: 'rgba(239,68,68,0.6)',
+        volUp: 'rgba(34, 197, 94, 0.35)',
+        volDown: 'rgba(239, 68, 68, 0.35)',
+        ma7: '#fbbf24',
+        ma25: '#60a5fa',
+        ma99: '#a78bfa',
+        bb: 'rgba(167, 139, 250, 0.5)',
+        rsi: '#fbbf24',
+        obv: '#22d3ee',
+        macdLine: '#60a5fa',
+        macdSignal: '#fbbf24',
+        macdHistUp: 'rgba(34,197,94,0.45)',
+        macdHistDown: 'rgba(239,68,68,0.45)',
+        bsBuy: 'rgba(34,197,94,0.5)',
+        bsSell: 'rgba(239,68,68,0.5)',
         buy: '#22c55e',
         sell: '#ef4444',
     };
@@ -135,11 +135,15 @@ const KlineChart = (() => {
         return {
             width: 0,
             height: height,
-            layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11 },
+            layout: { background: { color: C.bg }, textColor: C.text, fontSize: 10 },
             grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-            rightPriceScale: { borderColor: C.border, minimumWidth: 70 },
-            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            rightPriceScale: { borderColor: C.border, minimumWidth: 60, scaleMargins: { top: 0.08, bottom: 0.08 } },
+            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: 3 },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+                vertLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#374151' },
+                horzLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#374151' },
+            },
         };
     }
 
@@ -249,7 +253,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-volume');
         if (!el) return;
 
-        _volChart = LightweightCharts.createChart(el, _chartOptions(100, false));
+        _volChart = LightweightCharts.createChart(el, _chartOptions(80, false));
         _volChart.applyOptions({ width: el.clientWidth });
 
         _volSeries = _volChart.addHistogramSeries({
@@ -266,7 +270,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-rsi');
         if (!el) return;
 
-        _rsiChart = LightweightCharts.createChart(el, _chartOptions(120, false));
+        _rsiChart = LightweightCharts.createChart(el, _chartOptions(100, false));
         _rsiChart.applyOptions({ width: el.clientWidth });
 
         _rsiSeries = _rsiChart.addLineSeries({
@@ -286,7 +290,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-obv');
         if (!el) return;
 
-        _obvChart = LightweightCharts.createChart(el, _chartOptions(120, false));
+        _obvChart = LightweightCharts.createChart(el, _chartOptions(100, false));
         _obvChart.applyOptions({ width: el.clientWidth });
 
         _obvSeries = _obvChart.addLineSeries({
@@ -304,7 +308,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-macd');
         if (!el) return;
 
-        _macdChart = LightweightCharts.createChart(el, _chartOptions(140, false));
+        _macdChart = LightweightCharts.createChart(el, _chartOptions(110, false));
         _macdChart.applyOptions({ width: el.clientWidth });
 
         _macdHistSeries = _macdChart.addHistogramSeries({
@@ -331,7 +335,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-buysell');
         if (!el) return;
 
-        _bsChart = LightweightCharts.createChart(el, _chartOptions(100, false));
+        _bsChart = LightweightCharts.createChart(el, _chartOptions(80, false));
         _bsChart.applyOptions({ width: el.clientWidth });
 
         _bsSeries = _bsChart.addHistogramSeries({
@@ -389,6 +393,19 @@ const KlineChart = (() => {
         for (const [id, ind] of Object.entries(ids)) {
             const el = document.getElementById(id);
             if (el) el.classList.toggle('hidden', !_activeIndicators.has(ind));
+        }
+    }
+
+    let _headerChange24h = null;
+    function _updatePriceHeader(price, change24h) {
+        if (change24h != null) _headerChange24h = change24h;
+        const priceEl = document.getElementById('chart-header-price');
+        const changeEl = document.getElementById('chart-header-change');
+        if (priceEl && price != null) priceEl.textContent = Utils.fmtPrice(price);
+        if (changeEl && _headerChange24h != null) {
+            const v = parseFloat(_headerChange24h);
+            changeEl.textContent = `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+            changeEl.className = 'chart-header-change ' + (v >= 0 ? 'pnl-positive' : 'pnl-negative');
         }
     }
 
@@ -465,6 +482,7 @@ const KlineChart = (() => {
             _candleSeries.setData(candles);
             _currentPrice = candles[candles.length - 1].close;
             _lastCandleTime = candles[candles.length - 1].time;
+            _updatePriceHeader(_currentPrice, null);
 
             // Cache kline data for live indicator computation
             _liveData = {
@@ -602,13 +620,12 @@ const KlineChart = (() => {
             _renderLevelLines();
             _renderAlertLines();
 
-            // Show last ~150 candles with 1/4 empty space on the right
+            // Show last ~100 candles with small right margin
             const total = candles.length;
-            const visible = Math.min(total, 150);
-            const rightPad = Math.round(visible / 3);
+            const visible = Math.min(total, 100);
             _mainChart.timeScale().setVisibleLogicalRange({
                 from: total - visible,
-                to: total - 1 + rightPad,
+                to: total - 1 + 8,
             });
 
             // Position entry overlays after chart is laid out
@@ -1060,6 +1077,7 @@ const KlineChart = (() => {
         }
 
         _currentPrice = parseFloat(data.close);
+        _updatePriceHeader(_currentPrice, null);
         _candleSeries.update({
             time: t,
             open: parseFloat(data.open),
@@ -1159,6 +1177,9 @@ const KlineChart = (() => {
     WS.on('kline_update', Utils.throttleRAF(_onKlineUpdate));
     WS.on('positions_snapshot', _onPositionsSnapshot);
     WS.on('analysis_update', _onAnalysisUpdate);
+    WS.on('price_update', msg => {
+        if (msg.symbol === _symbol) _updatePriceHeader(null, msg.change_24h);
+    });
 
     // Reload chart when page resumes from background (mobile)
     document.addEventListener('visibilitychange', () => {
