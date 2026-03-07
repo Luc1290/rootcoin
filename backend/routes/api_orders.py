@@ -14,6 +14,7 @@ async def get_open_orders(symbol: str = Query(None)):
         return [
             {
                 "orderId": o["orderId"],
+                "orderListId": o.get("orderListId", -1),
                 "symbol": o["symbol"],
                 "side": o["side"],
                 "type": o["type"],

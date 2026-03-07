@@ -128,6 +128,9 @@ async def build_prompt(symbol: str) -> str:
     # 6. News
     sections.append(_build_news_section())
 
+    # 7. Temporal context
+    sections.append(_build_temporal_section())
+
     sections.append(f"\nAnalyse {symbol} et donne ta recommandation de trade.")
 
     return "\n".join(sections)
@@ -333,4 +336,41 @@ def _build_news_section() -> str:
         source = item.get("source", "")
         category = item.get("category", "")
         lines.append(f"[{category}] {title} — {source}")
+    return "\n".join(lines)
+
+
+def _build_temporal_section() -> str:
+    now_utc = datetime.now(timezone.utc)
+    hour_utc = now_utc.hour
+    hour_paris = (hour_utc + 1) % 24  # CET (simplifié, +2 en été)
+    day = now_utc.weekday()  # 0=lundi
+    day_names = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+    # Market sessions (heures UTC)
+    sessions = []
+    if 0 <= hour_utc < 8:
+        sessions.append("session asiatique (volume faible, souvent range)")
+    if 7 <= hour_utc < 16:
+        sessions.append("session europeenne")
+    if 13 <= hour_utc < 21:
+        sessions.append("session US / Wall Street (volume max crypto)")
+    if 21 <= hour_utc or hour_utc < 1:
+        sessions.append("apres cloture US (volume en baisse)")
+
+    lines = ["\n=== CONTEXTE TEMPOREL ==="]
+    lines.append(f"Date/heure: {now_utc.strftime('%Y-%m-%d %H:%M')} UTC ({day_names[day]}, {hour_paris}h heure Paris)")
+    lines.append(f"Sessions actives: {', '.join(sessions)}")
+
+    if day >= 5:  # samedi/dimanche
+        lines.append("WEEKEND: volume crypto significativement reduit, faux breakouts frequents, prudence sur les niveaux")
+    elif day == 4 and hour_utc >= 20:
+        lines.append("VENDREDI SOIR: cloture positions avant weekend, volume en baisse, expiration options crypto possibles")
+    elif day == 0 and hour_utc < 8:
+        lines.append("LUNDI MATIN: ouverture semaine, gap CME Bitcoin potentiel a combler, volatilite possible")
+    elif day == 4 and 13 <= hour_utc < 21:
+        lines.append("VENDREDI SESSION US: attention expirations options, mouvements de cloture hebdo")
+
+    if 13 <= hour_utc < 14:
+        lines.append("OUVERTURE WALL STREET: volatilite elevee attendue dans les 30-60 prochaines minutes")
+
     return "\n".join(lines)

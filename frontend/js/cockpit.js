@@ -10,6 +10,14 @@ const Cockpit = (() => {
     let _marketSymbol = null;
     let _marketFirstPrice = null;
 
+    function _trailBadge(p) {
+        if (p.trailing === 'trailing') return '<span class="badge bg-purple-900/40 text-purple-400" style="font-size:9px;padding:1px 5px">TRAIL</span>';
+        if (p.trailing === 'watching') return '<span class="badge bg-gray-700/40 text-gray-400" style="font-size:9px;padding:1px 5px">TRAIL wait</span>';
+        if (p.trailing === 'override') return '<span class="badge bg-yellow-900/40 text-yellow-400" style="font-size:9px;padding:1px 5px">TRAIL off</span>';
+        if (p.trailing === 'naked') return '<span class="badge bg-red-900/50 text-red-400 animate-pulse" style="font-size:9px;padding:1px 5px">NAKED</span>';
+        return '<span class="badge bg-red-900/30 text-red-500" style="font-size:9px;padding:1px 5px">NO TRAIL</span>';
+    }
+
     function _cockpitStaleDot(priceAge) {
         if (priceAge == null) return '<span class="stale-dot stale"></span>';
         if (priceAge > 10) return '<span class="stale-dot stale"></span>';
@@ -182,7 +190,7 @@ const Cockpit = (() => {
                     <div class="flex items-center gap-2">
                         <span class="card-type-tag tag-position">Position</span>
                         <span class="text-sm font-bold">${sym}</span>
-                        <span class="cockpit-side side-${p.side.toLowerCase()}">${p.side}</span>
+                        <span class="cockpit-side side-${p.side.toLowerCase()}">${p.side}</span>${_trailBadge(p)}
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-400 tabular-nums" data-field="price">${Utils.fmtPriceCompact(p.current_price)}</span><span data-field="stale-dot">${_cockpitStaleDot(p.price_age)}</span>

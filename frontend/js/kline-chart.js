@@ -843,27 +843,52 @@ const KlineChart = (() => {
         _clearOrderLines();
         if (!_candleSeries || !_activeIndicators.has('orders')) return;
 
-        // Position SL/TP lines
+        // Position SL/TP lines with labels on the outside (away from current price)
         if (_cachedPositions) {
             const pos = _cachedPositions.find(p => p.symbol === _symbol);
             if (pos) {
+                const isShort = pos.side === 'SHORT';
                 if (pos.sl_price) {
+                    const slPrice = parseFloat(pos.sl_price);
+                    const labelOffset = slPrice * 0.0004;
+                    // SL: label outside = above for SHORT, below for LONG
+                    const labelPrice = isShort ? slPrice + labelOffset : slPrice - labelOffset;
                     _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: parseFloat(pos.sl_price),
+                        price: slPrice,
                         color: C.sell,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
+                        title: '',
+                    }));
+                    _orderPriceLines.push(_candleSeries.createPriceLine({
+                        price: labelPrice,
+                        color: 'transparent',
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: false,
                         title: 'SL',
                     }));
                 }
                 if (pos.tp_price) {
+                    const tpPrice = parseFloat(pos.tp_price);
+                    const labelOffset = tpPrice * 0.0004;
+                    // TP: label outside = below for SHORT, above for LONG
+                    const labelPrice = isShort ? tpPrice - labelOffset : tpPrice + labelOffset;
                     _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: parseFloat(pos.tp_price),
+                        price: tpPrice,
                         color: C.buy,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
+                        title: '',
+                    }));
+                    _orderPriceLines.push(_candleSeries.createPriceLine({
+                        price: labelPrice,
+                        color: 'transparent',
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Solid,
+                        axisLabelVisible: false,
                         title: 'TP',
                     }));
                 }
@@ -893,14 +918,20 @@ const KlineChart = (() => {
             const resp = await fetch(`/api/orders/open?symbol=${_symbol}`);
             if (resp.ok) {
                 const orders = await resp.json();
-                // Filter out orders linked to existing positions (SL/TP)
+                // Filter out orders linked to existing positions (SL/TP/OCO)
                 const posOrderIds = new Set();
+                const posOcoListIds = new Set();
                 if (_cachedPositions) {
                     for (const p of _cachedPositions) {
-                        if (p.orders) p.orders.forEach(o => posOrderIds.add(String(o.binance_order_id)));
+                        if (p.sl_order_id) posOrderIds.add(String(p.sl_order_id));
+                        if (p.tp_order_id) posOrderIds.add(String(p.tp_order_id));
+                        if (p.oco_order_list_id) posOcoListIds.add(String(p.oco_order_list_id));
                     }
                 }
-                _pendingOrders = orders.filter(o => !posOrderIds.has(String(o.orderId)));
+                _pendingOrders = orders.filter(o =>
+                    !posOrderIds.has(String(o.orderId)) &&
+                    !(o.orderListId && o.orderListId !== -1 && posOcoListIds.has(String(o.orderListId)))
+                );
             }
         } catch { /* ignore */ }
     }

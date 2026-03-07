@@ -122,6 +122,19 @@ const PositionCards = (() => {
             badges.push('<span class="badge bg-blue-900/40 text-blue-400">OCO</span>');
         }
         if (hasOrders) badges.push(`<button class="badge bg-orange-900/40 text-orange-400 cursor-pointer hover:bg-orange-800/50 transition-colors" onclick="Positions.confirmCancelOrders(${p.id})">&#x2715;</button>`);
+
+        if (p.trailing === 'trailing') {
+            badges.push('<span class="badge bg-purple-900/40 text-purple-400">TRAIL</span>');
+        } else if (p.trailing === 'watching') {
+            badges.push('<span class="badge bg-gray-700/40 text-gray-400">TRAIL wait</span>');
+        } else if (p.trailing === 'override') {
+            badges.push('<span class="badge bg-yellow-900/40 text-yellow-400">TRAIL off</span>');
+        } else if (p.trailing === 'naked') {
+            badges.push('<span class="badge bg-red-900/50 text-red-400 animate-pulse">NAKED</span>');
+        } else if (!p.trailing) {
+            badges.push('<span class="badge bg-red-900/30 text-red-500">NO TRAIL</span>');
+        }
+
         return badges.join('');
     }
 

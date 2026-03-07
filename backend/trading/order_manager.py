@@ -15,7 +15,7 @@ from backend.exchange.symbol_filters import round_price, round_quantity, validat
 log = structlog.get_logger()
 
 SL_PRICE_OFFSET = Decimal("0.001")
-TP_PRICE_OFFSET = Decimal("0.001")
+TP_PRICE_OFFSET = Decimal("0.0002")
 # Buffer added to SHORT close BUY qty so net received (after commission)
 # exceeds the debt.  Prevents Binance AUTO_REPAY 90 % fallback.
 SHORT_CLOSE_FEE_BUFFER = Decimal("0.0015")
@@ -185,15 +185,20 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict
 
     if pos.side == "LONG":
         sl_limit = round_price(pos.symbol, sl_price * (1 - SL_PRICE_OFFSET))
-        tp_limit = round_price(pos.symbol, tp_price * (1 - TP_PRICE_OFFSET))
     else:
         sl_limit = round_price(pos.symbol, sl_price * (1 + SL_PRICE_OFFSET))
+
+    # Margin LIMIT_MAKER: no TP offset needed (order sits on book at exact price)
+    # Spot TAKE_PROFIT_LIMIT: small offset between trigger and limit for fill safety
+    if _is_margin(pos):
+        tp_limit = tp_price
+    elif pos.side == "LONG":
+        tp_limit = round_price(pos.symbol, tp_price * (1 - TP_PRICE_OFFSET))
+    else:
         tp_limit = round_price(pos.symbol, tp_price * (1 + TP_PRICE_OFFSET))
 
     validate_order(pos.symbol, qty, sl_price)
 
-    # Validate price relationship: for BUY OCO tp_limit < currentPrice < sl_price
-    # for SELL OCO sl_price < currentPrice < tp_limit
     current = pos.current_price
     if current and current > 0:
         if pos.side == "LONG":

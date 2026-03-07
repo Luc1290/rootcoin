@@ -8,6 +8,7 @@ from backend.core.database import async_session
 from backend.core.models import Order
 from backend.trading.pnl import estimated_exit_fees
 from backend.trading import position_tracker
+from backend.trading import trailing_manager
 
 
 def format_duration(total_secs: int) -> str:
@@ -63,6 +64,17 @@ def pos_to_dict(pos, order_prices=None) -> dict:
     last_price_at = position_tracker.get_last_price_at(pos.symbol)
     price_age = round(_time.time() - last_price_at, 1) if last_price_at else None
 
+    tracked = trailing_manager.get_tracked()
+    trail_info = tracked.get(pos.id)
+    if trailing_manager.is_naked(pos.id):
+        trailing_status = "naked"
+    elif trail_info:
+        trailing_status = "trailing" if trail_info["trailing_active"] else "watching"
+        if trail_info.get("manual_override"):
+            trailing_status = "override"
+    else:
+        trailing_status = None
+
     return {
         "id": pos.id,
         "symbol": pos.symbol,
@@ -83,4 +95,5 @@ def pos_to_dict(pos, order_prices=None) -> dict:
         "opened_at": pos.opened_at.isoformat() if pos.opened_at else None,
         "duration": duration,
         "price_age": price_age,
+        "trailing": trailing_status,
     }

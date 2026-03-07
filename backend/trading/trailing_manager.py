@@ -39,10 +39,12 @@ _DEF_MIN_RR = Decimal("1.5")
 # Timings
 _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
+_NAKED_GRACE = 90.0     # seconds before re-placing OCO on unprotected position
 
 # State
 _tracked: dict[int, dict] = {}
 _known_ids: set[int] = set()
+_naked_since: dict[int, float] = {}  # pos_id -> monotonic timestamp
 _settings: dict = {}
 _running = False
 _monitor_task: asyncio.Task | None = None
@@ -93,21 +95,22 @@ async def start():
 
 
 async def _resume_existing(positions):
-    """Rebuild tracking state for positions that have OCO orders after restart."""
-    oco_positions = [p for p in positions if p.oco_order_list_id]
-    if not oco_positions:
+    """Rebuild tracking state for positions that have orders after restart."""
+    # Resume positions with OCO or individual SL+TP (margin OCO may lose oco ref)
+    candidates = [p for p in positions
+                  if p.oco_order_list_id or (p.sl_order_id and p.tp_order_id)]
+    if not candidates:
         return
 
-    order_prices = await fetch_order_prices([p.id for p in oco_positions])
+    order_prices = await fetch_order_prices([p.id for p in candidates])
 
-    for pos in oco_positions:
+    for pos in candidates:
         prices = order_prices.get(pos.id, {})
         sl_str = prices.get("sl_price")
         tp_str = prices.get("tp_price")
         if not sl_str or not tp_str:
             continue
 
-        # Estimate last_step_pct from current SL position
         sl_decimal = Decimal(sl_str)
         if pos.side == "LONG":
             resumed_pct = (sl_decimal - pos.entry_price) / pos.entry_price * 100
@@ -126,7 +129,7 @@ async def _resume_existing(positions):
             "last_step_pct": resumed_pct + _DEF_OFFSET if is_trailing else Decimal(0),
         }
         log.info("trailing_resumed", symbol=pos.symbol, pos_id=pos.id,
-                 sl=sl_str, tp=tp_str)
+                 sl=sl_str, tp=tp_str, has_oco=bool(pos.oco_order_list_id))
 
 
 async def stop():
@@ -140,6 +143,7 @@ async def stop():
             pass
     _tracked.clear()
     _known_ids.clear()
+    _naked_since.clear()
     log.info("trailing_manager_stopped")
 
 
@@ -161,6 +165,7 @@ async def _position_monitor_loop():
             closed = _known_ids - set(active.keys())
             for pid in closed:
                 _tracked.pop(pid, None)
+                _naked_since.pop(pid, None)
 
             _known_ids.clear()
             _known_ids.update(active.keys())
@@ -170,6 +175,18 @@ async def _position_monitor_loop():
                 pos = active.get(pid)
                 if pos and not tracking.get("manual_override"):
                     _check_manual_override(pos, tracking)
+
+            # Detect naked positions (no SL/TP/OCO) and recover after grace period
+            for pid, pos in active.items():
+                has_orders = pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id
+                if has_orders:
+                    _naked_since.pop(pid, None)
+                elif pid not in _naked_since:
+                    _naked_since[pid] = _time.monotonic()
+                    log.warning("trailing_position_naked", symbol=pos.symbol, pos_id=pid)
+                elif _time.monotonic() - _naked_since[pid] > _NAKED_GRACE:
+                    _naked_since.pop(pid)
+                    asyncio.create_task(_recover_naked_position(pid))
 
         except asyncio.CancelledError:
             break
@@ -238,6 +255,99 @@ async def _handle_new_position(pos_id: int):
                  sl=str(sl_price), tp=str(tp_price), rr=f"{rr:.1f}")
     except Exception:
         log.error("trailing_initial_oco_failed", symbol=pos.symbol, exc_info=True)
+
+
+async def _recover_naked_position(pos_id: int):
+    """Re-place OCO after grace period on unprotected position."""
+    pos = _get_pos(pos_id)
+    if not pos:
+        return
+    if pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id:
+        return  # orders placed during grace period
+
+    current = pos.current_price
+    if not current or current <= 0:
+        return
+
+    entry = pos.entry_price
+    if pos.side == "LONG":
+        gain_pct = (current - entry) / entry * 100
+    else:
+        gain_pct = (entry - current) / entry * 100
+
+    analysis = market_analyzer.get_analysis(pos.symbol)
+    if not analysis:
+        log.warning("trailing_recovery_no_analysis", symbol=pos.symbol)
+        return
+
+    key_levels = analysis.get("key_levels", [])
+    if not key_levels:
+        return
+
+    activation = _settings.get("activation", _DEF_ACTIVATION)
+
+    if gain_pct >= activation:
+        # Already in profit: compute trailing SL from current gain
+        offset = _settings.get("offset", _DEF_OFFSET)
+        sl_pct = max(gain_pct - offset, _settings.get("breakeven", _DEF_BREAKEVEN))
+        if pos.side == "LONG":
+            sl_price = round_price(pos.symbol, entry * (1 + sl_pct / 100))
+        else:
+            sl_price = round_price(pos.symbol, entry * (1 - sl_pct / 100))
+
+        # Find next TP beyond current price
+        tp_price = _find_next_resistance(key_levels, current, pos.side)
+        if not tp_price:
+            # Fallback: TP at current gain + step
+            step = _settings.get("step", _DEF_STEP)
+            if pos.side == "LONG":
+                tp_price = round_price(pos.symbol, entry * (1 + (gain_pct + step) / 100))
+            else:
+                tp_price = round_price(pos.symbol, entry * (1 - (gain_pct + step) / 100))
+
+        trailing_active = True
+        last_step_pct = gain_pct
+        log.info("trailing_recovery_in_profit", symbol=pos.symbol,
+                 gain=f"{gain_pct:.2f}%", sl_pct=f"{sl_pct:.2f}%")
+    else:
+        # Below activation: place initial OCO from key levels
+        sl_price, tp_price = _find_initial_sl_tp(key_levels, entry, pos.side)
+        if not sl_price or not tp_price:
+            return
+
+        min_rr = _settings.get("min_rr", _DEF_MIN_RR)
+        rr = _compute_rr(entry, sl_price, tp_price, pos.side)
+        if rr < min_rr:
+            sl_price, tp_price = _adjust_for_rr(
+                key_levels, entry, pos.side, min_rr,
+            )
+            if not sl_price or not tp_price:
+                return
+
+        trailing_active = False
+        last_step_pct = Decimal(0)
+
+    sl_price = round_price(pos.symbol, sl_price)
+    tp_price = round_price(pos.symbol, tp_price)
+
+    try:
+        result = await order_manager.place_oco(pos, tp_price, sl_price)
+        oco_id = str(result.get("orderListId", ""))
+        _tracked[pos.id] = {
+            "auto_sl": sl_price,
+            "auto_tp": tp_price,
+            "oco_list_id": oco_id,
+            "trailing_active": trailing_active,
+            "manual_override": False,
+            "moving": False,
+            "last_move_at": _time.monotonic(),
+            "last_step_pct": last_step_pct,
+        }
+        log.info("trailing_naked_recovery", symbol=pos.symbol,
+                 sl=str(sl_price), tp=str(tp_price),
+                 trailing=trailing_active, gain=f"{gain_pct:.2f}%")
+    except Exception:
+        log.error("trailing_naked_recovery_failed", symbol=pos.symbol, exc_info=True)
 
 
 # ── Price handler (trailing logic) ───────────────────────────
@@ -570,3 +680,7 @@ def get_tracked() -> dict:
             "manual_override": t["manual_override"],
         }
     return result
+
+
+def is_naked(pos_id: int) -> bool:
+    return pos_id in _naked_since

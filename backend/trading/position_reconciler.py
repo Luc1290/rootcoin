@@ -483,7 +483,18 @@ async def _verify_order_refs():
         if pos.tp_order_id and pos.tp_order_id not in open_ids:
             updates["tp_order_id"] = None
         if pos.oco_order_list_id and pos.oco_order_list_id not in open_list_ids:
-            updates["oco_order_list_id"] = None
+            # Margin OCO: Binance returns orderListId=-1 for individual orders
+            # Preserve OCO ref if both SL+TP close-side orders still exist
+            close_side = "SELL" if pos.side == "LONG" else "BUY"
+            close_orders = [o for o in open_orders if o.get("side") == close_side]
+            has_sl = any(o.get("type") == "STOP_LOSS_LIMIT" for o in close_orders)
+            has_tp = any(o.get("type") in ("TAKE_PROFIT_LIMIT", "LIMIT_MAKER")
+                         for o in close_orders)
+            if has_sl and has_tp:
+                log.info("oco_preserved_margin", symbol=pos.symbol,
+                         oco=pos.oco_order_list_id)
+            else:
+                updates["oco_order_list_id"] = None
 
         # Effective values after stale clearing
         eff_sl = updates.get("sl_order_id", pos.sl_order_id)
