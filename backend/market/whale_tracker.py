@@ -20,12 +20,18 @@ STABLE_CONNECTION_RESET = 300
 BACKFILL_LIMIT = 1000
 BACKFILL_MAX_PAGES = 20
 BACKFILL_LOOKBACK_MS = 4 * 3600 * 1000
+USDT_THRESHOLD_MULTIPLIER = Decimal("2")
 
 _whale_alerts: deque = deque(maxlen=MAX_ALERTS)
 _stream_task: asyncio.Task | None = None
 
 
+def _threshold_for(symbol: str, base_min: Decimal) -> Decimal:
+    return base_min * USDT_THRESHOLD_MULTIPLIER if symbol.upper().endswith("USDT") else base_min
+
+
 async def _backfill_symbol(client, symbol, min_qty, cutoff_ms):
+    threshold = _threshold_for(symbol, min_qty)
     found = []
     seen_ids = set()
     oldest_id = None
@@ -47,7 +53,7 @@ async def _backfill_symbol(client, symbol, min_qty, cutoff_ms):
             price = Decimal(t["p"])
             qty = Decimal(t["q"])
             quote_qty = price * qty
-            if quote_qty < min_qty:
+            if quote_qty < threshold:
                 continue
             side = "SELL" if t["m"] else "BUY"
             ts = datetime.fromtimestamp(t["T"] / 1000, tz=timezone.utc)
@@ -165,7 +171,7 @@ async def _run_stream():
                     qty = Decimal(data["q"])
                     quote_qty = price * qty
 
-                    if quote_qty < min_qty:
+                    if quote_qty < _threshold_for(data["s"], min_qty):
                         continue
 
                     trade_id = data["a"]

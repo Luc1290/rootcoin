@@ -164,8 +164,8 @@ const Journal = (() => {
                 countEl.textContent = d.current_streak;
                 countEl.className = 'streak-value ' + (isWin ? 'pnl-positive' : 'pnl-negative');
                 labelEl.textContent = isWin
-                    ? `trade${d.current_streak > 1 ? 's' : ''} gagnant${d.current_streak > 1 ? 's' : ''}`
-                    : `trade${d.current_streak > 1 ? 's' : ''} perdant${d.current_streak > 1 ? 's' : ''}`;
+                    ? `${d.current_streak > 1 ? 'wins' : 'win'} en cours`
+                    : `${d.current_streak > 1 ? 'pertes' : 'perte'} en cours`;
                 flame.classList.toggle('streak-flame-active', isWin);
             } else {
                 countEl.textContent = '0';

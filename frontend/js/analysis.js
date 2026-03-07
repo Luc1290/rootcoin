@@ -567,7 +567,8 @@ const Analysis = (() => {
     function _renderWhales() {
         const el = document.getElementById('analysis-whale');
         const allWhales = _data && _data.whale_alerts ? _data.whale_alerts : [];
-        const whales = allWhales.filter(w => w.symbol === _currentSymbol).slice(-10).reverse();
+        const base = _currentSymbol.replace('USDC', '').replace('USDT', '');
+        const whales = allWhales.filter(w => w.symbol.startsWith(base)).slice(-20).reverse();
 
         if (!whales.length) {
             el.innerHTML = '';
@@ -575,7 +576,7 @@ const Analysis = (() => {
         }
 
         const rows = whales.map(w => {
-            const sym = w.symbol.replace('USDC', '');
+            const sym = w.symbol.replace('USDC', '').replace('USDT', '');
             const qty = Utils.fmtQuoteQty(w.quote_qty);
             const price = Utils.fmtPriceCompact(w.price);
             const ago = Utils.timeAgoShort(w.timestamp);
@@ -595,7 +596,9 @@ const Analysis = (() => {
         el.innerHTML = `
         <div class="card">
             <div class="metric-label mb-2">Whale alerts</div>
-            ${rows}
+            <div style="max-height:280px;overflow-y:auto">
+                ${rows}
+            </div>
         </div>`;
     }
 
