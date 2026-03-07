@@ -864,6 +864,7 @@ const KlineChart = (() => {
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
+                        autoscaleEnabled: true,
                         title: 'SL',
                     }));
                 }
@@ -874,6 +875,7 @@ const KlineChart = (() => {
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
+                        autoscaleEnabled: true,
                         title: 'TP',
                     }));
                 }
