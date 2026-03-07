@@ -170,10 +170,10 @@ async def _position_monitor_loop():
             _known_ids.clear()
             _known_ids.update(active.keys())
 
-            # Detect manual overrides
+            # Detect manual overrides (skip positions mid-move)
             for pid, tracking in list(_tracked.items()):
                 pos = active.get(pid)
-                if pos and not tracking.get("manual_override"):
+                if pos and not tracking.get("manual_override") and not tracking.get("moving"):
                     _check_manual_override(pos, tracking)
 
             # Detect naked positions (no SL/TP/OCO) and recover after grace period
@@ -649,15 +649,27 @@ def _compute_rr(entry, sl, tp, side):
 
 
 def _check_manual_override(pos, tracking):
+    # Skip check if trailing moved recently (OCO IDs may be out of sync)
+    last_move = tracking.get("last_move_at", 0.0)
+    if last_move and _time.monotonic() - last_move < 15.0:
+        return
+
     our_oco = tracking.get("oco_list_id")
     current_oco = pos.oco_order_list_id
+
+    # Normalize to string for comparison (API may return int or str)
+    if our_oco and current_oco:
+        if str(current_oco) == str(our_oco):
+            return
 
     if current_oco and current_oco != our_oco:
         tracking["manual_override"] = True
         log.info("trailing_manual_override", symbol=pos.symbol, reason="different_oco")
     elif not current_oco and (pos.sl_order_id or pos.tp_order_id):
-        tracking["manual_override"] = True
-        log.info("trailing_manual_override", symbol=pos.symbol, reason="individual_orders")
+        # Margin OCO may not store oco_order_list_id — if we also have no oco_list_id, skip
+        if our_oco:
+            tracking["manual_override"] = True
+            log.info("trailing_manual_override", symbol=pos.symbol, reason="individual_orders")
     elif not current_oco and not pos.sl_order_id and not pos.tp_order_id and our_oco:
         tracking["manual_override"] = True
         log.info("trailing_manual_override", symbol=pos.symbol, reason="orders_removed")
