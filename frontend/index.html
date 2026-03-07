@@ -208,6 +208,7 @@
                     <button class="chart-interval-btn" data-interval="4h">4h</button>
                     <button class="chart-interval-btn" data-interval="1d">1d</button>
                 </div>
+                <button id="chart-reset-btn" class="chart-interval-btn" title="Reset zoom">&#x21BA;</button>
             </div>
             <div class="flex items-center gap-1 mb-2 flex-wrap">
                 <button class="indicator-toggle active" data-ind="ma">MA</button>
@@ -239,7 +240,7 @@
             </details>
             <!-- Chart stack -->
             <div class="chart-stack">
-                <div id="kline-chart-main" class="overflow-hidden" style="height:500px;width:100%"></div>
+                <div id="kline-chart-main" class="overflow-hidden" style="width:100%"></div>
                 <div id="kline-wrap-volume" class="hidden">
                     <div class="subchart-label">Vol</div>
                     <div id="kline-chart-volume" class="overflow-hidden" style="height:80px;width:100%"></div>

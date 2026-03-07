@@ -84,14 +84,17 @@ const KlineChart = (() => {
         if (_initialized) return;
         _initialized = true;
 
-        document.querySelectorAll('.chart-interval-btn').forEach(btn => {
+        document.querySelectorAll('.chart-interval-btn[data-interval]').forEach(btn => {
             btn.addEventListener('click', () => {
                 _interval = btn.dataset.interval;
-                document.querySelectorAll('.chart-interval-btn').forEach(b =>
+                document.querySelectorAll('.chart-interval-btn[data-interval]').forEach(b =>
                     b.classList.toggle('active', b === btn));
                 loadChart();
             });
         });
+
+        const resetBtn = document.getElementById('chart-reset-btn');
+        if (resetBtn) resetBtn.addEventListener('click', _resetView);
 
         const sel = document.getElementById('chart-symbol');
         if (sel) sel.addEventListener('change', () => {
@@ -112,6 +115,7 @@ const KlineChart = (() => {
 
         _createMainChart();
         _applyVisibility();
+        window.addEventListener('resize', Utils.throttle(_resizeMainChart, 200));
         _loadSymbols();
     }
 
@@ -134,6 +138,40 @@ const KlineChart = (() => {
         ).join('');
     }
 
+    function _resetView() {
+        const all = [_mainChart, ...(_chartRegistry.map(r => r.chart))];
+        for (const c of all) {
+            if (!c) continue;
+            c.timeScale().fitContent();
+            c.priceScale('right').applyOptions({ autoScale: true });
+        }
+    }
+
+    const SUB_HEIGHTS = { volume: 80, buy_sell: 80, rsi: 100, obv: 100, macd: 110 };
+    const MIN_MAIN = 300;
+
+    function _calcMainHeight() {
+        const el = document.getElementById('kline-chart-main');
+        if (!el) return 500;
+        const stack = el.closest('.chart-stack');
+        if (!stack) return 500;
+        const stackTop = stack.getBoundingClientRect().top;
+        const viewH = window.innerHeight;
+        const available = viewH - stackTop - 16; // 16px bottom margin
+        let subTotal = 0;
+        for (const [ind, h] of Object.entries(SUB_HEIGHTS)) {
+            if (_activeIndicators.has(ind)) subTotal += h + 1; // +1 border
+        }
+        return Math.max(MIN_MAIN, available - subTotal);
+    }
+
+    function _resizeMainChart() {
+        const h = _calcMainHeight();
+        const el = document.getElementById('kline-chart-main');
+        if (el) el.style.height = h + 'px';
+        if (_mainChart) _mainChart.applyOptions({ height: h });
+    }
+
     function _chartOptions(height, showTimeScale) {
         return {
             width: 0,
@@ -154,7 +192,9 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-main');
         if (!el || _mainChart) return;
 
-        _mainChart = LightweightCharts.createChart(el, _chartOptions(500, true));
+        const mainH = _calcMainHeight();
+        el.style.height = mainH + 'px';
+        _mainChart = LightweightCharts.createChart(el, _chartOptions(mainH, true));
         _mainChart.applyOptions({ width: el.clientWidth });
 
         _candleSeries = _mainChart.addCandlestickSeries({
@@ -396,6 +436,7 @@ const KlineChart = (() => {
             const el = document.getElementById(id);
             if (el) el.classList.toggle('hidden', !_activeIndicators.has(ind));
         }
+        _resizeMainChart();
     }
 
     let _headerChange24h = null;
