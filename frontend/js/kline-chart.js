@@ -23,7 +23,7 @@ const KlineChart = (() => {
     let _activeCycleRefs = []; // {area, entryPrice}
     let _cycleInfos = []; // {openTs, closeTs, data} for tooltip
     let _cycleTooltipEl = null;
-    let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles']);
+    let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles', 'orders']);
     let _loading = false;
     let _initialized = false;
     let _syncing = false;
