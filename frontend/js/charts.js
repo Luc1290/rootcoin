@@ -58,12 +58,12 @@ const Charts = (() => {
             },
         });
 
-        // Entry price horizontal line (color updated dynamically)
+        // Entry price horizontal line (blue)
         let priceLine = null;
         if (entryInfo && entryInfo.entryPrice > 0) {
             priceLine = series.createPriceLine({
                 price: entryInfo.entryPrice,
-                color: 'rgba(148, 163, 184, 0.4)',
+                color: 'rgba(59, 130, 246, 0.5)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
                 axisLabelVisible: false,
@@ -168,11 +168,11 @@ const Charts = (() => {
     }
 
     function _updateEntryVisuals(entry, currentPrice) {
-        const winning = _isWinning(entry, currentPrice);
         if (entry.priceLine) {
-            entry.priceLine.applyOptions({ color: _pnlColor(winning, 0.5) });
+            entry.priceLine.applyOptions({ color: 'rgba(59, 130, 246, 0.5)' });
         }
         if (entry._markerTime != null) {
+            const winning = _isWinning(entry, currentPrice);
             entry.series.setMarkers([{
                 time: entry._markerTime,
                 position: 'belowBar',
