@@ -709,15 +709,8 @@ const KlineChart = (() => {
             return;
         }
 
-        _cycleSeries.forEach(s => _mainChart.removeSeries(s));
-        _cycleSeries = [];
-        _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
-        _entryPriceLines = [];
-        _activeCycleRefs = [];
-        _cycleInfos = [];
-
         try {
-            // Refetch if symbol changed or cache has active cycles (may have closed)
+            // Fetch cycle data BEFORE clearing old series (keep area alive during fetch)
             let cycles;
             const hasActiveCached = _cyclesCache.symbol === _symbol
                 && _cyclesCache.data?.some(c => c.is_active);
@@ -728,6 +721,14 @@ const KlineChart = (() => {
                 cycles = await resp.json();
                 _cyclesCache = { symbol: _symbol, data: cycles };
             }
+
+            // Now that data is ready, clear old series
+            _cycleSeries.forEach(s => _mainChart.removeSeries(s));
+            _cycleSeries = [];
+            _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
+            _entryPriceLines = [];
+            _activeCycleRefs = [];
+            _cycleInfos = [];
             if (!cycles.length || !candles.length) {
                 _cyclesRendered = { symbol: _symbol, interval: _interval };
                 return;
