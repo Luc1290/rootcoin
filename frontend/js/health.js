@@ -10,6 +10,8 @@ const Health = (() => {
     const POLL_DELAY = 10_000;
     const MAX_LOG_DISPLAY = 200;
 
+    let _memoTimer = null;
+
     function init() {
         if (_initialized) return;
         _initialized = true;
@@ -26,6 +28,29 @@ const Health = (() => {
             _logPaused = !_logPaused;
             e.target.textContent = _logPaused ? 'Resume' : 'Pause';
         };
+
+        const memoEl = document.getElementById('memo-text');
+        const statusEl = document.getElementById('memo-status');
+        memoEl.addEventListener('input', () => {
+            clearTimeout(_memoTimer);
+            statusEl.textContent = '';
+            _memoTimer = setTimeout(async () => {
+                try {
+                    await fetch('/api/settings/memo', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ value: memoEl.value }),
+                    });
+                    statusEl.textContent = 'Saved';
+                    setTimeout(() => statusEl.textContent = '', 2000);
+                } catch { statusEl.textContent = 'Error'; }
+            }, 800);
+        });
+
+        // Load memo
+        fetch('/api/settings/memo').then(r => r.json()).then(d => {
+            if (d.value) memoEl.value = d.value;
+        }).catch(() => {});
     }
 
     async function load() {

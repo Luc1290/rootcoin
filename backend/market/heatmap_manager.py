@@ -12,6 +12,7 @@ log = structlog.get_logger()
 
 STALE_THRESHOLD = 900
 EXCLUDED_SUFFIXES = ("UP", "DOWN", "BEAR", "BULL")
+EXCLUDED_BASES = {"FRONT"}
 BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker"
 VALID_WINDOWS = ("15m", "1h", "4h")
 TOP_GAINER_THRESHOLD = Decimal("6")  # 24h change % to qualify as top gainer
@@ -104,6 +105,8 @@ async def _fetch_tickers(window: str = "4h"):
         if base in stables:
             continue
         if any(base.endswith(s) for s in EXCLUDED_SUFFIXES):
+            continue
+        if base in EXCLUDED_BASES:
             continue
         try:
             volume = Decimal(t["quoteVolume"])

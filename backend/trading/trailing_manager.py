@@ -24,6 +24,7 @@ from backend.exchange.symbol_filters import round_price
 from backend.exchange.ws_manager import EVENT_PRICE_UPDATE
 from backend.market import market_analyzer
 from backend.routes.position_helpers import fetch_order_prices
+from backend.services import telegram_notifier
 from backend.trading import order_manager, position_tracker
 
 log = structlog.get_logger()
@@ -459,6 +460,7 @@ async def _move_oco(pos, tracking, new_sl_price, current_price, gain_pct):
         result = await order_manager.place_oco(pos, new_tp, new_sl_price)
         oco_id = str(result.get("orderListId", ""))
 
+        was_breakeven = not tracking.get("trailing_active")
         tracking.update({
             "auto_sl": new_sl_price,
             "auto_tp": new_tp,
@@ -471,6 +473,11 @@ async def _move_oco(pos, tracking, new_sl_price, current_price, gain_pct):
 
         log.info("trailing_oco_moved", symbol=pos.symbol,
                  sl=str(new_sl_price), tp=str(new_tp))
+
+        asyncio.create_task(telegram_notifier.notify_trailing_moved(
+            pos.symbol, pos.side, new_sl_price, new_tp,
+            pos.entry_price, gain_pct, is_breakeven=was_breakeven,
+        ))
     except Exception:
         log.error("trailing_move_failed", symbol=pos.symbol, exc_info=True)
         # place_oco cancelled old orders then failed to place new ones

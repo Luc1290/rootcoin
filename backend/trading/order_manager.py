@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from backend.exchange import binance_client
 from backend.services import telegram_notifier
@@ -469,6 +469,16 @@ async def cancel_position_orders(pos: Position) -> dict:
 
     if updates:
         await _update_position_order_ref(pos, **updates)
+
+    # Mark all NEW order records in DB as CANCELED so fetch_order_prices
+    # never picks up stale prices when a new OCO is placed right after.
+    async with async_session() as session:
+        await session.execute(
+            update(Order)
+            .where(Order.position_id == pos.id, Order.status == "NEW")
+            .values(status="CANCELED", updated_at=datetime.now(timezone.utc))
+        )
+        await session.commit()
 
     log.info("position_orders_cancelled", symbol=pos.symbol, position_id=pos.id, cancelled=cancelled)
     return {"cancelled": cancelled}

@@ -76,6 +76,7 @@ const Cockpit = (() => {
     function _renderPortfolio() {
         const el = document.getElementById('cockpit-portfolio');
         const totalPnl = _positions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
+        Charts.updateCockpitColor(totalPnl, _positions.length > 0);
         const portfolioTotal = BalanceStore.getTotal();
         const portfolioStr = portfolioTotal !== null ? 'Solde $' + portfolioTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--';
 

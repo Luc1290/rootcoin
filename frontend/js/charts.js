@@ -404,14 +404,6 @@ const Charts = (() => {
             }
             points.sort((a, b) => a.time - b.time);
 
-            if (points.length >= 2) {
-                const up = points[points.length - 1].value >= points[0].value;
-                _cockpitSeries.applyOptions({
-                    lineColor: up ? '#22c55e' : '#ef4444',
-                    topColor: up ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                });
-            }
-
             _cockpitSeries.setData(points);
             _cockpitChart.timeScale().fitContent();
         } catch (e) {
@@ -535,5 +527,12 @@ const Charts = (() => {
         _flushPrices();
     });
 
-    return { createMiniChart, updateOrderLines, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData, createCockpitMarketChart, loadCockpitMarketData, getCockpitMarketSymbol };
+    function updateCockpitColor(pnl, hasPositions) {
+        if (!_cockpitSeries) return;
+        const color = !hasPositions ? '#9ca3af' : pnl >= 0 ? '#22c55e' : '#ef4444';
+        const fill = !hasPositions ? 'rgba(156,163,175,0.08)' : pnl >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+        _cockpitSeries.applyOptions({ lineColor: color, topColor: fill });
+    }
+
+    return { createMiniChart, updateOrderLines, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData, updateCockpitColor, createCockpitMarketChart, loadCockpitMarketData, getCockpitMarketSymbol };
 })();

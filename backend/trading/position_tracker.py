@@ -568,10 +568,10 @@ async def _handle_list_status(msg: dict):
 
 # --- Price updates & PnL threshold alerts ---
 
-_PNL_THRESHOLDS = [-2.0, -1.7, -1.3, -0.8, -0.5, 0.5, 0.8, 1.3, 1.7, 2.0]
-_PNL_COOLDOWN = 600  # 10 min cooldown per (position, threshold)
+_PNL_THRESHOLDS = [-2.0, -1.7, -1.3, -0.8, -0.5, 0.0, 0.5, 0.8, 1.3, 1.7, 2.0]
+_PNL_HYSTERESIS = 0.2  # must move 0.2% away from threshold before it can re-trigger
 _last_price_at: dict[str, float] = {}  # symbol -> epoch timestamp of last price update
-_pnl_cooldowns: dict[tuple[int, float], float] = {}  # (pos_id, threshold) -> monotonic ts
+_pnl_armed: dict[tuple[int, float], bool] = {}  # (pos_id, threshold) -> armed (ready to fire)
 
 
 async def _handle_price_update(msg: dict):
@@ -597,25 +597,28 @@ async def _handle_price_update(msg: dict):
 
 
 def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
-    now = _time.monotonic()
     for t in _PNL_THRESHOLDS:
-        crossed = (prev_pct < t <= cur_pct) or (prev_pct > t >= cur_pct)
-        if not crossed:
-            continue
         key = (pos.id, t)
-        if now - _pnl_cooldowns.get(key, 0) < _PNL_COOLDOWN:
-            continue
-        _pnl_cooldowns[key] = now
-        _fire_and_forget(telegram_notifier.notify_pnl_threshold(
-            pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
-            pos.entry_price, pos.current_price, t,
-        ))
+        crossed = (prev_pct < t <= cur_pct) or (prev_pct > t >= cur_pct)
+
+        if crossed:
+            # Only fire if armed (or first time = not in dict yet)
+            if _pnl_armed.get(key, True):
+                _pnl_armed[key] = False  # disarm until price moves away
+                _fire_and_forget(telegram_notifier.notify_pnl_threshold(
+                    pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
+                    pos.entry_price, pos.current_price, t,
+                ))
+        elif not _pnl_armed.get(key, True):
+            # Re-arm only when price moves far enough from threshold
+            if abs(cur_pct - t) >= _PNL_HYSTERESIS:
+                _pnl_armed[key] = True
 
 
 def clear_pnl_alerts(position_id: int):
-    dead = [k for k in _pnl_cooldowns if k[0] == position_id]
+    dead = [k for k in _pnl_armed if k[0] == position_id]
     for k in dead:
-        del _pnl_cooldowns[k]
+        del _pnl_armed[k]
 
 
 # --- Fill notification batching ---

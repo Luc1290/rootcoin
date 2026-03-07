@@ -110,13 +110,15 @@ const Heatmap = (() => {
             ? `<div class="text-xs opacity-50" style="color:${textColor}">24h: +${change24h.toFixed(0)}%</div>`
             : '';
 
+        const base = asset.base_asset;
+        const tradeUrl = `https://www.binance.com/en/trade/${base}_USDC?_from=markets&type=cross`;
         return `
-        <div class="heatmap-tile${gainerClass}" style="background:${bgColor}" title="${asset.symbol} — ${price}${isGainer ? ' — Top Gainer 24h' : ''}">
-            <div class="font-bold text-sm" style="color:${textColor}">${gainerBadge}${asset.base_asset}</div>
+        <a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-tile${gainerClass}" style="background:${bgColor};text-decoration:none;display:block" title="${asset.symbol} — ${price}${isGainer ? ' — Top Gainer 24h' : ''}">
+            <div class="font-bold text-sm" style="color:${textColor}">${gainerBadge}${base}</div>
             <div class="text-xs tabular-nums font-semibold" style="color:${textColor}">${changeStr}</div>
             <div class="text-xs tabular-nums opacity-60" style="color:${textColor}">${price}</div>
             ${subtitle}
-        </div>`;
+        </a>`;
     }
 
     function _changeColor(change) {

@@ -161,6 +161,7 @@ const KlineChart = (() => {
             upColor: C.upCandle, downColor: C.downCandle,
             borderVisible: false,
             wickUpColor: C.wickUp, wickDownColor: C.wickDown,
+            priceLineStyle: LightweightCharts.LineStyle.SparseDotted,
         });
 
         // Floating % label next to crosshair
@@ -189,7 +190,6 @@ const KlineChart = (() => {
             pctLabel.style.color = color;
             pctLabel.style.top = (param.point.y + 12) + 'px';
             pctLabel.style.display = 'block';
-            _updateEntryOverlayPositions();
 
             // Cycle tooltip
             const t = param.time;
@@ -211,7 +211,6 @@ const KlineChart = (() => {
         });
 
         _mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-            _updateEntryOverlayPositions();
         });
 
         _maSeries = {};
@@ -469,7 +468,7 @@ const KlineChart = (() => {
 
         try {
             const indList = [..._activeIndicators].filter(i => i !== 'trades' && i !== 'cycles').join(',');
-            const resp = await fetch(`/api/klines/${_symbol}?interval=${_interval}&indicators=${indList}&limit=300`);
+            const resp = await fetch(`/api/klines/${_symbol}?interval=${_interval}&indicators=${indList}&limit=750`);
             if (!resp.ok) throw new Error(await resp.text());
             const data = await resp.json();
             const klines = data.klines;
@@ -632,8 +631,6 @@ const KlineChart = (() => {
                 to: total - 1 + rightPad,
             });
 
-            // Position entry overlays after chart is laid out
-            requestAnimationFrame(() => _updateEntryOverlayPositions());
             _startCountdown();
         } catch (e) {
             console.error('KlineChart: load failed', e);
@@ -695,32 +692,12 @@ const KlineChart = (() => {
     }
 
     let _entryPriceLines = [];
-    let _entryOverlays = []; // { el, price }
-
-    function _clearEntryOverlays() {
-        _entryOverlays.forEach(ov => ov.el.remove());
-        _entryOverlays = [];
-    }
-
-    function _updateEntryOverlayPositions() {
-        if (!_candleSeries) return;
-        for (const ov of _entryOverlays) {
-            const y = _candleSeries.priceToCoordinate(ov.price);
-            if (y != null) {
-                ov.el.style.top = (y - 8) + 'px';
-                ov.el.style.display = '';
-            } else {
-                ov.el.style.display = 'none';
-            }
-        }
-    }
 
     function _clearCycles() {
         _cycleSeries.forEach(s => _mainChart.removeSeries(s));
         _cycleSeries = [];
         _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
         _entryPriceLines = [];
-        _clearEntryOverlays();
         _activeCycleRefs = [];
         _cycleInfos = [];
         _cyclesRendered = { symbol: null, interval: null };
@@ -736,7 +713,6 @@ const KlineChart = (() => {
         _cycleSeries = [];
         _entryPriceLines.forEach(l => _candleSeries.removePriceLine(l));
         _entryPriceLines = [];
-        _clearEntryOverlays();
         _activeCycleRefs = [];
         _cycleInfos = [];
 
@@ -810,17 +786,10 @@ const KlineChart = (() => {
                         price: entryPrice,
                         color: '#3b82f6',
                         lineWidth: 1,
-                        lineStyle: LightweightCharts.LineStyle.Dashed,
-                        axisLabelVisible: false,
+                        lineStyle: LightweightCharts.LineStyle.Dotted,
+                        axisLabelVisible: true,
+                        title: 'E',
                     }));
-                    const chartEl = document.getElementById('kline-chart-main');
-                    if (chartEl) {
-                        const lbl = document.createElement('div');
-                        lbl.textContent = 'Entry ' + Utils.fmtPrice(entryPrice);
-                        lbl.style.cssText = 'position:absolute;left:8px;color:#ffffff;font-size:11px;font-weight:600;pointer-events:none;z-index:5;white-space:nowrap;background:rgba(0,0,0,0.85);padding:1px 6px;border-radius:3px;transform:translateY(-100%);';
-                        chartEl.appendChild(lbl);
-                        _entryOverlays.push({ el: lbl, price: entryPrice });
-                    }
                 }
 
                 if (c.is_active) {
@@ -843,52 +812,26 @@ const KlineChart = (() => {
         _clearOrderLines();
         if (!_candleSeries || !_activeIndicators.has('orders')) return;
 
-        // Position SL/TP lines with labels on the outside (away from current price)
         if (_cachedPositions) {
             const pos = _cachedPositions.find(p => p.symbol === _symbol);
             if (pos) {
-                const isShort = pos.side === 'SHORT';
                 if (pos.sl_price) {
-                    const slPrice = parseFloat(pos.sl_price);
-                    const labelOffset = slPrice * 0.0004;
-                    // SL: label outside = above for SHORT, below for LONG
-                    const labelPrice = isShort ? slPrice + labelOffset : slPrice - labelOffset;
                     _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: slPrice,
+                        price: parseFloat(pos.sl_price),
                         color: C.sell,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
-                        title: '',
-                    }));
-                    _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: labelPrice,
-                        color: 'transparent',
-                        lineWidth: 1,
-                        lineStyle: LightweightCharts.LineStyle.Solid,
-                        axisLabelVisible: false,
                         title: 'SL',
                     }));
                 }
                 if (pos.tp_price) {
-                    const tpPrice = parseFloat(pos.tp_price);
-                    const labelOffset = tpPrice * 0.0004;
-                    // TP: label outside = below for SHORT, above for LONG
-                    const labelPrice = isShort ? tpPrice - labelOffset : tpPrice + labelOffset;
                     _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: tpPrice,
+                        price: parseFloat(pos.tp_price),
                         color: C.buy,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
-                        title: '',
-                    }));
-                    _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: labelPrice,
-                        color: 'transparent',
-                        lineWidth: 1,
-                        lineStyle: LightweightCharts.LineStyle.Solid,
-                        axisLabelVisible: false,
                         title: 'TP',
                     }));
                 }
@@ -918,20 +861,30 @@ const KlineChart = (() => {
             const resp = await fetch(`/api/orders/open?symbol=${_symbol}`);
             if (resp.ok) {
                 const orders = await resp.json();
-                // Filter out orders linked to existing positions (SL/TP/OCO)
-                const posOrderIds = new Set();
-                const posOcoListIds = new Set();
+                // Filter out orders already shown as position SL/TP lines
+                const posPrices = {};
                 if (_cachedPositions) {
                     for (const p of _cachedPositions) {
-                        if (p.sl_order_id) posOrderIds.add(String(p.sl_order_id));
-                        if (p.tp_order_id) posOrderIds.add(String(p.tp_order_id));
-                        if (p.oco_order_list_id) posOcoListIds.add(String(p.oco_order_list_id));
+                        if (p.sl_price || p.tp_price) {
+                            posPrices[p.symbol] = {
+                                sl: p.sl_price ? parseFloat(p.sl_price) : null,
+                                tp: p.tp_price ? parseFloat(p.tp_price) : null,
+                            };
+                        }
                     }
                 }
-                _pendingOrders = orders.filter(o =>
-                    !posOrderIds.has(String(o.orderId)) &&
-                    !(o.orderListId && o.orderListId !== -1 && posOcoListIds.has(String(o.orderListId)))
-                );
+                _pendingOrders = orders.filter(o => {
+                    const pp = posPrices[o.symbol];
+                    if (!pp) return true;
+                    // Skip OCO-member orders (SL/TP already drawn from position)
+                    if (o.orderListId && o.orderListId !== -1) return false;
+                    // Skip individual orders whose price matches position SL or TP
+                    const price = parseFloat(o.price) || 0;
+                    const stop = parseFloat(o.stopPrice) || 0;
+                    if (pp.sl && (price === pp.sl || stop === pp.sl)) return false;
+                    if (pp.tp && (price === pp.tp || stop === pp.tp)) return false;
+                    return true;
+                });
             }
         } catch { /* ignore */ }
     }
@@ -1156,8 +1109,6 @@ const KlineChart = (() => {
             }
             _updateLiveIndicators(t);
         }
-
-        _updateEntryOverlayPositions();
     }
 
     // Update symbol dropdown + order lines when positions change

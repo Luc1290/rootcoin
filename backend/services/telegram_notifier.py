@@ -369,6 +369,26 @@ async def notify_position_secured(
     await notify(msg)
 
 
+async def notify_trailing_moved(
+    symbol: str, side: str, sl_price: Decimal, tp_price: Decimal,
+    entry_price: Decimal, gain_pct: Decimal, is_breakeven: bool,
+):
+    if not is_orders_enabled():
+        return
+    sl_dist = _pct_distance(side, entry_price, sl_price)
+    tp_dist = _pct_distance(side, entry_price, tp_price)
+    if is_breakeven:
+        header = f"\U0001f6e1\ufe0f <b>{symbol} {side}</b> SL au breakeven"
+    else:
+        header = f"\u2b06\ufe0f <b>{symbol} {side}</b> trailing SL remonte"
+    msg = (
+        f"{header}\n"
+        f"Gain: +{_fq(gain_pct)}%\n"
+        f"SL: {_fp(sl_price)} ({sl_dist}) | TP: {_fp(tp_price)} ({tp_dist})"
+    )
+    await notify(msg)
+
+
 # ── PnL threshold notifications ───────────────────────────────
 
 
@@ -379,10 +399,14 @@ async def notify_pnl_threshold(
     if not is_pnl_enabled():
         return
     sign = "+" if pnl_usd > 0 else ""
-    icon = "\U0001f4c8" if threshold > 0 else "\U0001f4c9"
-    t_sign = "+" if threshold > 0 else ""
+    if threshold == 0.0:
+        header = f"\u2696\ufe0f <b>{symbol} {side}</b> retour au breakeven"
+    else:
+        icon = "\U0001f4c8" if threshold > 0 else "\U0001f4c9"
+        t_sign = "+" if threshold > 0 else ""
+        header = f"{icon} <b>{symbol} {side}</b> atteint {t_sign}{threshold}%"
     msg = (
-        f"{icon} <b>{symbol} {side}</b> atteint {t_sign}{threshold}%\n"
+        f"{header}\n"
         f"PnL: {sign}{_fp(pnl_usd)} ({sign}{_fq(pnl_pct)}%)\n"
         f"Entry: {_fp(entry_price)} \u2192 Prix: {_fp(current_price)}"
     )
