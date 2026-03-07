@@ -202,6 +202,16 @@ const KlineChart = (() => {
             borderVisible: false,
             wickUpColor: C.wickUp, wickDownColor: C.wickDown,
             priceLineStyle: LightweightCharts.LineStyle.SparseDotted,
+            autoscaleInfoProvider: () => {
+                if (!_activeIndicators.has('orders') || !_cachedPositions) return null;
+                const pos = _cachedPositions.find(p => p.symbol === _symbol);
+                if (!pos) return null;
+                const extras = [];
+                if (pos.sl_price) extras.push(parseFloat(pos.sl_price));
+                if (pos.tp_price) extras.push(parseFloat(pos.tp_price));
+                if (!extras.length) return null;
+                return { priceRange: { minValue: Math.min(...extras), maxValue: Math.max(...extras) } };
+            },
         });
 
         // Floating % label next to crosshair
@@ -864,7 +874,6 @@ const KlineChart = (() => {
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
-                        autoscaleEnabled: true,
                         title: 'SL',
                     }));
                 }
@@ -875,7 +884,6 @@ const KlineChart = (() => {
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
                         axisLabelVisible: true,
-                        autoscaleEnabled: true,
                         title: 'TP',
                     }));
                 }
