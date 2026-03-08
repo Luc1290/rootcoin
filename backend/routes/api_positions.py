@@ -128,8 +128,36 @@ async def open_position(body: OpenBody):
             ticker = await client.get_symbol_ticker(symbol=symbol)
             price = Decimal(ticker["price"])
 
-        # Query Binance max borrow to cap quantity
+        # For SHORT: clear any residual base asset debt before opening
         base_asset = symbol.replace("USDC", "").replace("USDT", "")
+        if side == "SHORT":
+            for a in cross_assets:
+                if a["asset"] == base_asset:
+                    borrowed = Decimal(a.get("borrowed", "0"))
+                    free = Decimal(a.get("free", "0"))
+                    if borrowed > 0:
+                        repay_amount = min(free, borrowed)
+                        if repay_amount > 0:
+                            try:
+                                await binance_client.repay_margin_loan(
+                                    asset=base_asset, amount=repay_amount,
+                                )
+                                log.info("open_pre_repay", asset=base_asset,
+                                         repaid=str(repay_amount))
+                            except Exception:
+                                log.warning("open_pre_repay_failed", asset=base_asset,
+                                            amount=str(repay_amount), exc_info=True)
+                        remaining_debt = borrowed - repay_amount
+                        if remaining_debt > 0:
+                            raise HTTPException(
+                                400,
+                                f"Dette {base_asset} résiduelle: {remaining_debt} "
+                                f"(borrowed={borrowed}, free={free}). "
+                                f"Rembourser manuellement sur Binance avant d'ouvrir.",
+                            )
+                    break
+
+        # Query Binance max borrow to cap quantity
         borrow_asset = base_asset if side == "SHORT" else "USDC"
         max_borrow_info = await client.get_max_margin_loan(asset=borrow_asset)
         max_borrow = Decimal(str(max_borrow_info.get("amount", "0")))
@@ -141,24 +169,6 @@ async def open_position(body: OpenBody):
             max_borrow_notional = (usdc_free + max_borrow) * OPEN_SAFETY
 
         notional = min(naive_notional, max_borrow_notional)
-
-        # Detect suspiciously low borrow capacity (existing debt?)
-        if max_borrow_notional < naive_notional * Decimal("0.5"):
-            base_asset = symbol.replace("USDC", "").replace("USDT", "")
-            debt_info = ""
-            try:
-                cross_assets_full = await binance_client.get_cross_margin_balances()
-                for a in cross_assets_full:
-                    if a["asset"] == base_asset:
-                        debt_info = f"borrowed={a.get('borrowed', '0')} free={a.get('free', '0')}"
-                        break
-            except Exception:
-                pass
-            log.warning("open_position_low_borrow", symbol=symbol, side=side,
-                        usdc_free=str(usdc_free), max_borrow=str(max_borrow),
-                        naive_notional=str(naive_notional),
-                        max_borrow_notional=str(max_borrow_notional),
-                        debt_info=debt_info)
 
         log.info("open_position_calc", symbol=symbol, side=side,
                  usdc_free=str(usdc_free), max_borrow=str(max_borrow),
