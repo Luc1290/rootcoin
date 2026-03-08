@@ -42,6 +42,7 @@ _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
 _NAKED_GRACE = 90.0     # seconds before re-placing OCO on unprotected position
 _MIN_MOVE_INTERVAL = 60.0  # minimum seconds between consecutive trailing moves
+_RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes
 
 # State
 _tracked: dict[int, dict] = {}
@@ -412,6 +413,32 @@ async def _handle_price_update(msg: dict):
                 offset = _settings.get("offset", _DEF_OFFSET)
                 new_sl_pct = gain_pct - offset
                 should_move = True
+
+        # Periodic re-snap: re-evaluate SL from current key levels
+        # (after consolidation, new levels may allow tighter SL)
+        if not should_move and tracking.get("trailing_active"):
+            now = _time.monotonic()
+            last_resnap = tracking.get("last_resnap_at", 0.0)
+            if now - last_resnap >= _RESNAP_INTERVAL:
+                tracking["last_resnap_at"] = now
+                offset = _settings.get("offset", _DEF_OFFSET)
+                analysis = market_analyzer.get_analysis(pos.symbol)
+                if analysis:
+                    candidate = _find_trailing_sl_level(
+                        analysis.get("key_levels", []), current_price, pos.side,
+                        min_dist_pct=offset,
+                    )
+                    current_auto_sl = tracking["auto_sl"]
+                    if candidate:
+                        is_better = (
+                            (pos.side == "SHORT" and candidate < current_auto_sl) or
+                            (pos.side == "LONG" and candidate > current_auto_sl)
+                        )
+                        if is_better:
+                            new_sl_pct = gain_pct
+                            should_move = True
+                            log.info("trailing_resnap_triggered", symbol=symbol,
+                                     old_sl=str(current_auto_sl), new_candidate=str(candidate))
 
         if not should_move or new_sl_pct is None:
             continue
