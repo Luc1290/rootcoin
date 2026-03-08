@@ -104,17 +104,21 @@ const PositionCards = (() => {
 
         if (p.sl_order_id || (p.oco_order_list_id && p.sl_price)) {
             const price = parseFloat(p.sl_price);
-            const dist = _distancePct(p.sl_price, p.entry_price);
+            const rawDist = _distancePct(p.sl_price, p.entry_price);
+            const dist = rawDist !== null ? (p.side === 'SHORT' ? -rawDist : +rawDist) : null;
             const priceStr = price ? formatPrice(price) : '';
-            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${dist}%)` : '';
+            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${parseFloat(dist).toFixed(1)}%)` : '';
             const label = priceStr ? `SL ${priceStr}${distStr}` : 'SL';
-            badges.push(`<span class="badge bg-red-900/40 text-red-400 tabular-nums">${label}</span>`);
+            const slInProfit = dist !== null && dist > 0;
+            const slBg = slInProfit ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400';
+            badges.push(`<span class="badge ${slBg} tabular-nums">${label}</span>`);
         }
         if (p.tp_order_id || (p.oco_order_list_id && p.tp_price)) {
             const price = parseFloat(p.tp_price);
-            const dist = _distancePct(p.tp_price, p.entry_price);
+            const rawDist = _distancePct(p.tp_price, p.entry_price);
+            const dist = rawDist !== null ? (p.side === 'SHORT' ? -rawDist : +rawDist) : null;
             const priceStr = price ? formatPrice(price) : '';
-            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${dist}%)` : '';
+            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${parseFloat(dist).toFixed(1)}%)` : '';
             const label = priceStr ? `TP ${priceStr}${distStr}` : 'TP';
             badges.push(`<span class="badge bg-emerald-900/40 text-emerald-400 tabular-nums">${label}</span>`);
         }

@@ -147,8 +147,8 @@ const KlineChart = (() => {
         }
     }
 
-    const SUB_HEIGHTS = { volume: 80, buy_sell: 80, rsi: 100, obv: 100, macd: 110 };
-    const MIN_MAIN = 300;
+    const SUB_HEIGHTS = { volume: 60, buy_sell: 60, rsi: 80, obv: 80, macd: 90 };
+    const MIN_MAIN = 400;
 
     function _calcMainHeight() {
         const el = document.getElementById('kline-chart-main');
@@ -178,8 +178,8 @@ const KlineChart = (() => {
             height: height,
             layout: { background: { color: C.bg }, textColor: C.text, fontSize: 10 },
             grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-            rightPriceScale: { borderColor: C.border, minimumWidth: 60, scaleMargins: { top: 0.08, bottom: 0.08 } },
-            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: 3 },
+            rightPriceScale: { borderColor: C.border, minimumWidth: 60, scaleMargins: { top: 0.02, bottom: 0.05 } },
+            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: 0.5 },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
                 vertLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#374151' },
@@ -202,16 +202,6 @@ const KlineChart = (() => {
             borderVisible: false,
             wickUpColor: C.wickUp, wickDownColor: C.wickDown,
             priceLineStyle: LightweightCharts.LineStyle.SparseDotted,
-            autoscaleInfoProvider: () => {
-                if (!_activeIndicators.has('orders') || !_cachedPositions) return null;
-                const pos = _cachedPositions.find(p => p.symbol === _symbol);
-                if (!pos) return null;
-                const extras = [];
-                if (pos.sl_price) extras.push(parseFloat(pos.sl_price));
-                if (pos.tp_price) extras.push(parseFloat(pos.tp_price));
-                if (!extras.length) return null;
-                return { priceRange: { minValue: Math.min(...extras), maxValue: Math.max(...extras) } };
-            },
         });
 
         // Floating % label next to crosshair
@@ -305,7 +295,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-volume');
         if (!el) return;
 
-        _volChart = LightweightCharts.createChart(el, _chartOptions(80, false));
+        _volChart = LightweightCharts.createChart(el, _chartOptions(SUB_HEIGHTS.volume, false));
         _volChart.applyOptions({ width: el.clientWidth });
 
         _volSeries = _volChart.addHistogramSeries({
@@ -322,7 +312,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-rsi');
         if (!el) return;
 
-        _rsiChart = LightweightCharts.createChart(el, _chartOptions(100, false));
+        _rsiChart = LightweightCharts.createChart(el, _chartOptions(SUB_HEIGHTS.rsi, false));
         _rsiChart.applyOptions({ width: el.clientWidth });
 
         _rsiSeries = _rsiChart.addLineSeries({
@@ -342,7 +332,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-obv');
         if (!el) return;
 
-        _obvChart = LightweightCharts.createChart(el, _chartOptions(100, false));
+        _obvChart = LightweightCharts.createChart(el, _chartOptions(SUB_HEIGHTS.obv, false));
         _obvChart.applyOptions({ width: el.clientWidth });
 
         _obvSeries = _obvChart.addLineSeries({
@@ -360,7 +350,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-macd');
         if (!el) return;
 
-        _macdChart = LightweightCharts.createChart(el, _chartOptions(110, false));
+        _macdChart = LightweightCharts.createChart(el, _chartOptions(SUB_HEIGHTS.macd, false));
         _macdChart.applyOptions({ width: el.clientWidth });
 
         _macdHistSeries = _macdChart.addHistogramSeries({
@@ -387,7 +377,7 @@ const KlineChart = (() => {
         const el = document.getElementById('kline-chart-buysell');
         if (!el) return;
 
-        _bsChart = LightweightCharts.createChart(el, _chartOptions(80, false));
+        _bsChart = LightweightCharts.createChart(el, _chartOptions(SUB_HEIGHTS.buy_sell, false));
         _bsChart.applyOptions({ width: el.clientWidth });
 
         _bsSeries = _bsChart.addHistogramSeries({
@@ -808,7 +798,7 @@ const KlineChart = (() => {
                 // Add padding above candle highs so area visibly exceeds them
                 let maxHigh = 0;
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
-                const pad = maxHigh * 0.02; // 2% above highs
+                const pad = maxHigh * 0.013; // 1.3% above highs
 
                 const areaData = cycleCandles.map(cd => ({
                     time: cd.time,

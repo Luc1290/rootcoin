@@ -181,7 +181,11 @@ const Cockpit = (() => {
             if (entryPrice) {
                 const parts = [];
                 parts.push(`<span style="color:#3b82f6">Entry ${Utils.fmtPriceCompact(entryPrice)}</span>`);
-                if (slPrice) parts.push(`<span style="color:#ef4444">SL ${Utils.fmtPriceCompact(slPrice)}</span>`);
+                if (slPrice) {
+                    const slInProfit = p.side === 'LONG' ? slPrice > entryPrice : slPrice < entryPrice;
+                    const slColor = slInProfit ? '#22c55e' : '#ef4444';
+                    parts.push(`<span style="color:${slColor}">SL ${Utils.fmtPriceCompact(slPrice)}</span>`);
+                }
                 if (tpPrice) parts.push(`<span style="color:#22c55e">TP ${Utils.fmtPriceCompact(tpPrice)}</span>`);
                 levelsHtml = `<div class="flex flex-wrap gap-x-3 gap-y-0 mt-1" style="font-size:10px;opacity:0.8">${parts.join('')}</div>`;
             }
