@@ -31,6 +31,13 @@ _reconcile_task: asyncio.Task | None = None
 _periodic_reconcile_task: asyncio.Task | None = None
 _background_tasks: set[asyncio.Task] = set()
 
+# Deferred small fills — first fill of a multi-fill order may be tiny and
+# rejected by MIN_MARGIN_*_USD.  We buffer it here so the next fill from the
+# same order can backfill it into the newly created position.
+_DEFERRED_FILL_TTL = 30.0  # seconds
+_deferred_fills: dict[str, tuple[str, str, Decimal, Decimal, str, Decimal, float]] = {}
+# order_id -> (symbol, side, qty, price, market_type, fee_usd, timestamp)
+
 # Fill notification batching — group rapid fills into one message
 FILL_BATCH_DELAY = 5.0
 _fill_batches: dict[int, list[dict]] = {}
@@ -320,9 +327,10 @@ async def _handle_buy(
         await _dca(position, qty, price, fee_usd)
     else:
         if qty * price < MIN_MARGIN_LONG_USD:
-            log.info("ignoring_small_margin_long", symbol=symbol, notional=str(qty * price))
+            _defer_small_fill(order_id, symbol, "BUY", qty, price, market_type, fee_usd)
             return
         await _open_position(symbol, "LONG", qty, price, market_type, fee_usd)
+        await _backfill_deferred(symbol, market_type)
 
 
 async def _handle_sell(
@@ -344,9 +352,40 @@ async def _handle_sell(
         await _dca(position, qty, price, fee_usd)
     else:
         if qty * price < MIN_MARGIN_LONG_USD:
-            log.info("ignoring_small_margin_short", symbol=symbol, notional=str(qty * price))
+            _defer_small_fill(order_id, symbol, "SELL", qty, price, market_type, fee_usd)
             return
         await _open_position(symbol, "SHORT", qty, price, market_type, fee_usd)
+        await _backfill_deferred(symbol, market_type)
+
+
+# --- Deferred fill helpers ---
+
+
+def _defer_small_fill(
+    order_id: str, symbol: str, side: str, qty: Decimal, price: Decimal,
+    market_type: str, fee_usd: Decimal,
+):
+    _deferred_fills[order_id] = (symbol, side, qty, price, market_type, fee_usd, _time.monotonic())
+    log.info("small_fill_deferred", symbol=symbol, side=side, order_id=order_id,
+             notional=str(qty * price))
+
+
+async def _backfill_deferred(symbol: str, market_type: str):
+    now = _time.monotonic()
+    to_remove = []
+    for oid, (sym, side, qty, price, mt, fee_usd, ts) in list(_deferred_fills.items()):
+        if now - ts > _DEFERRED_FILL_TTL:
+            to_remove.append(oid)
+            continue
+        if sym == symbol and mt == market_type:
+            pos = _find_position(symbol, market_type)
+            if pos:
+                await _dca(pos, qty, price, fee_usd)
+                log.info("deferred_fill_backfilled", symbol=symbol, order_id=oid,
+                         qty=str(qty))
+            to_remove.append(oid)
+    for oid in to_remove:
+        _deferred_fills.pop(oid, None)
 
 
 # --- Position operations ---
@@ -507,13 +546,19 @@ async def _sell_margin_residual(symbol: str, market_type: str, side: str = "LONG
 
             # SHORT residual: remaining borrowed amount (from commission on close BUY)
             if side == "SHORT" and borrowed > 0:
+                repay_amount = min(free, borrowed)
+                if repay_amount <= 0:
+                    log.warning("margin_short_residual_no_free", symbol=symbol,
+                                asset=base_asset, borrowed=str(borrowed), free=str(free))
+                    return
                 await binance_client.repay_margin_loan(
-                    asset=base_asset, amount=borrowed,
+                    asset=base_asset, amount=repay_amount,
                     is_isolated=(market_type == "ISOLATED_MARGIN"),
                     symbol=symbol if market_type == "ISOLATED_MARGIN" else None,
                 )
                 log.info("margin_short_residual_repaid", symbol=symbol,
-                         asset=base_asset, amount=str(borrowed))
+                         asset=base_asset, repaid=str(repay_amount),
+                         remaining_debt=str(borrowed - repay_amount))
                 return
 
             # LONG residual: remaining free base asset

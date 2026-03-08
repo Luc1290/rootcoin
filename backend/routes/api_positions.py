@@ -1,6 +1,7 @@
 import time
 from decimal import Decimal, InvalidOperation
 
+import structlog
 from binance.exceptions import BinanceAPIException
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -8,7 +9,10 @@ from pydantic import BaseModel
 from backend.exchange import binance_client
 from backend.exchange.symbol_filters import round_price, round_quantity, validate_order
 from backend.trading import order_manager, position_tracker
+
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
+
+log = structlog.get_logger()
 
 router = APIRouter(prefix="/api/positions", tags=["positions"])
 
@@ -137,6 +141,29 @@ async def open_position(body: OpenBody):
             max_borrow_notional = (usdc_free + max_borrow) * OPEN_SAFETY
 
         notional = min(naive_notional, max_borrow_notional)
+
+        # Detect suspiciously low borrow capacity (existing debt?)
+        if max_borrow_notional < naive_notional * Decimal("0.5"):
+            base_asset = symbol.replace("USDC", "").replace("USDT", "")
+            debt_info = ""
+            try:
+                cross_assets_full = await binance_client.get_cross_margin_balances()
+                for a in cross_assets_full:
+                    if a["asset"] == base_asset:
+                        debt_info = f"borrowed={a.get('borrowed', '0')} free={a.get('free', '0')}"
+                        break
+            except Exception:
+                pass
+            log.warning("open_position_low_borrow", symbol=symbol, side=side,
+                        usdc_free=str(usdc_free), max_borrow=str(max_borrow),
+                        naive_notional=str(naive_notional),
+                        max_borrow_notional=str(max_borrow_notional),
+                        debt_info=debt_info)
+
+        log.info("open_position_calc", symbol=symbol, side=side,
+                 usdc_free=str(usdc_free), max_borrow=str(max_borrow),
+                 notional=str(notional))
+
         qty = round_quantity(symbol, notional / price)
         if body.price:
             price = round_price(symbol, price)

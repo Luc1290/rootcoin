@@ -32,8 +32,8 @@ log = structlog.get_logger()
 # Defaults
 _DEF_ACTIVATION = Decimal("0.8")
 _DEF_BREAKEVEN = Decimal("0.2")
-_DEF_STEP = Decimal("0.3")
-_DEF_OFFSET = Decimal("0.4")
+_DEF_STEP = Decimal("0.5")
+_DEF_OFFSET = Decimal("0.8")
 _DEF_TP_GUARD = Decimal("0.2")
 _DEF_MIN_RR = Decimal("1.5")
 
@@ -41,6 +41,7 @@ _DEF_MIN_RR = Decimal("1.5")
 _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
 _NAKED_GRACE = 90.0     # seconds before re-placing OCO on unprotected position
+_MIN_MOVE_INTERVAL = 60.0  # minimum seconds between consecutive trailing moves
 
 # State
 _tracked: dict[int, dict] = {}
@@ -415,39 +416,61 @@ async def _handle_price_update(msg: dict):
         if not should_move or new_sl_pct is None:
             continue
 
-        # Compute actual SL price
-        if pos.side == "LONG":
-            new_sl_price = entry * (1 + new_sl_pct / 100)
-        else:
-            new_sl_price = entry * (1 - new_sl_pct / 100)
-
-        # SL never goes backwards
-        current_auto_sl = tracking["auto_sl"]
-        if pos.side == "LONG" and new_sl_price <= current_auto_sl:
-            continue
-        if pos.side == "SHORT" and new_sl_price >= current_auto_sl:
-            continue
-
         # Manual override: trailing takes back control above activation
         if tracking.get("manual_override"):
             tracking["manual_override"] = False
             log.info("trailing_resuming", symbol=pos.symbol, gain=f"{gain_pct:.2f}%")
 
-        asyncio.create_task(_move_oco(pos, tracking, new_sl_price, current_price, gain_pct))
+        # Rate-limit: don't move more than once per _MIN_MOVE_INTERVAL
+        last_move = tracking.get("last_move_at", 0.0)
+        if last_move and _time.monotonic() - last_move < _MIN_MOVE_INTERVAL:
+            continue
+
+        is_breakeven = not tracking.get("trailing_active")
+        asyncio.create_task(_move_oco(pos, tracking, gain_pct, current_price, is_breakeven))
 
 
-async def _move_oco(pos, tracking, new_sl_price, current_price, gain_pct):
+async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False):
     tracking["moving"] = True
     try:
-        # Find next TP above current price
-        new_tp = tracking["auto_tp"]
         analysis = market_analyzer.get_analysis(pos.symbol)
-        if analysis:
-            candidate = _find_next_resistance(
-                analysis.get("key_levels", []), current_price, pos.side,
+        key_levels = analysis.get("key_levels", []) if analysis else []
+        entry = pos.entry_price
+        offset = _settings.get("offset", _DEF_OFFSET)
+
+        # --- Compute SL ---
+        if is_breakeven:
+            # Breakeven: percentage-based near entry (covers fees)
+            breakeven = _settings.get("breakeven", _DEF_BREAKEVEN)
+            if pos.side == "LONG":
+                new_sl_price = entry * (1 + breakeven / 100)
+            else:
+                new_sl_price = entry * (1 - breakeven / 100)
+        else:
+            # Trailing: snap to nearest key level with min offset% distance
+            new_sl_price = _find_trailing_sl_level(
+                key_levels, current_price, pos.side, min_dist_pct=offset,
             )
-            if candidate:
-                new_tp = candidate
+            if not new_sl_price:
+                # Fallback: percentage-based
+                sl_pct = gain_pct - offset
+                if pos.side == "LONG":
+                    new_sl_price = entry * (1 + sl_pct / 100)
+                else:
+                    new_sl_price = entry * (1 - sl_pct / 100)
+
+        # SL never goes backwards
+        current_auto_sl = tracking["auto_sl"]
+        if pos.side == "LONG" and new_sl_price <= current_auto_sl:
+            return
+        if pos.side == "SHORT" and new_sl_price >= current_auto_sl:
+            return
+
+        # --- Compute TP from key levels ---
+        new_tp = tracking["auto_tp"]
+        candidate = _find_next_resistance(key_levels, current_price, pos.side)
+        if candidate:
+            new_tp = candidate
 
         # Re-fetch position for fresh state
         pos = _get_pos(pos.id)
@@ -460,7 +483,6 @@ async def _move_oco(pos, tracking, new_sl_price, current_price, gain_pct):
         result = await order_manager.place_oco(pos, new_tp, new_sl_price)
         oco_id = str(result.get("orderListId", ""))
 
-        was_breakeven = not tracking.get("trailing_active")
         tracking.update({
             "auto_sl": new_sl_price,
             "auto_tp": new_tp,
@@ -471,12 +493,13 @@ async def _move_oco(pos, tracking, new_sl_price, current_price, gain_pct):
             "last_step_pct": gain_pct,
         })
 
+        sl_source = "level" if not is_breakeven else "breakeven"
         log.info("trailing_oco_moved", symbol=pos.symbol,
-                 sl=str(new_sl_price), tp=str(new_tp))
+                 sl=str(new_sl_price), tp=str(new_tp), source=sl_source)
 
         asyncio.create_task(telegram_notifier.notify_trailing_moved(
             pos.symbol, pos.side, new_sl_price, new_tp,
-            pos.entry_price, gain_pct, is_breakeven=was_breakeven,
+            pos.entry_price, gain_pct, is_breakeven=is_breakeven,
         ))
     except Exception:
         log.error("trailing_move_failed", symbol=pos.symbol, exc_info=True)
@@ -622,6 +645,33 @@ def _adjust_for_rr(key_levels, entry_price, side, min_rr):
                     return sl, tp
 
     return None, None
+
+
+def _find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=Decimal("0.8")):
+    """Find nearest key level for trailing SL.
+
+    SHORT: resistance ABOVE current_price (stop buy triggers there on bounce).
+    LONG: support BELOW current_price (stop sell triggers there on pullback).
+    """
+    prices = _parse_levels(key_levels)
+    if not prices:
+        return None
+
+    if side == "SHORT":
+        for p in prices:
+            if p <= current_price:
+                continue
+            dist = (p - current_price) / current_price * 100
+            if dist >= min_dist_pct:
+                return p
+    else:
+        for p in reversed(prices):
+            if p >= current_price:
+                continue
+            dist = (current_price - p) / current_price * 100
+            if dist >= min_dist_pct:
+                return p
+    return None
 
 
 def _find_next_resistance(key_levels, current_price, side):
