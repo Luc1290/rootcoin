@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import case, func, select
 
 from backend.trading import position_tracker
@@ -83,6 +83,22 @@ async def get_cycles(
             else:
                 cycles.append(_cycle_to_dict(p))
         return cycles
+
+
+@router.delete("/{position_id}")
+async def delete_cycle(position_id: int):
+    async with async_session() as session:
+        result = await session.execute(
+            select(Position).where(Position.id == position_id)
+        )
+        pos = result.scalar_one_or_none()
+        if not pos:
+            raise HTTPException(404, "Position not found")
+        if pos.is_active:
+            raise HTTPException(400, "Cannot delete active position")
+        await session.delete(pos)
+        await session.commit()
+    return {"status": "ok", "deleted_id": position_id}
 
 
 @router.get("/stats")
