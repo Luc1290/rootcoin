@@ -34,7 +34,7 @@ _DEF_ACTIVATION = Decimal("0.8")
 _DEF_BREAKEVEN = Decimal("0.2")
 _DEF_STEP = Decimal("0.5")
 _DEF_OFFSET = Decimal("0.8")
-_DEF_TP_GUARD = Decimal("0.2")
+_DEF_TP_GUARD = Decimal("0.3")
 _DEF_MIN_RR = Decimal("1.5")
 
 # Timings
