@@ -128,34 +128,38 @@ async def open_position(body: OpenBody):
             ticker = await client.get_symbol_ticker(symbol=symbol)
             price = Decimal(ticker["price"])
 
-        # For SHORT: clear any residual base asset debt before opening
+        # Clear residual margin debt before opening
+        # SHORT borrows base asset (BTC), LONG borrows quote (USDC)
         base_asset = symbol.replace("USDC", "").replace("USDT", "")
-        if side == "SHORT":
-            for a in cross_assets:
-                if a["asset"] == base_asset:
-                    borrowed = Decimal(a.get("borrowed", "0"))
-                    free = Decimal(a.get("free", "0"))
-                    if borrowed > 0:
-                        repay_amount = min(free, borrowed)
-                        if repay_amount > 0:
-                            try:
-                                await binance_client.repay_margin_loan(
-                                    asset=base_asset, amount=repay_amount,
-                                )
-                                log.info("open_pre_repay", asset=base_asset,
-                                         repaid=str(repay_amount))
-                            except Exception:
-                                log.warning("open_pre_repay_failed", asset=base_asset,
-                                            amount=str(repay_amount), exc_info=True)
-                        remaining_debt = borrowed - repay_amount
-                        if remaining_debt > 0:
-                            raise HTTPException(
-                                400,
-                                f"Dette {base_asset} résiduelle: {remaining_debt} "
-                                f"(borrowed={borrowed}, free={free}). "
-                                f"Rembourser manuellement sur Binance avant d'ouvrir.",
+        debt_asset = base_asset if side == "SHORT" else "USDC"
+        for a in cross_assets:
+            if a["asset"] == debt_asset:
+                borrowed = Decimal(a.get("borrowed", "0"))
+                free = Decimal(a.get("free", "0"))
+                if borrowed > 0:
+                    repay_amount = min(free, borrowed)
+                    if repay_amount > 0:
+                        try:
+                            await binance_client.repay_margin_loan(
+                                asset=debt_asset, amount=repay_amount,
                             )
-                    break
+                            log.info("open_pre_repay", asset=debt_asset,
+                                     repaid=str(repay_amount))
+                        except Exception:
+                            log.warning("open_pre_repay_failed", asset=debt_asset,
+                                        amount=str(repay_amount), exc_info=True)
+                    remaining_debt = borrowed - repay_amount
+                    if remaining_debt > 0:
+                        raise HTTPException(
+                            400,
+                            f"Dette {debt_asset} résiduelle: {remaining_debt} "
+                            f"(borrowed={borrowed}, free={free}). "
+                            f"Rembourser manuellement sur Binance avant d'ouvrir.",
+                        )
+                    # Refresh USDC free after repay (may have changed)
+                    if debt_asset == "USDC" and repay_amount > 0:
+                        usdc_free = free - repay_amount
+                break
 
         # Query Binance max borrow to cap quantity
         borrow_asset = base_asset if side == "SHORT" else "USDC"
