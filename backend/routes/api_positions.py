@@ -1,3 +1,4 @@
+import asyncio
 import time
 from decimal import Decimal, InvalidOperation
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel
 
 from backend.exchange import binance_client
 from backend.exchange.symbol_filters import round_price, round_quantity, validate_order
-from backend.trading import order_manager, position_tracker
+from backend.trading import order_manager, position_tracker, trailing_manager
 
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 
@@ -296,6 +297,7 @@ async def secure_position(position_id: int):
     try:
         pos = _find_position(position_id)
         result = await order_manager.secure_position(pos)
+        asyncio.create_task(trailing_manager.resume_after_secure(position_id))
         return {"status": "ok", **result}
     except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))

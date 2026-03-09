@@ -139,10 +139,17 @@ const Journal = (() => {
             const monthDetailEl = document.getElementById('journal-month-detail');
 
             if (dayPnlEl) {
-                const dp = parseFloat(d.day_pnl) || 0;
+                // Realized (closed) + unrealized (open positions)
+                const realized = parseFloat(d.day_pnl) || 0;
+                const positions = window._cockpitPositions || [];
+                const unrealized = positions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
+                const dp = realized + unrealized;
                 dayPnlEl.textContent = `${dp >= 0 ? '+' : ''}$${dp.toFixed(2)}`;
                 dayPnlEl.className = `font-bold text-base ${dp >= 0 ? 'pnl-positive' : 'pnl-negative'}`;
-                dayDetailEl.textContent = d.day_trades > 0 ? `${d.day_trades} trade${d.day_trades > 1 ? 's' : ''}` : 'Aucun trade';
+                const parts = [];
+                if (d.day_trades > 0) parts.push(`${d.day_trades} trade${d.day_trades > 1 ? 's' : ''}`);
+                if (unrealized !== 0) parts.push(`dont ${unrealized >= 0 ? '+' : ''}$${unrealized.toFixed(2)} ouvert`);
+                dayDetailEl.textContent = parts.length ? parts.join(' · ') : 'Aucun trade';
             }
             if (monthPnlEl) {
                 const mp = parseFloat(d.month_pnl) || 0;

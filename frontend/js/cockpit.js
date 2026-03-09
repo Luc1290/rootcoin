@@ -3,6 +3,7 @@ const Cockpit = (() => {
     let _analysis = null;
     let _dayPnl = null;
     let _dayTrades = 0;
+    let _lastDayPnlFetch = 0;
     let _news = [];
     let _recentCycles = [];
     let _prevPositionKeys = null;
@@ -401,6 +402,16 @@ const Cockpit = (() => {
             const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(0)}` : '';
             const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
 
+            // Duration: time between detection and resolution
+            let durationStr = '';
+            if (r.detected_at && r.resolved_at) {
+                const ms = new Date(r.resolved_at) - new Date(r.detected_at);
+                const mins = Math.floor(ms / 60000);
+                if (mins < 60) durationStr = `${mins}m`;
+                else if (mins < 1440) durationStr = `${Math.floor(mins / 60)}h${mins % 60 ? (mins % 60) + 'm' : ''}`;
+                else durationStr = `${Math.floor(mins / 1440)}j`;
+            }
+
             // R:R badge
             const rr = r.rr ? parseFloat(r.rr) : null;
             const rrStr = rr !== null ? `${rr.toFixed(1)}` : '';
@@ -412,6 +423,7 @@ const Cockpit = (() => {
                     <span class="text-xs ${dirClass}">${dirIcon}</span>
                     <span class="track-record-status ${statusCls}">${statusLabel}</span>
                     ${rrStr ? `<span class="text-xs tabular-nums font-semibold" style="font-size:9px;color:${rrColor}">${rrStr}R</span>` : ''}
+                    ${durationStr ? `<span class="text-xs text-gray-500" style="font-size:9px">${durationStr}</span>` : ''}
                 </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
@@ -621,7 +633,19 @@ const Cockpit = (() => {
     WS.on('positions_snapshot', (data) => {
         const prev = _positions;
         _positions = data || [];
+        window._cockpitPositions = _positions;
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
+        // Refresh realized 24h PnL every 30s
+        const now = Date.now();
+        if (now - _lastDayPnlFetch > 30000) {
+            _lastDayPnlFetch = now;
+            fetch('/api/journal/streaks').then(r => r.ok ? r.json() : null).then(s => {
+                if (!s) return;
+                _dayPnl = parseFloat(s.day_pnl) || 0;
+                _dayTrades = s.day_trades || 0;
+                _renderPortfolio();
+            }).catch(() => {});
+        }
         _renderPortfolio();
         _renderPositionCharts();
         // Switch to market chart if positions closed, or to position charts if opened

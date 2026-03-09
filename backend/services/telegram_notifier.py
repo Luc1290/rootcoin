@@ -385,22 +385,34 @@ async def notify_position_secured(
 
 async def notify_trailing_moved(
     symbol: str, side: str, sl_price: Decimal, tp_price: Decimal,
-    entry_price: Decimal, gain_pct: Decimal, is_breakeven: bool,
+    entry_price: Decimal, current_price: Decimal, quantity: Decimal,
+    gain_pct: Decimal, is_breakeven: bool,
 ):
     if not is_orders_enabled():
         return
     sl_dist = _pct_distance(side, entry_price, sl_price)
     tp_dist = _pct_distance(side, entry_price, tp_price)
+    pnl_usd = float((current_price - entry_price) * quantity)
+    if side == "SHORT":
+        pnl_usd = -pnl_usd
+    value_usd = float(current_price * quantity)
+    sign = "+" if gain_pct >= 0 else ""
+    pnl_sign = "+" if pnl_usd >= 0 else ""
+    base = symbol.replace("USDC", "").replace("USDT", "")
     if is_breakeven:
         header = f"\U0001f6e1\ufe0f <b>{symbol} {side} — Breakeven</b>"
-        detail = f"Le SL protege maintenant ta position au breakeven."
+        detail = "SL au breakeven, position protegee."
     else:
-        header = f"\u2b06\ufe0f <b>{symbol} {side} — Trailing +{_fq(gain_pct)}%</b>"
-        detail = f"Le trailing a remonte tes niveaux."
+        header = f"\u2b06\ufe0f <b>{symbol} {side} — Trailing {sign}{float(gain_pct):.2f}%</b>"
+        detail = "Niveaux ajustes."
     msg = (
         f"{header}\n"
         f"\n"
         f"{detail}\n"
+        f"\U0001f4b0 PnL : {pnl_sign}${pnl_usd:,.2f} ({sign}{float(gain_pct):.2f}%)\n"
+        f"\U0001f4c8 Entree {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
+        f"\U0001f4b5 Valeur : ${value_usd:,.2f} ({_fq(quantity)} {base})\n"
+        f"\n"
         f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist})\n"
         f"\u26d4 SL : {_fp(sl_price)} ({sl_dist})"
     )
@@ -429,6 +441,38 @@ async def notify_pnl_threshold(
         f"\U0001f4b0 PnL : {sign}{_fp(pnl_usd)} ({sign}{_fq(pnl_pct)}%)\n"
         f"\U0001f4c8 Entry {_fp(entry_price)}  \u2192  Actuel {_fp(current_price)}"
     )
+    await notify(msg)
+
+
+async def notify_pnl_usd_threshold(
+    symbol: str, side: str, pnl_pct: Decimal, pnl_usd: Decimal,
+    entry_price: Decimal, current_price: Decimal, quantity: Decimal,
+    threshold: float,
+):
+    if not is_pnl_enabled():
+        return
+    sign = "+" if pnl_usd > 0 else ""
+    pct_sign = "+" if pnl_pct > 0 else ""
+    base = symbol.replace("USDC", "").replace("USDT", "")
+    value_usd = float(current_price * quantity)
+    if threshold >= 500:
+        header = f"\U0001f4b0 <b>{symbol} {side} — {sign}${float(pnl_usd):,.0f}</b>"
+        advice = "\U0001f6e1\ufe0f Pense a securiser ta position."
+    elif threshold > 0:
+        header = f"\U0001f4b0 <b>{symbol} {side} — {sign}${float(pnl_usd):,.0f}</b>"
+        advice = ""
+    else:
+        header = f"\U0001f6a8 <b>{symbol} {side} — {sign}${float(pnl_usd):,.0f}</b>"
+        advice = "\u26a0\ufe0f Surveille ta position." if threshold <= -500 else ""
+    msg = (
+        f"{header}\n"
+        f"\n"
+        f"\U0001f4b0 PnL : {sign}${float(pnl_usd):,.2f} ({pct_sign}{float(pnl_pct):.2f}%)\n"
+        f"\U0001f4c8 Entree {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
+        f"\U0001f4b5 Valeur : ${value_usd:,.2f} ({_fq(quantity)} {base})"
+    )
+    if advice:
+        msg += f"\n\n{advice}"
     await notify(msg)
 
 

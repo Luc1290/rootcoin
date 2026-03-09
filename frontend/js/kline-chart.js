@@ -172,6 +172,8 @@ const KlineChart = (() => {
         if (_mainChart) _mainChart.applyOptions({ height: h });
     }
 
+    function _isMobile() { return window.innerWidth < 1024 || 'ontouchstart' in window; }
+
     function _chartOptions(height, showTimeScale) {
         return {
             width: 0,
@@ -179,7 +181,7 @@ const KlineChart = (() => {
             layout: { background: { color: C.bg }, textColor: C.text, fontSize: 10 },
             grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
             rightPriceScale: { borderColor: C.border, minimumWidth: 60, scaleMargins: { top: 0.02, bottom: 0.05 } },
-            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: 0.5 },
+            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: _isMobile() ? 3 : 0.5 },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
                 vertLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#374151' },
@@ -505,6 +507,11 @@ const KlineChart = (() => {
     async function loadChart() {
         if (_loading) return;
         _loading = true;
+        // Invalidate active cycles cache so position overlays refresh
+        if (_cyclesCache.data?.some(c => c.is_active)) {
+            _cyclesCache = { symbol: null, data: null };
+            _cyclesRendered = { symbol: null, interval: null };
+        }
         _subscribeWS();
 
         try {
@@ -1161,14 +1168,12 @@ const KlineChart = (() => {
         _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
         // Detect position opened/closed for current symbol → invalidate cycles cache
         const prev = _cachedPositions;
-        if (prev) {
-            const hadSymbol = prev.some(p => p.symbol === _symbol && p.is_active);
-            const hasSymbol = data.some(p => p.symbol === _symbol && p.is_active);
-            if (hadSymbol !== hasSymbol) {
-                _cyclesCache = { symbol: null, data: null };
-                _cyclesRendered = { symbol: null, interval: null };
-                if (_activeIndicators.has('cycles')) loadChart();
-            }
+        const hadSymbol = prev ? prev.some(p => p.symbol === _symbol && p.is_active) : false;
+        const hasSymbol = data.some(p => p.symbol === _symbol && p.is_active);
+        if (hadSymbol !== hasSymbol) {
+            _cyclesCache = { symbol: null, data: null };
+            _cyclesRendered = { symbol: null, interval: null };
+            if (_activeIndicators.has('cycles')) loadChart();
         }
         _cachedPositions = data;
         if (_activeIndicators.has('orders')) {

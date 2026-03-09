@@ -561,7 +561,8 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
 
         asyncio.create_task(telegram_notifier.notify_trailing_moved(
             pos.symbol, pos.side, new_sl_price, new_tp,
-            pos.entry_price, gain_pct, is_breakeven=is_breakeven,
+            pos.entry_price, current_price, pos.quantity,
+            gain_pct, is_breakeven=is_breakeven,
         ))
     except Exception:
         log.error("trailing_move_failed", symbol=pos.symbol, exc_info=True)
@@ -871,6 +872,37 @@ def get_tracked() -> dict:
             "manual_override": t["manual_override"],
         }
     return result
+
+
+async def resume_after_secure(pos_id: int):
+    """Re-place OCO immediately after secure (half sold, SL-only remaining)."""
+    tracking = _tracked.get(pos_id)
+    if not tracking:
+        return
+    tracking["manual_override"] = False
+    tracking.pop("override_at", None)
+    tracking.pop("override_reminded", None)
+    tracking["last_move_at"] = 0.0
+
+    await asyncio.sleep(2.0)  # wait for order state to settle
+
+    pos = _get_pos(pos_id)
+    if not pos:
+        return
+
+    current = pos.current_price
+    if not current or current <= 0:
+        return
+
+    entry = pos.entry_price
+    if pos.side == "LONG":
+        gain_pct = (current - entry) / entry * 100
+    else:
+        gain_pct = (entry - current) / entry * 100
+
+    if gain_pct >= _settings.get("breakeven", _DEF_BREAKEVEN):
+        await _move_oco(pos, tracking, gain_pct, current, is_breakeven=False)
+        log.info("trailing_resumed_after_secure", symbol=pos.symbol, gain=f"{gain_pct:.2f}%")
 
 
 def is_naked(pos_id: int) -> bool:

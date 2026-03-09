@@ -613,10 +613,13 @@ async def _handle_list_status(msg: dict):
 
 # --- Price updates & PnL threshold alerts ---
 
-_PNL_THRESHOLDS = [-5.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 5.0]
-_PNL_HYSTERESIS = 0.4  # must move 0.4% away from threshold before it can re-trigger
+_PNL_THRESHOLDS = [-5.0, -3.0, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0]
+_PNL_HYSTERESIS = 0.3  # must move 0.3% away from threshold before it can re-trigger
+_PNL_USD_THRESHOLDS = [-500.0, -200.0, 200.0, 500.0, 1000.0, 2000.0]
+_PNL_USD_HYSTERESIS = 50.0  # must move $50 away before re-trigger
 _last_price_at: dict[str, float] = {}  # symbol -> epoch timestamp of last price update
 _pnl_armed: dict[tuple[int, float], bool] = {}  # (pos_id, threshold) -> armed (ready to fire)
+_pnl_usd_armed: dict[tuple[int, float], bool] = {}  # (pos_id, usd_threshold) -> armed
 
 
 async def _handle_price_update(msg: dict):
@@ -636,6 +639,7 @@ async def _handle_price_update(msg: dict):
             )
             if prev_pct is not None:
                 _check_pnl_thresholds(pos, float(prev_pct), float(pos.pnl_pct))
+                _check_pnl_usd_thresholds(pos)
             updated = True
     if updated:
         _last_price_at[symbol] = _time.time()
@@ -660,10 +664,31 @@ def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
                 _pnl_armed[key] = True
 
 
+def _check_pnl_usd_thresholds(pos: Position):
+    cur_usd = float(pos.pnl_usd) if pos.pnl_usd else 0.0
+    for t in _PNL_USD_THRESHOLDS:
+        key = (pos.id, t)
+        is_past = cur_usd >= t if t > 0 else cur_usd <= t
+
+        if is_past:
+            if _pnl_usd_armed.get(key, True):
+                _pnl_usd_armed[key] = False
+                _fire_and_forget(telegram_notifier.notify_pnl_usd_threshold(
+                    pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
+                    pos.entry_price, pos.current_price, pos.quantity, t,
+                ))
+        elif not _pnl_usd_armed.get(key, True):
+            if abs(cur_usd - t) >= _PNL_USD_HYSTERESIS:
+                _pnl_usd_armed[key] = True
+
+
 def clear_pnl_alerts(position_id: int):
     dead = [k for k in _pnl_armed if k[0] == position_id]
     for k in dead:
         del _pnl_armed[k]
+    dead_usd = [k for k in _pnl_usd_armed if k[0] == position_id]
+    for k in dead_usd:
+        del _pnl_usd_armed[k]
 
 
 # --- Fill notification batching ---
