@@ -633,13 +633,16 @@ async def _handle_price_update(msg: dict):
     for pos in _positions.values():
         if pos.symbol == symbol and pos.is_active:
             prev_pct = pos.pnl_pct
+            prev_usd = pos.pnl_usd
             pos.current_price = price
             pos.pnl_usd, pos.pnl_pct = pnl.unrealized_pnl(
                 pos.side, pos.entry_price, price, pos.quantity, pos.entry_fees_usd,
             )
             if prev_pct is not None:
                 _check_pnl_thresholds(pos, float(prev_pct), float(pos.pnl_pct))
-                _check_pnl_usd_thresholds(pos)
+                _check_pnl_usd_thresholds(
+                    pos, float(prev_usd) if prev_usd else 0.0, float(pos.pnl_usd),
+                )
             updated = True
     if updated:
         _last_price_at[symbol] = _time.time()
@@ -664,13 +667,12 @@ def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
                 _pnl_armed[key] = True
 
 
-def _check_pnl_usd_thresholds(pos: Position):
-    cur_usd = float(pos.pnl_usd) if pos.pnl_usd else 0.0
+def _check_pnl_usd_thresholds(pos: Position, prev_usd: float, cur_usd: float):
     for t in _PNL_USD_THRESHOLDS:
         key = (pos.id, t)
-        is_past = cur_usd >= t if t > 0 else cur_usd <= t
+        crossed = (prev_usd < t <= cur_usd) or (prev_usd > t >= cur_usd)
 
-        if is_past:
+        if crossed:
             if _pnl_usd_armed.get(key, True):
                 _pnl_usd_armed[key] = False
                 _fire_and_forget(telegram_notifier.notify_pnl_usd_threshold(
