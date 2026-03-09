@@ -281,12 +281,84 @@ async def _build_tf_section(symbol: str, tf: str) -> str | None:
         pos = "au-dessus" if p > vwap[-1] else "en-dessous"
         lines.append(f"VWAP: {vwap[-1]:.2f} (prix {pos})")
 
-    # Recent price action (last 10 candles summarized)
-    recent = klines[-10:]
+    # Price action structure
+    lines.append(_build_price_action(klines, tf))
+
+    return "\n".join(lines)
+
+
+def _build_price_action(klines: list, tf: str) -> str:
+    """Build a compact price structure summary so Claude can 'see' the chart."""
+    n_candles = {"5m": 24, "15m": 20, "1h": 16, "4h": 12}.get(tf, 20)
+    recent = klines[-n_candles:]
+    if len(recent) < 5:
+        return ""
+
+    closes = [float(k["close"]) for k in recent]
+    highs = [float(k["high"]) for k in recent]
+    lows = [float(k["low"]) for k in recent]
     opens = [float(k["open"]) for k in recent]
-    closes_r = [float(k["close"]) for k in recent]
-    green = sum(1 for o, c in zip(opens, closes_r) if c > o)
-    lines.append(f"10 dernieres bougies: {green} vertes, {10 - green} rouges")
+    volumes = [float(k["volume"]) for k in recent]
+
+    # Closes compacts (sampled to ~12 points max for readability)
+    step = max(1, len(closes) // 12)
+    sampled = [f"{closes[i]:.0f}" for i in range(0, len(closes), step)]
+    if closes[-1] != float(sampled[-1]):
+        sampled.append(f"{closes[-1]:.0f}")
+
+    lines = [f"--- Price action ({len(recent)} bougies {tf}) ---"]
+    lines.append(f"Closes: {' → '.join(sampled)}")
+
+    # Session range
+    session_high = max(highs)
+    session_low = min(lows)
+    range_pct = (session_high - session_low) / session_low * 100 if session_low > 0 else 0
+    lines.append(f"High: {session_high:.0f} | Low: {session_low:.0f} | Range: {range_pct:.1f}%")
+
+    # Green/red count
+    green = sum(1 for o, c in zip(opens, closes) if c > o)
+    lines.append(f"Bougies: {green} vertes, {len(recent) - green} rouges")
+
+    # Swing detection (local high/low)
+    swing_highs = []
+    swing_lows = []
+    for i in range(2, len(highs) - 2):
+        if highs[i] >= highs[i-1] and highs[i] >= highs[i-2] and highs[i] >= highs[i+1] and highs[i] >= highs[i+2]:
+            ago = len(highs) - 1 - i
+            swing_highs.append((highs[i], ago))
+        if lows[i] <= lows[i-1] and lows[i] <= lows[i-2] and lows[i] <= lows[i+1] and lows[i] <= lows[i+2]:
+            ago = len(lows) - 1 - i
+            swing_lows.append((lows[i], ago))
+
+    if swing_highs:
+        sh = max(swing_highs, key=lambda x: x[0])
+        lines.append(f"Swing high: {sh[0]:.0f} (il y a {sh[1]} bougies)")
+    if swing_lows:
+        sl = min(swing_lows, key=lambda x: x[0])
+        lines.append(f"Swing low: {sl[0]:.0f} (il y a {sl[1]} bougies)")
+
+    # Significant wicks (lower wicks > 0.3% of price = rejection signals)
+    wicks = []
+    for i, (k, h, l, o, c) in enumerate(zip(recent, highs, lows, opens, closes)):
+        body_low = min(o, c)
+        body_high = max(o, c)
+        lower_wick = (body_low - l) / body_low * 100 if body_low > 0 else 0
+        upper_wick = (h - body_high) / body_high * 100 if body_high > 0 else 0
+        ago = len(recent) - 1 - i
+        if lower_wick > 0.3:
+            wicks.append(f"meche basse {l:.0f} (-{lower_wick:.1f}%, {ago} bougies)")
+        if upper_wick > 0.3:
+            wicks.append(f"meche haute {h:.0f} (+{upper_wick:.1f}%, {ago} bougies)")
+    if wicks:
+        lines.append(f"Rejets: {', '.join(wicks[-4:])}")
+
+    # Volume profile: is current volume above or below average?
+    avg_vol = sum(volumes) / len(volumes) if volumes else 0
+    last_vol = volumes[-1] if volumes else 0
+    if avg_vol > 0:
+        vol_ratio = last_vol / avg_vol
+        vol_desc = "fort" if vol_ratio > 1.5 else "faible" if vol_ratio < 0.6 else "normal"
+        lines.append(f"Volume actuel: {vol_desc} ({vol_ratio:.1f}x la moyenne)")
 
     return "\n".join(lines)
 
