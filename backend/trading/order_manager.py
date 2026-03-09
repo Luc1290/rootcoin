@@ -176,7 +176,7 @@ async def place_take_profit(pos: Position, tp_price: Decimal) -> dict:
     return result
 
 
-async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict:
+async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal, *, silent: bool = False) -> dict:
     await cancel_position_orders(pos)
     side = _close_side(pos)
     qty = _close_qty(pos)
@@ -259,9 +259,10 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal) -> dict
     )
 
     log.info("oco_placed", symbol=pos.symbol, tp=str(tp_price), sl=str(sl_price))
-    asyncio.create_task(telegram_notifier.notify_oco_placed(
-        pos.symbol, pos.side, tp_price, sl_price, qty, pos.entry_price,
-    ))
+    if not silent:
+        asyncio.create_task(telegram_notifier.notify_oco_placed(
+            pos.symbol, pos.side, tp_price, sl_price, qty, pos.entry_price,
+        ))
     return result
 
 

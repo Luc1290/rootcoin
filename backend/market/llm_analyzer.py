@@ -9,15 +9,20 @@ from backend.services import news_tracker
 
 log = structlog.get_logger()
 
-_last_analysis: dict | None = None
+_analyses: dict[str, dict] = {}  # symbol -> last analysis
 
-SYSTEM_PROMPT = """Tu es un analyste de trading intraday expert specialise en crypto sur Binance margin cross x5.
+SYSTEM_PROMPT = """Tu es un trader intraday expert en crypto sur Binance margin cross x5.
 Capital : ~10 000 USDC. Horizon : scalping / intraday.
+
+Tu ne te contentes PAS de deduire mecaniquement les indicateurs. Tu as ta propre conviction de trader :
+- Lis la structure du marche, pas juste les chiffres. Ou va le prix ? Pourquoi ?
+- Identifie le scenario principal ET le scenario alternatif.
+- Donne ton avis personnel : "je pense que...", "mon feeling est...", "le marche semble..."
+- Si tu as deja analyse ce symbole precedemment, compare avec ton ancienne analyse : qu'est-ce qui a change ? Ton biais est-il renforce ou invalide ?
 
 REGLES STRICTES :
 - Tu DOIS choisir une direction : LONG ou SHORT. Jamais FLAT, jamais "attendre".
 - Tes niveaux (entry, SL, TP) doivent etre precis au dollar pres.
-- Ton explication doit justifier ta decision avec les donnees fournies (indicateurs, niveaux, orderbook, macro, news).
 - Reponds UNIQUEMENT en JSON valide, sans markdown, sans commentaire autour.
 
 Format JSON attendu :
@@ -33,6 +38,7 @@ Format JSON attendu :
     "pour": ["facteur positif 1", "facteur positif 2"],
     "contre": ["facteur negatif 1"]
   },
+  "market_read": "2-3 phrases avec ta lecture personnelle du marche, ton feeling, ce que tu vois au-dela des indicateurs",
   "explanation": "3-5 phrases justifiant ta decision avec les donnees",
   "key_signal": "Le signal principal en 1 phrase",
   "invalidation": "Ce qui invaliderait ce trade en 1 phrase"
@@ -51,13 +57,16 @@ INDICATORS_SET = {"ema", "rsi", "macd", "bb", "obv", "stoch_rsi", "atr", "adx", 
 TIMEFRAMES = ["5m", "15m", "1h", "4h"]
 
 
-def get_last_analysis() -> dict | None:
-    return _last_analysis
+def get_last_analysis(symbol: str | None = None) -> dict | None:
+    if symbol:
+        return _analyses.get(symbol)
+    if not _analyses:
+        return None
+    # Return most recent across all symbols
+    return max(_analyses.values(), key=lambda a: a.get("analyzed_at", ""), default=None)
 
 
 async def analyze(symbol: str) -> dict:
-    global _last_analysis
-
     api_key = settings.anthropic_api_key.get_secret_value()
     if not api_key:
         return {"error": "ANTHROPIC_API_KEY non configuree dans .env"}
@@ -69,7 +78,7 @@ async def analyze(symbol: str) -> dict:
         client = anthropic.AsyncAnthropic(api_key=api_key)
         message = await client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=1024,
+            max_tokens=1500,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -81,7 +90,7 @@ async def analyze(symbol: str) -> dict:
         result["model"] = message.model
         result["input_tokens"] = message.usage.input_tokens
         result["output_tokens"] = message.usage.output_tokens
-        _last_analysis = result
+        _analyses[symbol] = result
         log.info("llm_analysis_done", symbol=symbol, direction=result.get("direction"),
                  tokens_in=message.usage.input_tokens, tokens_out=message.usage.output_tokens)
         return result
@@ -131,9 +140,44 @@ async def build_prompt(symbol: str) -> str:
     # 7. Temporal context
     sections.append(_build_temporal_section())
 
+    # 8. Previous analysis (if any)
+    prev = _analyses.get(symbol)
+    if prev and prev.get("direction"):
+        sections.append(_build_previous_analysis_section(prev))
+
     sections.append(f"\nAnalyse {symbol} et donne ta recommandation de trade.")
 
     return "\n".join(sections)
+
+
+def _build_previous_analysis_section(prev: dict) -> str:
+    analyzed_at = prev.get("analyzed_at", "?")
+    direction = prev.get("direction", "?")
+    confidence = prev.get("confidence", "?")
+    entry = prev.get("entry", "?")
+    sl = prev.get("stop_loss", "?")
+    tp1 = prev.get("tp1", "?")
+    tp2 = prev.get("tp2", "?")
+    explanation = prev.get("explanation", "")
+    market_read = prev.get("market_read", "")
+    key_signal = prev.get("key_signal", "")
+    invalidation = prev.get("invalidation", "")
+
+    lines = [
+        f"\n=== TON ANALYSE PRECEDENTE ({analyzed_at}) ===",
+        f"Direction: {direction} (confiance {confidence}%)",
+        f"Entry: {entry} | SL: {sl} | TP1: {tp1} | TP2: {tp2}",
+    ]
+    if market_read:
+        lines.append(f"Ta lecture du marche: {market_read}")
+    if explanation:
+        lines.append(f"Explication: {explanation}")
+    if key_signal:
+        lines.append(f"Signal cle: {key_signal}")
+    if invalidation:
+        lines.append(f"Invalidation: {invalidation}")
+    lines.append("Compare avec la situation actuelle : ton biais est-il renforce ou invalide ?")
+    return "\n".join(lines)
 
 
 async def _build_tf_section(symbol: str, tf: str) -> str | None:

@@ -171,10 +171,14 @@ async def notify_position_opened(
     if not is_positions_enabled():
         return
     base = symbol.replace("USDC", "").replace("USDT", "")
+    mtype = market_type.replace("_", " ").title()
+    usd_val = float(price * qty)
     msg = (
-        f"\U0001f7e2 <b>{symbol} {side}</b> ouvert\n"
-        f"Qty: {_fq(qty)} {base} @ {_fp(price)}\n"
-        f"Marche: {market_type.replace('_', ' ')}"
+        f"\U0001f7e2 <b>{symbol} {side} ouvert</b>\n"
+        f"\n"
+        f"\U0001f4b0 {_fq(qty)} {base} @ {_fp(price)}\n"
+        f"\U0001f4b5 Valeur : ${usd_val:,.0f}\n"
+        f"\U0001f3e6 {mtype}"
     )
     await notify(msg)
 
@@ -192,25 +196,30 @@ async def notify_position_closed(
     log.info("close_notif_sending", symbol=symbol, side=side, reason=exit_reason)
     win = net_pnl > 0
     if exit_reason == "SL":
-        header = f"\u26d4 <b>{symbol} {side}</b> SL touche"
+        header = f"\u26d4 <b>{symbol} {side} — Stop Loss touche</b>"
     elif exit_reason == "TP":
-        header = f"\U0001f3af <b>{symbol} {side}</b> TP atteint"
+        header = f"\U0001f3af <b>{symbol} {side} — Take Profit atteint !</b>"
     elif exit_reason == "OCO":
-        oco_icon = "\U0001f3af" if win else "\u26d4"
-        oco_label = "TP" if win else "SL"
-        header = f"{oco_icon} <b>{symbol} {side}</b> OCO {oco_label} touche"
+        if win:
+            header = f"\U0001f3af <b>{symbol} {side} — Take Profit atteint !</b>"
+        else:
+            header = f"\u26d4 <b>{symbol} {side} — Stop Loss touche</b>"
     else:
         icon = "\u2705" if win else "\u274c"
-        header = f"\U0001f534 <b>{symbol} {side}</b> ferme {icon}"
+        header = f"{icon} <b>{symbol} {side} — Position fermee</b>"
     sign = "+" if net_pnl > 0 else ""
     sign_g = "+" if realized_pnl > 0 else ""
     duration = _fmt_duration(opened_at, closed_at)
+    fees = realized_pnl - net_pnl
     msg = (
         f"{header}\n"
-        f"Entry: {_fp(entry_price)} \u2192 Exit: {_fp(exit_price)}\n"
-        f"PnL brut: {sign_g}{_fp(realized_pnl)}\n"
-        f"PnL net: {sign}{_fp(net_pnl)} ({sign}{_fq(pnl_pct)}%)\n"
-        f"Duree: {duration}"
+        f"\n"
+        f"\U0001f4c8 Entry {_fp(entry_price)}  \u2192  Exit {_fp(exit_price)}\n"
+        f"\U0001f4b0 PnL brut : {sign_g}{_fp(realized_pnl)}\n"
+        f"\U0001f4b8 Frais : -{_fp(abs(fees))}\n"
+        f"{'=' * 20}\n"
+        f"<b>{'✅' if win else '❌'} PnL net : {sign}{_fp(net_pnl)} ({sign}{_fq(pnl_pct)}%)</b>\n"
+        f"\u23f1 Duree : {duration}"
     )
     ok = await notify(msg, retries=2)
     if not ok:
@@ -227,7 +236,7 @@ async def notify_position_dca(
     msg = (
         f"\U0001f504 <b>{symbol} {side}</b> DCA\n"
         f"+{_fq(qty)} {base} @ {_fp(price)}\n"
-        f"Nouveau moy: {_fp(new_avg)} (total: {_fq(new_total)} {base})"
+        f"Moy {_fp(new_avg)}  \u2022  Total {_fq(new_total)} {base}"
     )
     await notify(msg)
 
@@ -239,11 +248,14 @@ async def notify_position_opened_batch(
     if not is_positions_enabled():
         return
     base = symbol.replace("USDC", "").replace("USDT", "")
+    mtype = market_type.replace("_", " ").title()
+    usd_val = float(avg_price * total_qty)
     msg = (
-        f"\U0001f7e2 <b>{symbol} {side}</b> ouvert\n"
-        f"Qty: {_fq(total_qty)} {base} @ {_fp(avg_price)}\n"
-        f"Marche: {market_type.replace('_', ' ')}\n"
-        f"({num_fills} fills)"
+        f"\U0001f7e2 <b>{symbol} {side} ouvert</b>\n"
+        f"\n"
+        f"\U0001f4b0 {_fq(total_qty)} {base} @ {_fp(avg_price)}\n"
+        f"\U0001f4b5 Valeur : ${usd_val:,.0f}  \u2022  {num_fills} fills\n"
+        f"\U0001f3e6 {mtype}"
     )
     await notify(msg)
 
@@ -258,7 +270,7 @@ async def notify_position_dca_batch(
     msg = (
         f"\U0001f504 <b>{symbol} {side}</b> DCA\n"
         f"+{_fq(added_qty)} {base} ({num_fills} fills)\n"
-        f"Nouveau moy: {_fp(avg_price)} (total: {_fq(new_total)} {base})"
+        f"Moy {_fp(avg_price)}  \u2022  Total {_fq(new_total)} {base}"
     )
     await notify(msg)
 
@@ -272,10 +284,11 @@ async def notify_position_reduced(
     base = symbol.replace("USDC", "").replace("USDT", "")
     sign = "+" if realized > 0 else ""
     msg = (
-        f"\U0001f4c9 <b>{symbol} {side}</b> reduit\n"
-        f"-{_fq(qty)} {base} @ {_fp(price)}\n"
-        f"PnL: {sign}{_fp(realized)}\n"
-        f"Restant: {_fq(remaining)} {base}"
+        f"\U0001f4c9 <b>{symbol} {side} — Reduction</b>\n"
+        f"\n"
+        f"Vendu : {_fq(qty)} {base} @ {_fp(price)}\n"
+        f"PnL : {sign}{_fp(realized)}\n"
+        f"Restant : {_fq(remaining)} {base}"
     )
     await notify(msg)
 
@@ -290,18 +303,16 @@ async def notify_position_closed_reconciled(
                      positions_cat=_notify_positions)
         return
     log.info("close_reconciled_notif_sending", symbol=symbol, side=side)
-    lines = [f"\U0001f534 <b>{symbol} {side}</b> ferme (reconciliation)"]
+    lines = [f"\U0001f534 <b>{symbol} {side} — Ferme (reconciliation)</b>", ""]
     if exit_price and exit_price > 0:
-        lines.append(f"Entry: {_fp(entry_price)} \u2192 Exit: {_fp(exit_price)}")
+        lines.append(f"Entry {_fp(entry_price)}  \u2192  Exit {_fp(exit_price)}")
     else:
-        lines.append(f"Entry: {_fp(entry_price)}")
+        lines.append(f"Entry {_fp(entry_price)}")
     if net_pnl is not None:
         sign = "+" if net_pnl > 0 else ""
         icon = "\u2705" if net_pnl > 0 else "\u274c"
-        lines.append(f"PnL net: {sign}{_fp(net_pnl)} {icon}")
-    if pnl_pct is not None:
-        sign = "+" if pnl_pct > 0 else ""
-        lines.append(f"({sign}{_fq(pnl_pct)}%)")
+        pct_str = f" ({sign}{_fq(pnl_pct)}%)" if pnl_pct is not None else ""
+        lines.append(f"{icon} <b>PnL net : {sign}{_fp(net_pnl)}{pct_str}</b>")
     await notify("\n".join(lines), retries=2)
 
 
@@ -316,9 +327,10 @@ async def notify_sl_placed(
     dist_pct = _pct_distance(side, entry_price, stop_price)
     base = symbol.replace("USDC", "").replace("USDT", "")
     msg = (
-        f"\u26d4 <b>{symbol}</b> SL place\n"
-        f"Stop: {_fp(stop_price)} ({dist_pct})\n"
-        f"Qty: {_fq(qty)} {base}"
+        f"\u26d4 <b>{symbol} — Stop Loss place</b>\n"
+        f"\n"
+        f"Stop : {_fp(stop_price)} ({dist_pct} depuis entry)\n"
+        f"Qty : {_fq(qty)} {base}"
     )
     await notify(msg)
 
@@ -331,9 +343,10 @@ async def notify_tp_placed(
     dist_pct = _pct_distance(side, entry_price, tp_price)
     base = symbol.replace("USDC", "").replace("USDT", "")
     msg = (
-        f"\U0001f3af <b>{symbol}</b> TP place\n"
-        f"Target: {_fp(tp_price)} ({dist_pct})\n"
-        f"Qty: {_fq(qty)} {base}"
+        f"\U0001f3af <b>{symbol} — Take Profit place</b>\n"
+        f"\n"
+        f"Target : {_fp(tp_price)} ({dist_pct} depuis entry)\n"
+        f"Qty : {_fq(qty)} {base}"
     )
     await notify(msg)
 
@@ -346,11 +359,11 @@ async def notify_oco_placed(
         return
     tp_dist = _pct_distance(side, entry_price, tp_price)
     sl_dist = _pct_distance(side, entry_price, sl_price)
-    base = symbol.replace("USDC", "").replace("USDT", "")
     msg = (
-        f"\U0001f500 <b>{symbol}</b> OCO place\n"
-        f"TP: {_fp(tp_price)} ({tp_dist}) | SL: {_fp(sl_price)} ({sl_dist})\n"
-        f"Qty: {_fq(qty)} {base}"
+        f"\U0001f500 <b>{symbol} — OCO place</b>\n"
+        f"\n"
+        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist})\n"
+        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist})"
     )
     await notify(msg)
 
@@ -362,9 +375,10 @@ async def notify_position_secured(
         return
     base = symbol.replace("USDC", "").replace("USDT", "")
     msg = (
-        f"\U0001f6e1\ufe0f <b>{symbol} {side}</b> securise\n"
-        f"Vendu: {_fq(half_qty)} {base} au marche\n"
-        f"Restant: {_fq(remaining)} {base} avec SL breakeven @ {_fp(sl_price)}"
+        f"\U0001f6e1\ufe0f <b>{symbol} {side} — Securise</b>\n"
+        f"\n"
+        f"Vendu {_fq(half_qty)} {base} au marche\n"
+        f"Restant {_fq(remaining)} {base} avec SL breakeven @ {_fp(sl_price)}"
     )
     await notify(msg)
 
@@ -378,13 +392,17 @@ async def notify_trailing_moved(
     sl_dist = _pct_distance(side, entry_price, sl_price)
     tp_dist = _pct_distance(side, entry_price, tp_price)
     if is_breakeven:
-        header = f"\U0001f6e1\ufe0f <b>{symbol} {side}</b> SL au breakeven"
+        header = f"\U0001f6e1\ufe0f <b>{symbol} {side} — Breakeven</b>"
+        detail = f"Le SL protege maintenant ta position au breakeven."
     else:
-        header = f"\u2b06\ufe0f <b>{symbol} {side}</b> trailing SL remonte"
+        header = f"\u2b06\ufe0f <b>{symbol} {side} — Trailing +{_fq(gain_pct)}%</b>"
+        detail = f"Le trailing a remonte tes niveaux."
     msg = (
         f"{header}\n"
-        f"Gain: +{_fq(gain_pct)}%\n"
-        f"SL: {_fp(sl_price)} ({sl_dist}) | TP: {_fp(tp_price)} ({tp_dist})"
+        f"\n"
+        f"{detail}\n"
+        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist})\n"
+        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist})"
     )
     await notify(msg)
 
@@ -400,15 +418,16 @@ async def notify_pnl_threshold(
         return
     sign = "+" if pnl_usd > 0 else ""
     if threshold == 0.0:
-        header = f"\u2696\ufe0f <b>{symbol} {side}</b> retour au breakeven"
+        header = f"\u2696\ufe0f <b>{symbol} {side} — Retour au breakeven</b>"
+    elif threshold > 0:
+        header = f"\U0001f4c8 <b>{symbol} {side} — +{threshold:.0f}% de gain</b>"
     else:
-        icon = "\U0001f4c8" if threshold > 0 else "\U0001f4c9"
-        t_sign = "+" if threshold > 0 else ""
-        header = f"{icon} <b>{symbol} {side}</b> atteint {t_sign}{threshold}%"
+        header = f"\U0001f4c9 <b>{symbol} {side} — {threshold:.0f}% de perte</b>"
     msg = (
         f"{header}\n"
-        f"PnL: {sign}{_fp(pnl_usd)} ({sign}{_fq(pnl_pct)}%)\n"
-        f"Entry: {_fp(entry_price)} \u2192 Prix: {_fp(current_price)}"
+        f"\n"
+        f"\U0001f4b0 PnL : {sign}{_fp(pnl_usd)} ({sign}{_fq(pnl_pct)}%)\n"
+        f"\U0001f4c8 Entry {_fp(entry_price)}  \u2192  Actuel {_fp(current_price)}"
     )
     await notify(msg)
 
@@ -422,23 +441,29 @@ async def notify_startup_summary():
     from backend.trading import position_tracker, pnl
     positions = position_tracker.get_positions()
     if not positions:
-        await notify("\U0001f680 <b>RootCoin demarre</b>\nAucune position active.")
+        await notify("\U0001f680 <b>RootCoin demarre</b> \u2014 Aucune position active.")
         return
-    lines = [f"\U0001f680 <b>RootCoin demarre</b> \u2014 {len(positions)} position(s) active(s)\n"]
+    total_pnl = Decimal("0")
+    lines = [f"\U0001f680 <b>RootCoin demarre</b>", ""]
     for pos in positions:
         unrealized = Decimal("0")
+        u_pct = Decimal("0")
         if pos.current_price and pos.current_price > 0:
-            unrealized, _ = pnl.unrealized_pnl(
+            unrealized, u_pct = pnl.unrealized_pnl(
                 pos.side, pos.entry_price, pos.current_price,
                 pos.quantity, pos.entry_fees_usd,
             )
+        total_pnl += unrealized
         sign = "+" if unrealized > 0 else ""
+        icon = "\U0001f7e2" if unrealized >= 0 else "\U0001f534"
         base = pos.symbol.replace("USDC", "").replace("USDT", "")
         lines.append(
-            f"\u2022 <b>{pos.symbol}</b> {pos.side} \u2014 "
-            f"{_fq(pos.quantity)} {base} @ {_fp(pos.entry_price)} "
-            f"({sign}{_fp(unrealized)})"
+            f"{icon} <b>{pos.symbol}</b> {pos.side}\n"
+            f"    {_fq(pos.quantity)} {base} @ {_fp(pos.entry_price)}\n"
+            f"    PnL : {sign}{_fp(unrealized)} ({sign}{_fq(u_pct)}%)"
         )
+    t_sign = "+" if total_pnl > 0 else ""
+    lines.append(f"\n<b>Total : {t_sign}{_fp(total_pnl)}</b>")
     await notify("\n".join(lines))
 
 
@@ -462,7 +487,7 @@ async def _send_periodic_summary():
     if not positions:
         return
     total_pnl = Decimal("0")
-    lines = [f"\U0001f4ca <b>Resume positions</b> \u2014 {len(positions)} active(s)\n"]
+    lines = [f"\U0001f4ca <b>Resume positions</b>", ""]
     for pos in positions:
         unrealized = Decimal("0")
         u_pct = Decimal("0")
@@ -473,15 +498,15 @@ async def _send_periodic_summary():
             )
         total_pnl += unrealized
         sign = "+" if unrealized > 0 else ""
+        icon = "\U0001f7e2" if unrealized >= 0 else "\U0001f534"
         base = pos.symbol.replace("USDC", "").replace("USDT", "")
         lines.append(
-            f"\u2022 <b>{pos.symbol}</b> {pos.side} \u2014 "
-            f"{_fq(pos.quantity)} {base} @ {_fp(pos.entry_price)} "
-            f"\u2192 {_fp(pos.current_price or Decimal('0'))} "
-            f"({sign}{_fq(u_pct)}%)"
+            f"{icon} <b>{pos.symbol}</b> {pos.side}\n"
+            f"    {_fp(pos.entry_price)}  \u2192  {_fp(pos.current_price or Decimal('0'))}\n"
+            f"    PnL : {sign}{_fp(unrealized)} ({sign}{_fq(u_pct)}%)"
         )
     t_sign = "+" if total_pnl > 0 else ""
-    lines.append(f"\n<b>Total unrealized: {t_sign}{_fp(total_pnl)}</b>")
+    lines.append(f"\n<b>Total : {t_sign}{_fp(total_pnl)}</b>")
     await notify("\n".join(lines))
 
 
@@ -496,11 +521,12 @@ async def notify_price_alert(
     arrow = "\u2b06\ufe0f" if direction == "above" else "\u2b07\ufe0f"
     label = "au-dessus" if direction == "above" else "en-dessous"
     lines = [
-        f"{arrow} <b>{symbol}</b> alerte prix atteinte",
-        f"Prix: {_fp(price)} ({label} de {_fp(target_price)})",
+        f"{arrow} <b>{symbol} — Alerte prix</b>",
+        "",
+        f"Prix actuel : {_fp(price)} ({label} de {_fp(target_price)})",
     ]
     if note:
-        lines.append(f"Note: {note}")
+        lines.append(f"\U0001f4dd {note}")
     await notify("\n".join(lines))
 
 
@@ -510,9 +536,11 @@ async def notify_level_reached(
     if not is_levels_enabled():
         return
     lp = Decimal(level_price)
+    dist = abs(float((price - lp) / lp * 100))
     msg = (
-        f"\U0001f4cd <b>{symbol}</b> touche {label}\n"
-        f"Prix: {_fp(price)} (level: {_fp(lp)})"
+        f"\U0001f4cd <b>{symbol} — {label}</b>\n"
+        f"\n"
+        f"Prix : {_fp(price)}  (niveau {_fp(lp)}, ecart {dist:.2f}%)"
     )
     await notify(msg)
 

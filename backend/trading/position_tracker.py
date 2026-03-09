@@ -613,8 +613,8 @@ async def _handle_list_status(msg: dict):
 
 # --- Price updates & PnL threshold alerts ---
 
-_PNL_THRESHOLDS = [-2.0, -1.7, -1.3, -0.8, -0.5, 0.0, 0.5, 0.8, 1.3, 1.7, 2.0]
-_PNL_HYSTERESIS = 0.2  # must move 0.2% away from threshold before it can re-trigger
+_PNL_THRESHOLDS = [-5.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 5.0]
+_PNL_HYSTERESIS = 0.4  # must move 0.4% away from threshold before it can re-trigger
 _last_price_at: dict[str, float] = {}  # symbol -> epoch timestamp of last price update
 _pnl_armed: dict[tuple[int, float], bool] = {}  # (pos_id, threshold) -> armed (ready to fire)
 

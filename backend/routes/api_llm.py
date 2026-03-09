@@ -31,8 +31,8 @@ async def preview_prompt(symbol: str):
 
 
 @router.get("/last")
-async def get_last():
-    result = llm_analyzer.get_last_analysis()
+async def get_last(symbol: str | None = None):
+    result = llm_analyzer.get_last_analysis(symbol)
     if not result:
         return {"analysis": None}
     return result

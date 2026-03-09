@@ -30,6 +30,7 @@ const Analysis = (() => {
             if (histResp.ok) _trackHistory = (await histResp.json()).history || [];
             if (statsResp.ok) _trackStats = await statsResp.json();
             render();
+            if (_currentSymbol) _loadCachedLlm(_currentSymbol);
         } catch (e) {
             console.error('Analysis load failed', e);
             document.getElementById('analysis-empty').classList.remove('hidden');
@@ -90,6 +91,7 @@ const Analysis = (() => {
 
         sel.onchange = () => {
             _currentSymbol = sel.value;
+            _loadCachedLlm(_currentSymbol);
             render();
         };
     }
@@ -103,6 +105,20 @@ const Analysis = (() => {
             const ago = Utils.timeAgo(_data.computed_at);
             el.textContent = `Mis a jour ${ago}`;
         }
+    }
+
+    async function _loadCachedLlm(symbol) {
+        if (!symbol) return;
+        try {
+            const resp = await fetch(`/api/llm/last?symbol=${encodeURIComponent(symbol)}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.direction) {
+                    _llmAnalysis = data;
+                    _renderLlm();
+                }
+            }
+        } catch (e) { /* silent */ }
     }
 
     // ── Block 1: Bias ──────────────────────────────────────
@@ -275,10 +291,11 @@ const Analysis = (() => {
                     <div class="h-full rounded-full" style="width:${confNum}%;background:${confColor}"></div>
                 </div>
             </div>
+            ${a.market_read ? `<div class="llm-market-read"><span class="text-xs text-gray-500 font-semibold">Lecture du marche :</span> ${Utils.escHtml(a.market_read)}</div>` : ''}
             ${a.confidence_factors ? _renderConfidenceFactors(a.confidence_factors) : ''}
-            <div class="llm-explanation">${Utils.escHtml(a.explanation || '')}</div>
-            ${a.key_signal ? `<div class="llm-key-signal"><span class="text-xs text-gray-500 font-semibold">Signal cle:</span> ${Utils.escHtml(a.key_signal)}</div>` : ''}
-            ${a.invalidation ? `<div class="llm-invalidation"><span class="text-xs text-gray-500 font-semibold">Invalidation:</span> ${Utils.escHtml(a.invalidation)}</div>` : ''}
+            <div class="llm-explanation"><span class="text-xs text-gray-500 font-semibold">Analyse :</span> ${Utils.escHtml(a.explanation || '')}</div>
+            ${a.key_signal ? `<div class="llm-key-signal"><span class="text-xs text-gray-500 font-semibold">Signal cle :</span> ${Utils.escHtml(a.key_signal)}</div>` : ''}
+            ${a.invalidation ? `<div class="llm-invalidation"><span class="text-xs text-gray-500 font-semibold">Invalidation :</span> ${Utils.escHtml(a.invalidation)}</div>` : ''}
             ${a.prompt_sent ? `<details class="mt-3"><summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-300">Voir donnees envoyees</summary><pre class="llm-prompt-preview">${Utils.escHtml(a.prompt_sent)}</pre></details>` : ''}
         </div>`;
     }

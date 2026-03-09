@@ -43,6 +43,7 @@ _FILL_WAIT = 6.0        # wait for multi-fill to complete
 _NAKED_GRACE = 90.0     # seconds before re-placing OCO on unprotected position
 _MIN_MOVE_INTERVAL = 60.0  # minimum seconds between consecutive trailing moves
 _RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes
+_OVERRIDE_REMINDER = 7200.0  # remind user after 2h of manual control
 
 # State
 _tracked: dict[int, dict] = {}
@@ -179,6 +180,19 @@ async def _position_monitor_loop():
                 if pos and not tracking.get("manual_override") and not tracking.get("moving"):
                     _check_manual_override(pos, tracking)
 
+            # Remind user if manual control has been active for too long
+            for pid, tracking in list(_tracked.items()):
+                if not tracking.get("manual_override"):
+                    continue
+                if tracking.get("override_reminded"):
+                    continue
+                override_at = tracking.get("override_at", 0.0)
+                if override_at and _time.monotonic() - override_at >= _OVERRIDE_REMINDER:
+                    pos = active.get(pid)
+                    if pos:
+                        tracking["override_reminded"] = True
+                        asyncio.create_task(_send_override_reminder(pos, tracking))
+
             # Detect naked positions (no SL/TP/OCO) and recover after grace period
             for pid, pos in active.items():
                 has_orders = pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id
@@ -242,7 +256,7 @@ async def _handle_new_position(pos_id: int):
     tp_price = round_price(pos.symbol, tp_price)
 
     try:
-        result = await order_manager.place_oco(pos, tp_price, sl_price)
+        result = await order_manager.place_oco(pos, tp_price, sl_price, silent=True)
         oco_id = str(result.get("orderListId", ""))
         _tracked[pos.id] = {
             "auto_sl": sl_price,
@@ -334,7 +348,7 @@ async def _recover_naked_position(pos_id: int):
     tp_price = round_price(pos.symbol, tp_price)
 
     try:
-        result = await order_manager.place_oco(pos, tp_price, sl_price)
+        result = await order_manager.place_oco(pos, tp_price, sl_price, silent=True)
         oco_id = str(result.get("orderListId", ""))
         _tracked[pos.id] = {
             "auto_sl": sl_price,
@@ -446,6 +460,8 @@ async def _handle_price_update(msg: dict):
         # Manual override: trailing takes back control above activation
         if tracking.get("manual_override"):
             tracking["manual_override"] = False
+            tracking.pop("override_at", None)
+            tracking.pop("override_reminded", None)
             log.info("trailing_resuming", symbol=pos.symbol, gain=f"{gain_pct:.2f}%")
 
         # Rate-limit: don't move more than once per _MIN_MOVE_INTERVAL
@@ -507,7 +523,7 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False):
         new_sl_price = round_price(pos.symbol, new_sl_price)
         new_tp = round_price(pos.symbol, new_tp)
 
-        result = await order_manager.place_oco(pos, new_tp, new_sl_price)
+        result = await order_manager.place_oco(pos, new_tp, new_sl_price, silent=True)
         oco_id = str(result.get("orderListId", ""))
 
         tracking.update({
@@ -567,7 +583,7 @@ async def _retry_oco_or_fallback_sl(pos, tracking):
             if candidate:
                 tp = round_price(pos.symbol, candidate)
 
-        result = await order_manager.place_oco(pos, tp, sl)
+        result = await order_manager.place_oco(pos, tp, sl, silent=True)
         oco_id = str(result.get("orderListId", ""))
         tracking.update({
             "auto_sl": sl, "auto_tp": tp, "oco_list_id": oco_id,
@@ -732,6 +748,40 @@ def _compute_rr(entry, sl, tp, side):
     return reward / risk
 
 
+async def _send_override_reminder(pos, tracking):
+    """Send Telegram reminder that trailing is paused on this position."""
+    try:
+        sl_str = ""
+        prices = await fetch_order_prices([pos.id])
+        p = prices.get(pos.id, {})
+        if p.get("sl_price"):
+            sl_str = f"\nSL actuel : {p['sl_price']}"
+        if p.get("tp_price"):
+            sl_str += f" | TP : {p['tp_price']}"
+
+        hours = int((_time.monotonic() - tracking.get("override_at", 0)) / 3600)
+        duration = f"{hours}h" if hours >= 1 else "un moment"
+
+        entry = pos.entry_price
+        current = pos.current_price or entry
+        if pos.side == "LONG":
+            gain_pct = (current - entry) / entry * 100
+        else:
+            gain_pct = (entry - current) / entry * 100
+        sign = "+" if gain_pct >= 0 else ""
+
+        msg = (
+            f"\u23f0 <b>{pos.symbol} {pos.side}</b> — trailing en pause depuis {duration}\n"
+            f"Tu geres manuellement cette position.{sl_str}\n"
+            f"Gain : {sign}{gain_pct:.2f}%\n"
+            f"Le trailing reprendra automatiquement quand le prix progressera."
+        )
+        await telegram_notifier.notify(msg)
+        log.info("trailing_override_reminder_sent", symbol=pos.symbol, hours=hours)
+    except Exception:
+        log.error("trailing_override_reminder_failed", symbol=pos.symbol, exc_info=True)
+
+
 def _check_manual_override(pos, tracking):
     # Skip check if trailing moved recently (OCO IDs may be out of sync)
     last_move = tracking.get("last_move_at", 0.0)
@@ -748,14 +798,20 @@ def _check_manual_override(pos, tracking):
 
     if current_oco and current_oco != our_oco:
         tracking["manual_override"] = True
+        tracking.setdefault("override_at", _time.monotonic())
+        tracking["override_reminded"] = False
         log.info("trailing_manual_override", symbol=pos.symbol, reason="different_oco")
     elif not current_oco and (pos.sl_order_id or pos.tp_order_id):
         # Margin OCO may not store oco_order_list_id — if we also have no oco_list_id, skip
         if our_oco:
             tracking["manual_override"] = True
+            tracking.setdefault("override_at", _time.monotonic())
+            tracking["override_reminded"] = False
             log.info("trailing_manual_override", symbol=pos.symbol, reason="individual_orders")
     elif not current_oco and not pos.sl_order_id and not pos.tp_order_id and our_oco:
         tracking["manual_override"] = True
+        tracking.setdefault("override_at", _time.monotonic())
+        tracking["override_reminded"] = False
         log.info("trailing_manual_override", symbol=pos.symbol, reason="orders_removed")
 
 
