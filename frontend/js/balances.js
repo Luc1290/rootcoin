@@ -53,7 +53,7 @@ const Balances = (() => {
             const usdClass = usdVal !== null && usdVal < 0 ? 'text-red-400' : '';
             const usdText = usdVal !== null ? formatUsd(usdVal) : '-';
             const totalCell = i === 0
-                ? `<td class="text-center font-bold text-base align-middle border-l border-gray-800/50 pl-5 pr-2" rowspan="${rows.length}">${formatUsd(total)}</td>`
+                ? `<td class="text-center font-bold text-base align-middle border-l border-stone-800/50 pl-5 pr-2" rowspan="${rows.length}">${formatUsd(total)}</td>`
                 : '';
 
             return `

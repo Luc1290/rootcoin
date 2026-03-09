@@ -32,6 +32,7 @@ const KlineChart = (() => {
     let _chartRegistry = [];
     let _seriesDataMap = {};
     let _currentPrice = null;
+    let _priceLabelLine = null;
     let _countdownTimer = null;
     const _observers = [];
     let _orderPriceLines = [];
@@ -45,8 +46,9 @@ const KlineChart = (() => {
 
     function _observeResize(el, chart) {
         const ro = new ResizeObserver(entries => {
-            const w = entries[0].contentRect.width;
-            if (w > 0) chart.applyOptions({ width: w });
+            const cr = entries[0].contentRect;
+            if (cr.width > 0) chart.applyOptions({ width: cr.width });
+            if (cr.height > 0) chart.applyOptions({ height: cr.height });
         });
         ro.observe(el);
         _observers.push(ro);
@@ -57,13 +59,13 @@ const KlineChart = (() => {
         text: '#6b7280',
         grid: 'rgba(255, 255, 255, 0.03)',
         border: 'rgba(255, 255, 255, 0.06)',
-        // TradingView-style palette
-        upCandle: '#26a69a',
-        downCandle: '#ef5350',
-        wickUp: '#4db6ac',
-        wickDown: '#e57373',
-        volUp: 'rgba(38, 166, 154, 0.3)',
-        volDown: 'rgba(239, 83, 80, 0.3)',
+        // Binance palette
+        upCandle: '#26b87a',
+        downCandle: '#e05565',
+        wickUp: '#26b87a',
+        wickDown: '#e05565',
+        volUp: 'rgba(38, 184, 122, 0.30)',
+        volDown: 'rgba(224, 85, 101, 0.30)',
         ma7: '#fbbf24',
         ma25: '#60a5fa',
         ma99: '#a78bfa',
@@ -72,12 +74,12 @@ const KlineChart = (() => {
         obv: '#22d3ee',
         macdLine: '#60a5fa',
         macdSignal: '#fbbf24',
-        macdHistUp: 'rgba(38,166,154,0.5)',
-        macdHistDown: 'rgba(239,83,80,0.5)',
-        bsBuy: 'rgba(38,166,154,0.5)',
-        bsSell: 'rgba(239,83,80,0.5)',
-        buy: '#26a69a',
-        sell: '#ef5350',
+        macdHistUp: 'rgba(0,255,135,0.45)',
+        macdHistDown: 'rgba(255,60,100,0.45)',
+        bsBuy: 'rgba(0,255,135,0.45)',
+        bsSell: 'rgba(255,60,100,0.45)',
+        buy: '#00ff87',
+        sell: '#ff3c64',
     };
 
     function init() {
@@ -147,7 +149,7 @@ const KlineChart = (() => {
         }
     }
 
-    const SUB_HEIGHTS = { volume: 60, buy_sell: 60, rsi: 80, obv: 80, macd: 90 };
+    const SUB_HEIGHTS = { volume: 80, buy_sell: 70, rsi: 100, obv: 100, macd: 90 };
     const MIN_MAIN = 400;
 
     function _calcMainHeight() {
@@ -160,7 +162,7 @@ const KlineChart = (() => {
         const available = viewH - stackTop - 16; // 16px bottom margin
         let subTotal = 0;
         for (const [ind, h] of Object.entries(SUB_HEIGHTS)) {
-            if (_activeIndicators.has(ind)) subTotal += h + 1; // +1 border
+            if (_activeIndicators.has(ind)) subTotal += h + 19; // +1 border-top + 18 label
         }
         return Math.max(MIN_MAIN, available - subTotal);
     }
@@ -184,8 +186,8 @@ const KlineChart = (() => {
             timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: _isMobile() ? 3 : 0.5 },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
-                vertLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#374151' },
-                horzLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#374151' },
+                vertLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#3d3836' },
+                horzLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#3d3836' },
             },
         };
     }
@@ -302,7 +304,9 @@ const KlineChart = (() => {
 
         _volSeries = _volChart.addHistogramSeries({
             priceFormat: { type: 'volume' },
+            base: 0,
         });
+        _volChart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0 }, entireTextOnly: true });
 
         _syncTimeScales(_mainChart, _volChart);
         _registerChart(_volChart, _volSeries, 'volume');
@@ -320,6 +324,7 @@ const KlineChart = (() => {
         _rsiSeries = _rsiChart.addLineSeries({
             color: C.rsi, lineWidth: 1.5,
             lastValueVisible: true, priceLineVisible: false,
+            autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
         });
         _rsiSeries.createPriceLine({ price: 70, color: 'rgba(239,83,80,0.3)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true });
         _rsiSeries.createPriceLine({ price: 30, color: 'rgba(38,166,154,0.3)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true });
@@ -341,6 +346,7 @@ const KlineChart = (() => {
             color: C.obv, lineWidth: 1.5,
             lastValueVisible: true, priceLineVisible: false,
         });
+        _obvChart.priceScale('right').applyOptions({ scaleMargins: { top: 0.1, bottom: 0.1 } });
 
         _syncTimeScales(_mainChart, _obvChart);
         _registerChart(_obvChart, _obvSeries, 'obv');
@@ -515,7 +521,7 @@ const KlineChart = (() => {
         _subscribeWS();
 
         try {
-            const indList = [..._activeIndicators].filter(i => i !== 'trades' && i !== 'cycles').join(',');
+            const indList = [..._activeIndicators].filter(i => i !== 'cycles').join(',');
             const resp = await fetch(`/api/klines/${_symbol}?interval=${_interval}&indicators=${indList}&limit=750`);
             if (!resp.ok) throw new Error(await resp.text());
             const data = await resp.json();
@@ -533,6 +539,7 @@ const KlineChart = (() => {
             _currentPrice = candles[candles.length - 1].close;
             _lastCandleTime = candles[candles.length - 1].time;
             _updatePriceHeader(_currentPrice, null);
+            _updatePriceLabelLine(_currentPrice);
 
             // Cache kline data for live indicator computation
             _liveData = {
@@ -650,13 +657,6 @@ const KlineChart = (() => {
                 _bsSeries.setData([]);
             }
 
-            // Trade markers
-            if (_activeIndicators.has('trades')) {
-                await _loadTradeMarkers(klines);
-            } else {
-                _candleSeries.setMarkers([]);
-            }
-
             // Cycles overlay
             if (_activeIndicators.has('cycles')) {
                 await _loadCycles(candles);
@@ -695,12 +695,12 @@ const KlineChart = (() => {
 
     function _startCountdown() {
         if (_countdownTimer) clearInterval(_countdownTimer);
-        const el = document.getElementById('candle-countdown');
-        if (!el) return;
 
         function tick() {
+            const btn = document.querySelector(`.chart-interval-btn[data-interval="${_interval}"]`);
+            if (!btn) return;
             const ms = _intervalMs[_interval];
-            if (!ms) { el.innerHTML = ''; return; }
+            if (!ms) { btn.textContent = _interval; return; }
             const now = Date.now();
             const remaining = ms - (now % ms);
             const totalSecs = Math.floor(remaining / 1000);
@@ -712,31 +712,16 @@ const KlineChart = (() => {
             else if (m > 0) timeStr = m + ':' + String(s).padStart(2, '0');
             else timeStr = s + 's';
             const urgent = totalSecs <= 10;
-            el.innerHTML = `<span class="candle-countdown-label">${_interval}</span><span class="candle-countdown-time${urgent ? ' candle-countdown-urgent' : ''}">${timeStr}</span>`;
+            btn.innerHTML = `${_interval} <span class="candle-countdown-time${urgent ? ' candle-countdown-urgent' : ''}">${timeStr}</span>`;
         }
+
+        // Reset all buttons to plain text first
+        document.querySelectorAll('.chart-interval-btn[data-interval]').forEach(b => {
+            b.textContent = b.dataset.interval;
+        });
 
         tick();
         _countdownTimer = setInterval(tick, 1000);
-    }
-
-    async function _loadTradeMarkers(klines) {
-        try {
-            const start = klines[0].open_time;
-            const end = klines[klines.length - 1].close_time;
-            const resp = await fetch(`/api/klines/${_symbol}/trades?start_time=${start}&end_time=${end}`);
-            const trades = await resp.json();
-            const markers = trades.map(t => ({
-                time: _toTs(t.executed_at),
-                position: t.side === 'BUY' ? 'belowBar' : 'aboveBar',
-                color: t.side === 'BUY' ? C.buy : C.sell,
-                shape: t.side === 'BUY' ? 'arrowUp' : 'arrowDown',
-                text: t.side[0] + ' ' + parseFloat(t.quantity),
-            }));
-            markers.sort((a, b) => a.time - b.time);
-            _candleSeries.setMarkers(markers);
-        } catch (e) {
-            console.error('KlineChart: markers failed', e);
-        }
     }
 
     let _entryPriceLines = [];
@@ -791,11 +776,11 @@ const KlineChart = (() => {
 
                 let color;
                 if (c.is_active) {
-                    color = 'rgba(59,130,246,';   // vivid blue
+                    color = 'rgba(230,170,60,';   // vivid gold
                 } else if (c.realized_pnl && parseFloat(c.realized_pnl) > 0) {
-                    color = 'rgba(16,185,129,';   // vivid green
+                    color = 'rgba(90,180,105,';   // rich olive
                 } else {
-                    color = 'rgba(239,68,68,';    // vivid red
+                    color = 'rgba(200,90,80,';    // deep terracotta
                 }
 
                 const intSec = (_intervalMs[_interval] || 900000) / 1000;
@@ -807,21 +792,31 @@ const KlineChart = (() => {
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
                 const pad = maxHigh * 0.013; // 1.3% above highs
 
-                const areaData = cycleCandles.map(cd => ({
+                // Smooth highs with a 5-point moving average
+                const rawVals = cycleCandles.map(cd => cd.high + pad);
+                const smoothed = rawVals.map((_, i, arr) => {
+                    const start = Math.max(0, i - 2);
+                    const end = Math.min(arr.length, i + 3);
+                    let sum = 0;
+                    for (let j = start; j < end; j++) sum += arr[j];
+                    return sum / (end - start);
+                });
+                const areaData = cycleCandles.map((cd, i) => ({
                     time: cd.time,
-                    value: cd.high + pad,
+                    value: smoothed[i],
                 }));
 
-                const opFill = c.is_active ? '0.30)' : '0.18)';
+                const opTop = c.is_active ? '0.02)' : '0.01)';
+                const opBot = c.is_active ? '0.10)' : '0.06)';
+                const opLine = c.is_active ? '0.35)' : '0.20)';
                 const area = _mainChart.addAreaSeries({
-                    topColor: color + opFill,
-                    bottomColor: color + opFill,
-                    lineColor: color + '0)',
+                    topColor: color + opTop,
+                    bottomColor: color + opBot,
+                    lineColor: color + opLine,
                     lineWidth: 1,
                     lastValueVisible: false,
                     priceLineVisible: false,
                     crosshairMarkerVisible: false,
-                    autoscaleInfoProvider: () => null,
                 });
                 area.setData(areaData);
                 _cycleSeries.push(area);
@@ -848,6 +843,23 @@ const KlineChart = (() => {
             _cyclesRendered = { symbol: _symbol, interval: _interval };
         } catch (e) {
             console.error('KlineChart: cycles failed', e);
+        }
+    }
+
+    // ── Current price label line ("P") ─────────────────────
+    function _updatePriceLabelLine(price) {
+        if (!_candleSeries || !price) return;
+        if (_priceLabelLine) {
+            _priceLabelLine.applyOptions({ price });
+        } else {
+            _priceLabelLine = _candleSeries.createPriceLine({
+                price,
+                color: 'rgba(255,255,255,0.5)',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.SparseDotted,
+                axisLabelVisible: false,
+                title: 'P',
+            });
         }
     }
 
@@ -1116,6 +1128,7 @@ const KlineChart = (() => {
 
         _currentPrice = parseFloat(data.close);
         _updatePriceHeader(_currentPrice, null);
+        _updatePriceLabelLine(_currentPrice);
         _candleSeries.update({
             time: t,
             open: parseFloat(data.open),

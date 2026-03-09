@@ -294,7 +294,7 @@ const MiniTradeChart = (() => {
             lineStyle: style,
             axisLabelVisible: false,
         });
-        if (entry.showLineLabels) _addLineLabel(entry, key, p, color);
+        if (entry.showLineLabels && key !== 'retestLine') _addLineLabel(entry, key, p, color);
     }
 
     function _addLineLabel(entry, key, price, color) {

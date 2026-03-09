@@ -8,6 +8,9 @@ const Opportunities = (() => {
     let _prevKeys = {};
     // Timer for updating timeAgo
     let _agoTimer = null;
+    // Live prices from WS
+    const _livePrices = {};
+    let _priceRefreshTimer = null;
 
     function update(list) {
         if (!Array.isArray(list)) return;
@@ -80,8 +83,12 @@ const Opportunities = (() => {
                 const slGain = Math.round(POSITION_SIZE * slPct / 100);
                 const tpGain = Math.round(POSITION_SIZE * tpPct / 100);
                 const tp2Gain = Math.round(POSITION_SIZE * tp2Pct / 100);
+                const liveP = _livePrices[o.symbol];
+                const curPrice = liveP || (o.current_price ? parseFloat(o.current_price) : null);
+                const curDist = curPrice && e ? ((curPrice - e) / e * 100) : null;
                 levelsHtml = `<div class="opp-levels">
-                <span class="opp-lvl"><span style="color:#3b82f6">Entrer&agrave;</span> <span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span></span>
+                ${curPrice ? `<span class="opp-lvl" data-opp-price="${o.symbol}"><span style="color:#9ca3af">Prix</span> <span style="color:#d1d5db;font-weight:600" data-opp-price-val>${Utils.fmtPriceCompact(curPrice)}</span> <span data-opp-price-dist style="color:${curDist >= 0 ? '#22c55e' : '#ef4444'};font-size:10px">${curDist !== null ? (curDist >= 0 ? '+' : '') + curDist.toFixed(2) + '%' : ''}</span></span>` : ''}
+                <span class="opp-lvl"><span style="color:#c9956b">Entrer &agrave;</span> <span style="color:#c9956b">${Utils.fmtPriceCompact(lvl.entry)}</span></span>
                 <span class="opp-lvl"><span style="color:#ef4444">SL</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#ef4444;font-size:10px">${slPct.toFixed(2)}% ${slGain}$</span></span>
                 <span class="opp-lvl"><span style="color:#22c55e">TP</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span> <span style="color:#22c55e;font-size:10px">+${tpPct.toFixed(2)}% +${tpGain}$</span></span>
                 ${lvl.tp2 ? `<span class="opp-lvl"><span style="color:#22c55e">TP2</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp2)}</span> <span style="color:#22c55e;font-size:10px">+${tp2Pct.toFixed(2)}% +${tp2Gain}$</span></span>` : ''}
@@ -127,7 +134,7 @@ const Opportunities = (() => {
                 symbol: o.symbol,
                 height: 140,
                 entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
-                entryLabel: 'Entrer à',
+                entryLabel: 'Entry',
                 slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                 tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
                 retestPrice: rp,
@@ -139,9 +146,6 @@ const Opportunities = (() => {
                 newCharts[o.id] = chartId;
 
                 if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction);
-
-                const timing = o.timing;
-                if (timing) MiniTradeChart.addTiming(chartId, timing);
 
                 MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', 288);
             }
@@ -246,7 +250,7 @@ const Opportunities = (() => {
             const dirBadge = `<span class="cockpit-side ${sideClass}" style="font-size:9px;padding:1px 4px">${o.direction}</span>`;
             const lvl = o.levels || {};
             const rrVal = lvl.rr ? parseFloat(lvl.rr) : null;
-            const rrColor = rrVal !== null ? (rrVal >= 2 ? '#a855f7' : rrVal >= 1.5 ? '#3b82f6' : '#6b7280') : '';
+            const rrColor = rrVal !== null ? (rrVal >= 2 ? '#c9956b' : rrVal >= 1.5 ? '#a78b6d' : '#6b7280') : '';
             const rrBadge = rrVal !== null ? `<span class="text-xs tabular-nums font-semibold" style="color:${rrColor}">${rrVal.toFixed(1)}R</span>` : '';
 
             const takenSide = activeSymbols[o.symbol];
@@ -272,7 +276,7 @@ const Opportunities = (() => {
 
             let levelsLine = '';
             if (lvl.entry) {
-                levelsLine = `<span style="color:#3b82f6">${Utils.fmtPriceCompact(lvl.entry)}</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span>`;
+                levelsLine = `<span style="color:#c9956b">${Utils.fmtPriceCompact(lvl.entry)}</span> <span style="color:#ef4444">${Utils.fmtPriceCompact(lvl.sl)}</span> <span style="color:#22c55e">${Utils.fmtPriceCompact(lvl.tp1)}</span>`;
                 if (retestPrice && !retestMet) levelsLine += ` <span style="color:#f59e0b">${retestLabel} ${Utils.fmtPriceCompact(retestPrice)}</span>`;
             }
 
@@ -297,7 +301,10 @@ const Opportunities = (() => {
                             const e = parseFloat(lvl.entry);
                             const slP = e ? ((parseFloat(lvl.sl) - e) / e * 100) : 0;
                             const tpP = e ? ((parseFloat(lvl.tp1) - e) / e * 100) : 0;
-                            return `<span class="opp-lvl"><span style="color:#3b82f6">Entrer&agrave;</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
+                            const cp2 = _livePrices[o.symbol] || (o.current_price ? parseFloat(o.current_price) : null);
+                            const cpD2 = cp2 && e ? ((cp2 - e) / e * 100) : null;
+                            return `${cp2 ? `<span class="opp-lvl" data-opp-price="${o.symbol}"><span style="color:#9ca3af">Prix</span> <span style="color:#d1d5db;font-weight:600" data-opp-price-val>${Utils.fmtPriceCompact(cp2)}</span> <span data-opp-price-dist style="color:${cpD2 >= 0 ? '#22c55e' : '#ef4444'};font-size:10px">${cpD2 !== null ? (cpD2 >= 0 ? '+' : '') + cpD2.toFixed(2) + '%' : ''}</span></span>` : ''}
+                            <span class="opp-lvl"><span style="color:#c9956b">Entrer &agrave;</span> ${Utils.fmtPriceCompact(lvl.entry)}</span>
                             <span class="opp-lvl"><span style="color:#ef4444">SL</span> ${Utils.fmtPriceCompact(lvl.sl)} <span style="font-size:10px;color:#ef4444">${slP.toFixed(2)}% ${Math.round(POSITION_SIZE * slP / 100)}$</span></span>
                             <span class="opp-lvl"><span style="color:#22c55e">TP</span> ${Utils.fmtPriceCompact(lvl.tp1)} <span style="font-size:10px;color:#22c55e">+${tpP.toFixed(2)}% +${Math.round(POSITION_SIZE * tpP / 100)}$</span></span>`;
                         })() : ''}
@@ -335,7 +342,7 @@ const Opportunities = (() => {
                     symbol: o.symbol,
                     height: 140,
                     entryPrice: lvl.entry ? parseFloat(lvl.entry) : 0,
-                    entryLabel: 'Entrer à',
+                    entryLabel: 'Entry',
                     slPrice: lvl.sl ? parseFloat(lvl.sl) : 0,
                     tpPrice: lvl.tp1 ? parseFloat(lvl.tp1) : 0,
                     retestPrice: rp,
@@ -345,7 +352,6 @@ const Opportunities = (() => {
                 if (chartId) {
                     newCharts[o.id] = chartId;
                     if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction);
-                    if (o.timing) MiniTradeChart.addTiming(chartId, o.timing);
                     MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', 288);
                 }
                 _containerCharts[cid] = newCharts;
@@ -360,6 +366,33 @@ const Opportunities = (() => {
         _prevKeys[cid] = ''; // force rebuild
         const el = document.getElementById(cid);
         if (el) renderCompact(el);
+    }
+
+    // Live price updates from WS — cache prices, refresh DOM every 60s
+    WS.on('price_update', (data) => {
+        if (data.symbol && data.price) _livePrices[data.symbol] = parseFloat(data.price);
+        if (!_priceRefreshTimer) {
+            _priceRefreshTimer = setInterval(_refreshLivePrices, 60000);
+        }
+    });
+
+    function _refreshLivePrices() {
+        document.querySelectorAll('[data-opp-price]').forEach(el => {
+            const sym = el.dataset.oppPrice;
+            const price = _livePrices[sym];
+            if (!price) return;
+            const valEl = el.querySelector('[data-opp-price-val]');
+            const distEl = el.querySelector('[data-opp-price-dist]');
+            if (valEl) valEl.textContent = Utils.fmtPriceCompact(price);
+            // Find entry price from the sibling
+            const opp = _opportunities.find(o => o.symbol === sym);
+            if (distEl && opp && opp.levels && opp.levels.entry) {
+                const e = parseFloat(opp.levels.entry);
+                const dist = e ? ((price - e) / e * 100) : 0;
+                distEl.textContent = `${dist >= 0 ? '+' : ''}${dist.toFixed(2)}%`;
+                distEl.style.color = dist >= 0 ? '#22c55e' : '#ef4444';
+            }
+        });
     }
 
     return { update, render, renderCompact, toggle, dismiss };

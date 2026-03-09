@@ -169,6 +169,38 @@ class PriceAlert(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class LlmAnalysis(Base):
+    __tablename__ = "llm_analyses"
+    __table_args__ = (
+        Index("ix_llm_analyses_symbol", "symbol"),
+        Index("ix_llm_analyses_analyzed_at", "analyzed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String, nullable=False)
+    entry: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    stop_loss: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    tp1: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    tp2: Mapped[Decimal | None] = mapped_column(Numeric)
+    confidence: Mapped[int] = mapped_column(Integer, nullable=False)
+    risk_reward: Mapped[Decimal | None] = mapped_column(Numeric)
+    market_read: Mapped[str | None] = mapped_column(String)
+    explanation: Mapped[str | None] = mapped_column(String)
+    key_signal: Mapped[str | None] = mapped_column(String)
+    invalidation: Mapped[str | None] = mapped_column(String)
+    # Outcome
+    outcome: Mapped[str | None] = mapped_column(String)  # tp1_hit, tp2_hit, sl_hit, expired, superseded
+    outcome_price: Mapped[Decimal | None] = mapped_column(Numeric)
+    outcome_pnl_pct: Mapped[Decimal | None] = mapped_column(Numeric)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    # Meta
+    llm_model: Mapped[str | None] = mapped_column(String)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    analyzed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class TradeSnapshot(Base):
     __tablename__ = "trade_snapshots"
     __table_args__ = (

@@ -128,9 +128,9 @@ const PositionCards = (() => {
         if (hasOrders) badges.push(`<button class="badge bg-orange-900/40 text-orange-400 cursor-pointer hover:bg-orange-800/50 transition-colors" onclick="Positions.confirmCancelOrders(${p.id})">&#x2715;</button>`);
 
         if (p.trailing === 'trailing') {
-            badges.push('<span class="badge bg-purple-900/40 text-purple-400">TRAIL</span>');
+            badges.push('<span class="badge" style="background:rgba(201,149,107,0.2);color:#c9956b">TRAIL</span>');
         } else if (p.trailing === 'watching') {
-            badges.push('<span class="badge bg-gray-700/40 text-gray-400">TRAIL wait</span>');
+            badges.push('<span class="badge bg-stone-700/40 text-gray-400">TRAIL wait</span>');
         } else if (p.trailing === 'override') {
             badges.push('<span class="badge bg-yellow-900/40 text-yellow-400">TRAIL off</span>');
         } else if (p.trailing === 'naked') {

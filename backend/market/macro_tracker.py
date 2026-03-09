@@ -25,6 +25,9 @@ TICKERS = {
     "ibit": "IBIT",
     "googl": "GOOGL",
     "nvda": "NVDA",
+    "cac40": "^FCHI",
+    "dax": "^GDAXI",
+    "eurusd": "EURUSD=X",
 }
 
 # Yahoo yield indices report yield * 10 (e.g. 42.5 = 4.25%)

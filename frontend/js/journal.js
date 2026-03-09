@@ -91,8 +91,8 @@ const Journal = (() => {
                     vertLines: { color: 'rgba(255,255,255,0.03)' },
                     horzLines: { color: 'rgba(255,255,255,0.03)' },
                 },
-                rightPriceScale: { borderColor: '#374151' },
-                timeScale: { borderColor: '#374151', timeVisible: true, secondsVisible: false },
+                rightPriceScale: { borderColor: '#3d3836' },
+                timeScale: { borderColor: '#3d3836', timeVisible: true, secondsVisible: false },
                 crosshair: { mode: LightweightCharts.CrosshairMode.Magnet },
             });
             _equitySeries = _equityChart.addAreaSeries({
@@ -511,12 +511,12 @@ const Journal = (() => {
             </div>
 
             ${(openCtx || closeCtx) ? `
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 pt-2 border-t border-gray-800">
-                ${openCtx ? `<div><div class="text-xs text-blue-400 font-medium mb-1">Contexte ouverture</div>${openCtx}</div>` : ''}
-                ${closeCtx ? `<div><div class="text-xs text-purple-400 font-medium mb-1">Contexte fermeture</div>${closeCtx}</div>` : ''}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 pt-2 border-t border-stone-800">
+                ${openCtx ? `<div><div class="text-xs font-medium mb-1" style="color:#c9956b">Contexte ouverture</div>${openCtx}</div>` : ''}
+                ${closeCtx ? `<div><div class="text-xs font-medium mb-1" style="color:#a78b6d">Contexte fermeture</div>${closeCtx}</div>` : ''}
             </div>` : ''}
 
-            <div class="pt-2 border-t border-gray-800">
+            <div class="pt-2 border-t border-stone-800">
                 <div class="text-xs text-gray-500 mb-1 font-medium">Note</div>
                 <textarea class="journal-note-area" data-pos-id="${e.id}" placeholder="Annoter ce trade...">${e.note || ''}</textarea>
             </div>

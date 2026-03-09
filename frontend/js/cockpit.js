@@ -12,8 +12,8 @@ const Cockpit = (() => {
     let _marketFirstPrice = null;
 
     function _trailBadge(p) {
-        if (p.trailing === 'trailing') return '<span class="badge bg-purple-900/40 text-purple-400" style="font-size:9px;padding:1px 5px">TRAIL</span>';
-        if (p.trailing === 'watching') return '<span class="badge bg-gray-700/40 text-gray-400" style="font-size:9px;padding:1px 5px">TRAIL wait</span>';
+        if (p.trailing === 'trailing') return '<span class="badge" style="font-size:9px;padding:1px 5px;background:rgba(201,149,107,0.2);color:#c9956b">TRAIL</span>';
+        if (p.trailing === 'watching') return '<span class="badge bg-stone-700/40 text-gray-400" style="font-size:9px;padding:1px 5px">TRAIL wait</span>';
         if (p.trailing === 'override') return '<span class="badge bg-yellow-900/40 text-yellow-400" style="font-size:9px;padding:1px 5px">TRAIL off</span>';
         if (p.trailing === 'naked') return '<span class="badge bg-red-900/50 text-red-400 animate-pulse" style="font-size:9px;padding:1px 5px">NAKED</span>';
         return '<span class="badge bg-red-900/30 text-red-500" style="font-size:9px;padding:1px 5px">NO TRAIL</span>';
@@ -181,7 +181,7 @@ const Cockpit = (() => {
             let levelsHtml = '';
             if (entryPrice) {
                 const parts = [];
-                parts.push(`<span style="color:#3b82f6">Entry ${Utils.fmtPriceCompact(entryPrice)}</span>`);
+                parts.push(`<span style="color:#c9956b">Entry ${Utils.fmtPriceCompact(entryPrice)}</span>`);
                 if (slPrice) {
                     const slInProfit = p.side === 'LONG' ? slPrice > entryPrice : slPrice < entryPrice;
                     const slColor = slInProfit ? '#22c55e' : '#ef4444';
@@ -360,7 +360,7 @@ const Cockpit = (() => {
     async function _loadTrackRecord() {
         try {
             const [histResp, statsResp] = await Promise.all([
-                fetch('/api/opportunities/history?limit=10'),
+                fetch('/api/opportunities/history?limit=50'),
                 fetch('/api/opportunities/stats'),
             ]);
 
@@ -389,7 +389,7 @@ const Cockpit = (() => {
         const avgWin = stats.avg_win_pct || 0;
         const avgLoss = stats.avg_loss_pct || 0;
 
-        const rows = history.slice(0, 8).map(r => {
+        const rows = history.map(r => {
             const sym = r.symbol.replace('USDC', '');
             const dirIcon = r.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
             const dirClass = r.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
@@ -415,7 +415,7 @@ const Cockpit = (() => {
             // R:R badge
             const rr = r.rr ? parseFloat(r.rr) : null;
             const rrStr = rr !== null ? `${rr.toFixed(1)}` : '';
-            const rrColor = rr !== null ? (rr >= 2 ? '#a855f7' : rr >= 1.5 ? '#3b82f6' : '#6b7280') : '';
+            const rrColor = rr !== null ? (rr >= 2 ? '#c9956b' : rr >= 1.5 ? '#a78b6d' : '#6b7280') : '';
 
             return `<div class="track-record-row">
                 <div class="flex items-center gap-1" style="min-width:0">
@@ -433,7 +433,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<div class="cockpit-card" style="border-left:3px solid #a855f7">
+        return `<div class="cockpit-card" style="border-left:3px solid #c9956b">
             <div class="flex items-center justify-between mb-1">
                 <span class="text-xs text-gray-500">Track Record</span>
                 <span class="text-xs text-gray-500">/ $${(REF_SIZE/1000).toFixed(0)}k</span>
@@ -444,7 +444,7 @@ const Cockpit = (() => {
                 <span class="font-bold ${totalPnlClass}">${totalUsdStr}</span>
                 <span class="text-gray-500" style="font-size:9px">moy W <span class="pnl-positive">+${avgWin.toFixed(2)}%</span> L <span class="pnl-negative">${avgLoss.toFixed(2)}%</span></span>
             </div>
-            ${rows}
+            <div style="max-height:290px;overflow-y:auto">${rows}</div>
         </div>`;
     }
 
@@ -473,11 +473,13 @@ const Cockpit = (() => {
         dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', sp500: 'direct', gold: 'inverse',
         us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
         mstr: 'direct', ibit: 'direct', googl: 'direct', nvda: 'direct',
+        cac40: 'direct', dax: 'direct', eurusd: 'inverse',
     };
     const _macroLabels = {
         dxy: 'DXY', vix: 'VIX', nasdaq: 'NDQ', sp500: 'S&P', gold: 'Gold',
         us10y: '10Y', spread: '10-5Y', oil: 'Oil', usdjpy: 'JPY',
         mstr: 'MSTR', ibit: 'IBIT', googl: 'GOOGL', nvda: 'NVDA',
+        cac40: 'CAC', dax: 'DAX', eurusd: 'EUR',
     };
 
     function _buildMacroCard(wasOpen) {
@@ -576,7 +578,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<div class="cockpit-card" style="border-left:3px solid #3b82f6">
+        return `<div class="cockpit-card" style="border-left:3px solid #a78b6d;cursor:pointer" onclick="App.switchTab('cycles')">
             <div class="text-xs text-gray-500 mb-1">Derniers cycles</div>
             ${rows}
         </div>`;

@@ -6,6 +6,8 @@ const Analysis = (() => {
     let _trackStats = {};
     let _llmAnalysis = null;
     let _llmLoading = false;
+    let _llmHistory = [];
+    let _llmStats = {};
 
     async function load() {
         try {
@@ -13,7 +15,7 @@ const Analysis = (() => {
                 fetch('/api/analysis'),
                 fetch('/api/news'),
                 fetch('/api/opportunities'),
-                fetch('/api/opportunities/history?limit=10'),
+                fetch('/api/opportunities/history?limit=50'),
                 fetch('/api/opportunities/stats'),
             ]);
             if (analysisResp.ok) {
@@ -58,6 +60,7 @@ const Analysis = (() => {
 
         _renderFreshness();
         _renderLlm();
+        _renderLlmTrackRecord();
         _renderOpportunities();
         _renderTrackRecord();
         _renderLevels(analysis);
@@ -110,14 +113,21 @@ const Analysis = (() => {
     async function _loadCachedLlm(symbol) {
         if (!symbol) return;
         try {
-            const resp = await fetch(`/api/llm/last?symbol=${encodeURIComponent(symbol)}`);
-            if (resp.ok) {
-                const data = await resp.json();
+            const [lastResp, histResp, statsResp] = await Promise.all([
+                fetch(`/api/llm/last?symbol=${encodeURIComponent(symbol)}`),
+                fetch(`/api/llm/history?symbol=${encodeURIComponent(symbol)}&limit=20`),
+                fetch(`/api/llm/stats?symbol=${encodeURIComponent(symbol)}`),
+            ]);
+            if (lastResp.ok) {
+                const data = await lastResp.json();
                 if (data && data.direction) {
                     _llmAnalysis = data;
-                    _renderLlm();
                 }
             }
+            if (histResp.ok) _llmHistory = (await histResp.json()).history || [];
+            if (statsResp.ok) _llmStats = await statsResp.json();
+            _renderLlm();
+            _renderLlmTrackRecord();
         } catch (e) { /* silent */ }
     }
 
@@ -196,7 +206,7 @@ const Analysis = (() => {
 
             return `<div class="flex items-center gap-2 text-xs">
                 <span class="text-gray-500 font-semibold" style="min-width:36px">${l.label}</span>
-                <div class="flex-shrink-0" style="width:60px;height:4px;background:#1f2937;border-radius:2px;overflow:hidden">
+                <div class="flex-shrink-0" style="width:60px;height:4px;background:#292524;border-radius:2px;overflow:hidden">
                     <div style="width:${clampPct}%;height:100%;background:${color};border-radius:2px"></div>
                 </div>
                 <span class="tabular-nums text-gray-500" style="min-width:28px">${l.score}/${l.max}</span>
@@ -211,7 +221,7 @@ const Analysis = (() => {
         const pour = (factors.pour || []).map(f => `<li class="text-green-400">\u2713 ${Utils.escHtml(f)}</li>`).join('');
         const contre = (factors.contre || []).map(f => `<li class="text-red-400">\u2717 ${Utils.escHtml(f)}</li>`).join('');
         if (!pour && !contre) return '';
-        return `<div class="mb-3 p-2 rounded bg-gray-800/50 text-xs">
+        return `<div class="mb-3 p-2 rounded bg-stone-800/50 text-xs">
             <div class="font-semibold text-gray-400 mb-1">Facteurs de confiance</div>
             <ul class="space-y-0.5 list-none pl-0">${pour}${contre}</ul>
         </div>`;
@@ -286,8 +296,8 @@ const Analysis = (() => {
                 <div class="llm-level"><span class="text-gray-500 text-xs">TP2</span><span class="tabular-nums font-bold pnl-positive">${Utils.fmtPrice(a.tp2)}</span></div>
             </div>
             <div class="flex items-center gap-3 mb-3 text-xs">
-                <span class="text-gray-400">R:R <span class="font-bold text-purple-400">${a.risk_reward ? a.risk_reward.toFixed(1) : '?'}</span></span>
-                <div class="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden ml-2" style="max-width:120px">
+                <span class="text-gray-400">R:R <span class="font-bold" style="color:#c9956b">${a.risk_reward ? a.risk_reward.toFixed(1) : '?'}</span></span>
+                <div class="flex-1 h-1.5 bg-stone-700 rounded-full overflow-hidden ml-2" style="max-width:120px">
                     <div class="h-full rounded-full" style="width:${confNum}%;background:${confColor}"></div>
                 </div>
             </div>
@@ -342,6 +352,85 @@ const Analysis = (() => {
         }
         _llmLoading = false;
         _renderLlm();
+        _loadCachedLlm(_currentSymbol);
+    }
+
+    function _renderLlmTrackRecord() {
+        const el = document.getElementById('analysis-llm-track');
+        if (!el) return;
+
+        const history = _llmHistory.filter(h => h.outcome && h.outcome !== 'superseded');
+        const stats = _llmStats;
+        if (!history.length && !stats.total) { el.innerHTML = ''; return; }
+
+        const wr = stats.win_rate || 0;
+        const total = stats.total || 0;
+        const wins = stats.wins || 0;
+        const losses = stats.losses || 0;
+        const avgWin = stats.avg_win_pct || 0;
+        const avgLoss = stats.avg_loss_pct || 0;
+        const totalPnl = stats.total_pnl_pct || 0;
+        const confW = stats.avg_confidence_win || 0;
+        const confL = stats.avg_confidence_loss || 0;
+
+        const wrColor = wr >= 55 ? 'pnl-positive' : wr >= 45 ? 'text-yellow-400' : 'pnl-negative';
+        const pnlClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+
+        const rows = history.slice(0, 8).map(h => {
+            const sym = h.symbol.replace('USDC', '').replace('USDT', '');
+            const isWin = h.outcome === 'tp1_hit' || h.outcome === 'tp2_hit';
+            const isLoss = h.outcome === 'sl_hit';
+            const statusLabel = h.outcome === 'tp1_hit' ? 'TP1' : h.outcome === 'tp2_hit' ? 'TP2' : h.outcome === 'sl_hit' ? 'SL' : 'Exp';
+            const statusClass = isWin ? 'tp_hit' : isLoss ? 'sl_hit' : 'expired';
+            const pnl = h.outcome_pnl_pct != null ? parseFloat(h.outcome_pnl_pct) : null;
+            const pnlStr = pnl != null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
+            const pnlCls = pnl != null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
+            const dirIcon = h.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
+            const dirCls = h.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
+            const ago = h.analyzed_at ? Utils.timeAgoShort(h.analyzed_at) : '';
+
+            return `<div class="track-record-row">
+                <div class="flex items-center gap-1" style="min-width:0">
+                    <span class="text-xs font-bold">${sym}</span>
+                    <span class="text-xs ${dirCls}">${dirIcon}</span>
+                    <span class="track-record-status ${statusClass}">${statusLabel}</span>
+                    <span class="text-xs text-gray-500 tabular-nums" style="font-size:9px">conf ${h.confidence}%</span>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <span class="text-xs font-bold tabular-nums ${pnlCls}">${pnlStr}</span>
+                    <span class="text-xs text-gray-500">${ago}</span>
+                </div>
+            </div>`;
+        }).join('');
+
+        let calibration = '';
+        if (confW && confL && total >= 5) {
+            if (confL > confW + 5) {
+                calibration = `<div class="text-xs text-orange-400 mt-1">Overconfidence : confiance plus haute sur les pertes (${confL}%) que sur les gains (${confW}%)</div>`;
+            } else if (confW > confL + 10) {
+                calibration = `<div class="text-xs text-green-400 mt-1">Bonne calibration : confiance plus haute sur les gains</div>`;
+            }
+        }
+
+        el.innerHTML = `<div class="card" style="border-left:3px solid #c9956b">
+            <div class="flex items-center justify-between mb-1">
+                <div class="metric-label">Track Record IA</div>
+                <span class="text-xs text-gray-500">${_currentSymbol || ''}</span>
+            </div>
+            <div class="flex items-center gap-3 text-xs mb-2">
+                <span class="text-gray-400">${total} analyses</span>
+                <span class="text-gray-400">${wins}W / ${losses}L</span>
+                <span class="font-bold ${wrColor}">${wr}%</span>
+                <span class="font-bold ${pnlClass}">${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(1)}%</span>
+            </div>
+            <div class="flex items-center gap-3 text-xs mb-2 text-gray-500">
+                <span>Moy W <span class="pnl-positive">+${avgWin.toFixed(2)}%</span></span>
+                <span>Moy L <span class="pnl-negative">${avgLoss.toFixed(2)}%</span></span>
+                <span>Conf W ${confW}% / L ${confL}%</span>
+            </div>
+            ${calibration}
+            <div style="max-height:290px;overflow-y:auto">${rows}</div>
+        </div>`;
     }
 
     // ── Opportunities ──────────────────────────────────────
@@ -374,7 +463,7 @@ const Analysis = (() => {
         const avgWin = stats.avg_win_pct || 0;
         const avgLoss = stats.avg_loss_pct || 0;
 
-        const rows = history.slice(0, 6).map(r => {
+        const rows = history.map(r => {
             const sym = r.symbol.replace('USDC', '');
             const dirIcon = r.direction === 'LONG' ? '&#x2191;' : '&#x2193;';
             const dirClass = r.direction === 'LONG' ? 'pnl-positive' : 'pnl-negative';
@@ -386,8 +475,17 @@ const Analysis = (() => {
             const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(0)}` : '';
             const rr = r.rr ? parseFloat(r.rr) : null;
             const rrStr = rr !== null ? `${rr.toFixed(1)}` : '';
-            const rrColor = rr !== null ? (rr >= 2 ? '#a855f7' : rr >= 1.5 ? '#3b82f6' : '#6b7280') : '';
+            const rrColor = rr !== null ? (rr >= 2 ? '#c9956b' : rr >= 1.5 ? '#a78b6d' : '#6b7280') : '';
             const ago = r.detected_at ? Utils.timeAgoShort(r.detected_at) : '';
+
+            let durationStr = '';
+            if (r.detected_at && r.resolved_at) {
+                const ms = new Date(r.resolved_at) - new Date(r.detected_at);
+                const mins = Math.floor(ms / 60000);
+                if (mins < 60) durationStr = `${mins}m`;
+                else if (mins < 1440) durationStr = `${Math.floor(mins / 60)}h${mins % 60 ? (mins % 60) + 'm' : ''}`;
+                else durationStr = `${Math.floor(mins / 1440)}j`;
+            }
 
             return `<div class="track-record-row">
                 <div class="flex items-center gap-1" style="min-width:0">
@@ -395,6 +493,7 @@ const Analysis = (() => {
                     <span class="text-xs ${dirClass}">${dirIcon}</span>
                     <span class="track-record-status ${r.status}">${statusLabel}</span>
                     ${rrStr ? `<span class="text-xs tabular-nums font-semibold" style="font-size:9px;color:${rrColor}">${rrStr}R</span>` : ''}
+                    ${durationStr ? `<span class="text-xs text-gray-500" style="font-size:9px">${durationStr}</span>` : ''}
                 </div>
                 <div class="flex items-center gap-2 flex-shrink-0">
                     <span class="text-xs font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
@@ -404,7 +503,7 @@ const Analysis = (() => {
             </div>`;
         }).join('');
 
-        el.innerHTML = `<div class="card" style="border-left:3px solid #a855f7">
+        el.innerHTML = `<div class="card" style="border-left:3px solid #a78b6d">
             <div class="flex items-center justify-between mb-1">
                 <div class="metric-label">Track Record</div>
                 <span class="text-xs text-gray-500">/ $${(REF_SIZE/1000).toFixed(0)}k</span>
@@ -416,7 +515,7 @@ const Analysis = (() => {
                 <span class="font-bold ${totalPnlClass}">${totalUsdStr}</span>
                 <span class="text-gray-500" style="font-size:9px">moy W <span class="pnl-positive">+${avgWin.toFixed(2)}%</span> L <span class="pnl-negative">${avgLoss.toFixed(2)}%</span></span>
             </div>
-            ${rows}
+            <div style="max-height:290px;overflow-y:auto">${rows}</div>
         </div>`;
     }
 
@@ -493,18 +592,20 @@ const Analysis = (() => {
             return;
         }
 
-        const displayOrder = ['dxy', 'vix', 'nasdaq', 'sp500', 'gold', 'us10y', 'spread', 'oil', 'usdjpy', 'mstr', 'ibit', 'googl', 'nvda'];
+        const displayOrder = ['dxy', 'vix', 'nasdaq', 'sp500', 'gold', 'us10y', 'spread', 'oil', 'usdjpy', 'mstr', 'ibit', 'googl', 'nvda', 'cac40', 'dax', 'eurusd'];
         const names = {
             dxy: 'DXY', vix: 'VIX', nasdaq: 'Nasdaq', sp500: 'S&P 500', gold: 'Gold',
             us10y: 'US 10Y', spread: 'Spread 10-5Y',
             oil: 'Petrole', usdjpy: 'USD/JPY',
             mstr: 'MicroStrategy', ibit: 'BTC ETF (IBIT)',
             googl: 'Google', nvda: 'Nvidia',
+            cac40: 'CAC 40', dax: 'DAX', eurusd: 'EUR/USD',
         };
         const cryptoImpact = {
             dxy: 'inverse', vix: 'inverse', nasdaq: 'direct', sp500: 'direct', gold: 'inverse',
             us10y: 'inverse', spread: 'spread', oil: 'inverse', usdjpy: 'direct',
             mstr: 'direct', ibit: 'direct', googl: 'direct', nvda: 'direct',
+            cac40: 'direct', dax: 'direct', eurusd: 'inverse',
         };
 
         let cards = '';

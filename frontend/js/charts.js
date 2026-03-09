@@ -287,9 +287,9 @@ const Charts = (() => {
                 vertLines: { color: 'rgba(55,65,81,0.3)' },
                 horzLines: { color: 'rgba(55,65,81,0.3)' },
             },
-            rightPriceScale: { borderColor: '#374151' },
+            rightPriceScale: { borderColor: '#3d3836' },
             timeScale: {
-                borderColor: '#374151',
+                borderColor: '#3d3836',
                 timeVisible: true,
                 secondsVisible: false,
                 fixLeftEdge: true,
@@ -357,8 +357,12 @@ const Charts = (() => {
             height: 80,
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-            rightPriceScale: { visible: false },
+            rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af', minimumWidth: 50 },
             timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            crosshair: {
+                horzLine: { color: 'rgba(255,255,255,0.15)', style: LightweightCharts.LineStyle.Dotted, labelBackgroundColor: '#3d3836' },
+                vertLine: { visible: false },
+            },
             handleScroll: false,
             handleScale: false,
         });
@@ -370,7 +374,8 @@ const Charts = (() => {
             lineWidth: 1.5,
             priceLineVisible: false,
             lastValueVisible: false,
-            crosshairMarkerVisible: false,
+            crosshairMarkerVisible: true,
+            priceFormat: { type: 'custom', formatter: v => '$' + v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) },
         });
 
         const ro = new ResizeObserver(entries => {
@@ -382,7 +387,7 @@ const Charts = (() => {
 
     async function loadCockpitData() {
         try {
-            const resp = await fetch('/api/journal/equity?hours=720');
+            const resp = await fetch('/api/journal/equity?hours=48');
             const data = await resp.json();
             if (!_cockpitSeries) return;
 

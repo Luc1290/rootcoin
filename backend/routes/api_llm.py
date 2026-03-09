@@ -36,3 +36,13 @@ async def get_last(symbol: str | None = None):
     if not result:
         return {"analysis": None}
     return result
+
+
+@router.get("/history")
+async def history(symbol: str | None = None, limit: int = 30):
+    return {"history": await llm_analyzer.get_history(symbol, limit)}
+
+
+@router.get("/stats")
+async def stats(symbol: str | None = None):
+    return await llm_analyzer.get_stats(symbol)

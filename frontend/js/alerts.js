@@ -70,7 +70,7 @@ const Alerts = (() => {
             const color = a.direction === 'above' ? 'text-green-400' : 'text-red-400';
             const price = Utils.fmtPrice(a.target_price);
             const note = a.note ? ` — ${a.note}` : '';
-            return `<div class="flex items-center justify-between py-1 px-2 rounded bg-gray-800/50">
+            return `<div class="flex items-center justify-between py-1 px-2 rounded bg-stone-800/50">
                 <span class="${color} font-medium">${dir} ${price}${note}</span>
                 <button onclick="Alerts.remove(${a.id})" class="text-gray-500 hover:text-red-400 text-xs px-1">✕</button>
             </div>`;

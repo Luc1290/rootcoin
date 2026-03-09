@@ -237,7 +237,7 @@ const Positions = (() => {
                 const usdStr = Math.abs(gainUsd) >= 100
                     ? Math.abs(gainUsd).toFixed(0)
                     : Math.abs(gainUsd).toFixed(2);
-                return `<button type="button" class="level-chip text-xs px-2 py-1 rounded bg-gray-700/50 border border-gray-600 hover:border-gray-400"
+                return `<button type="button" class="level-chip text-xs px-2 py-1 rounded bg-stone-700/50 border border-stone-600 hover:border-stone-400"
                     onclick="Positions._fillLevel('${prefix}',${price},${posId})">
                     <span class="text-gray-400">${l.type}</span>
                     <span class="text-white">${Utils.fmtPrice(price)}</span>
@@ -289,7 +289,7 @@ const Positions = (() => {
             <div id="sl-levels" class="mb-3 hidden"></div>
             <div id="sl-risk" class="text-center text-sm text-gray-400 mb-4">Risque --</div>
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitSL(${id})" class="action-btn bg-yellow-600 flex-1">Placer SL</button>
             </div>
         `);
@@ -305,7 +305,7 @@ const Positions = (() => {
             <div id="tp-levels" class="mb-3 hidden"></div>
             <div id="tp-risk" class="text-center text-sm text-gray-400 mb-4">Gain --</div>
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitTP(${id})" class="action-btn bg-emerald-600 flex-1">Placer TP</button>
             </div>
         `);
@@ -324,7 +324,7 @@ const Positions = (() => {
             <div id="oco-levels" class="mb-3 hidden"></div>
             <div id="oco-rr" class="text-center text-sm text-gray-400 mb-4">R:R --</div>
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitOCO(${id})" class="action-btn bg-blue-600 flex-1">Placer OCO</button>
             </div>
         `);
@@ -451,7 +451,7 @@ const Positions = (() => {
             <p class="text-gray-400 mb-3">Fermer <strong>${label}</strong> au marche</p>
             <div class="flex gap-2 mb-3">
                 ${[25, 50, 75, 100].map(p =>
-                    `<button class="close-pct-btn action-btn flex-1 ${p === 100 ? 'bg-red-600' : 'bg-gray-700'}"
+                    `<button class="close-pct-btn action-btn flex-1 ${p === 100 ? 'bg-red-600' : 'bg-stone-700'}"
                         onclick="Positions.selectClosePct(${p}, ${qty})">${p}%</button>`
                 ).join('')}
             </div>
@@ -459,7 +459,7 @@ const Positions = (() => {
                 Quantite: <span id="close-qty-display">${qty.toFixed(6)}</span>
             </div>
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitClose(${id})" class="action-btn bg-red-600 flex-1">Fermer</button>
             </div>
         `);
@@ -469,7 +469,7 @@ const Positions = (() => {
         _closePct = pct;
         document.querySelectorAll('.close-pct-btn').forEach(btn => {
             const active = btn.textContent.trim() === pct + '%';
-            btn.className = `close-pct-btn action-btn flex-1 ${active ? 'bg-red-600' : 'bg-gray-700'}`;
+            btn.className = `close-pct-btn action-btn flex-1 ${active ? 'bg-red-600' : 'bg-stone-700'}`;
         });
         document.getElementById('close-qty-display').textContent = (totalQty * pct / 100).toFixed(6);
     }
@@ -508,7 +508,7 @@ const Positions = (() => {
             </div>
             ${warning}
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Annuler</button>
                 <button onclick="Positions.submitSecure(${id})" class="action-btn bg-cyan-600 flex-1"
                     ${!inProfit ? 'disabled style="opacity:0.5;cursor:not-allowed"' : ''}>Securiser</button>
             </div>
@@ -589,7 +589,7 @@ const Positions = (() => {
         showModal('Annuler les ordres', `
             <p class="text-gray-400 mb-4">Annuler ${types.join(' + ')} sur <strong>${pos.symbol}</strong> ?</p>
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Retour</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Retour</button>
                 <button onclick="Positions.submitCancelOrders(${id})" class="action-btn bg-orange-600 flex-1">Annuler ordres</button>
             </div>
         `);
@@ -610,9 +610,9 @@ const Positions = (() => {
         showModal('Ouvrir une position', `
             <div class="mb-3">
                 <div class="flex gap-1 mb-2">
-                    <button type="button" class="text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('BTCUSDC')">BTC</button>
-                    <button type="button" class="text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('ETHUSDC')">ETH</button>
-                    <button type="button" class="text-sm px-3 py-2 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('BNBUSDC')">BNB</button>
+                    <button type="button" class="text-sm px-3 py-2 rounded bg-stone-700 hover:bg-stone-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('BTCUSDC')">BTC</button>
+                    <button type="button" class="text-sm px-3 py-2 rounded bg-stone-700 hover:bg-stone-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('ETHUSDC')">ETH</button>
+                    <button type="button" class="text-sm px-3 py-2 rounded bg-stone-700 hover:bg-stone-600 text-gray-300 font-medium" onclick="Positions._pickSymbol('BNBUSDC')">BNB</button>
                     <input id="open-symbol" type="text" placeholder="ou saisir..."
                         class="flex-1 rounded px-3 py-2 text-sm uppercase min-w-0"
                         oninput="Positions._previewOpen()" autocomplete="off">
@@ -621,7 +621,7 @@ const Positions = (() => {
             <div class="flex gap-1 mb-3" id="open-side-toggle">
                 <button type="button" class="open-side-btn active flex-1 text-sm py-2 rounded font-medium bg-emerald-600"
                     data-side="LONG" onclick="Positions._setSide('LONG')">LONG</button>
-                <button type="button" class="open-side-btn flex-1 text-sm py-2 rounded font-medium bg-gray-700"
+                <button type="button" class="open-side-btn flex-1 text-sm py-2 rounded font-medium bg-stone-700"
                     data-side="SHORT" onclick="Positions._setSide('SHORT')">SHORT</button>
             </div>
             <div class="mb-3">
@@ -633,8 +633,8 @@ const Positions = (() => {
                 Entrez un symbole pour voir le preview
             </div>
             <div class="flex gap-2">
-                <button onclick="Positions.hideModal()" class="action-btn bg-gray-700 flex-1">Annuler</button>
-                <button id="open-submit-btn" onclick="Positions.submitOpen()" class="action-btn bg-emerald-600 flex-1" disabled style="opacity:0.5">Ouvrir</button>
+                <button onclick="Positions.hideModal()" class="action-btn bg-stone-700 flex-1">Annuler</button>
+                <button id="open-submit-btn" onclick="Positions.submitOpen()" class="action-btn open-position-btn flex-1" disabled style="opacity:0.5">Ouvrir</button>
             </div>
         `);
     }
@@ -655,7 +655,7 @@ const Positions = (() => {
             const active = btn.dataset.side === side;
             btn.classList.toggle('active', active);
             btn.className = `open-side-btn flex-1 text-sm py-2 rounded font-medium ${
-                active ? (side === 'LONG' ? 'bg-emerald-600' : 'bg-red-600') : 'bg-gray-700'
+                active ? (side === 'LONG' ? 'bg-emerald-600' : 'bg-red-600') : 'bg-stone-700'
             }`;
         });
     }

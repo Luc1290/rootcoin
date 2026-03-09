@@ -39,6 +39,8 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS ix_balances_snapshot_at ON balances (snapshot_at)",
     "CREATE INDEX IF NOT EXISTS ix_snapshots_position_id ON trade_snapshots (position_id)",
     "CREATE INDEX IF NOT EXISTS ix_snapshots_captured_at ON trade_snapshots (captured_at)",
+    "CREATE INDEX IF NOT EXISTS ix_llm_analyses_symbol ON llm_analyses (symbol)",
+    "CREATE INDEX IF NOT EXISTS ix_llm_analyses_analyzed_at ON llm_analyses (analyzed_at)",
 ]
 
 

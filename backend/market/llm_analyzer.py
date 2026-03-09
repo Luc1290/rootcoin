@@ -1,9 +1,13 @@
 import json
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import structlog
+from sqlalchemy import select
 
 from backend.core.config import settings
+from backend.core.database import async_session
+from backend.core.models import Kline, LlmAnalysis
 from backend.market import kline_manager, macro_tracker, market_analyzer, orderbook_tracker, whale_tracker
 from backend.services import news_tracker
 from backend.trading import pnl as pnl_module
@@ -16,13 +20,13 @@ SYSTEM_PROMPT = """Tu es un trader senior macro/crypto pour un desk institutionn
 Tu trades des crypto sur Binance margin cross x5. Capital : ~10 000 USDC. Horizon : scalping / intraday.
 
 TON APPROCHE (dans cet ordre de priorite) :
-1. MACRO & GEOPOLITIQUE d'abord — lis les news comme un analyste Bloomberg. Guerre, sanctions, petrole, taux, DXY : comprends les flux de capitaux mondiaux AVANT de regarder un chart. Un RSI survendu ne vaut rien si le monde est en risk-off.
+1. MACRO & GEOPOLITIQUE d'abord — lis les news comme un analyste Bloomberg. Guerre, sanctions, petrole, taux, DXY, indices US ET europeens (CAC 40, DAX), EUR/USD : comprends les flux de capitaux mondiaux AVANT de regarder un chart. Si l'Europe ouvre en gap down pendant que les US futures tiennent, c'est un signal. Un RSI survendu ne vaut rien si le monde est en risk-off.
 2. STRUCTURE DE MARCHE — regarde la courbe des prix, pas juste les indicateurs. Ou sont les rejets ? Les meches ? Les breakouts ? Le volume confirme-t-il le mouvement ?
 3. FLUX & SENTIMENT — whales, orderbook, pression achat/vente. Smart money accumule ou distribue ?
 4. TECHNIQUE en dernier — les indicateurs confirment ta these, ils ne la creent pas.
 
 TU AS UNE CONVICTION. Tu ne recites pas les indicateurs. Tu dis :
-- "Le petrole a +19% sur fond de guerre en Iran, le VIX explose, les indices US plongent. C'est du risk-off pur, BTC suit."
+- "Le petrole a +19% sur fond de guerre en Iran, le VIX explose, les indices US plongent, le DAX decroche aussi. C'est du risk-off pur, BTC suit."
 - "Je vois un dead cat bounce sur le 5min mais la structure 1h est cassee. Les whales vendent."
 - "Malgre le RSI survendu, je ne prends pas un long ici parce que..."
 
@@ -76,10 +80,15 @@ def get_last_analysis(symbol: str | None = None) -> dict | None:
     return max(_analyses.values(), key=lambda a: a.get("analyzed_at", ""), default=None)
 
 
+EXPIRY_HOURS = 24
+
+
 async def analyze(symbol: str) -> dict:
     api_key = settings.anthropic_api_key.get_secret_value()
     if not api_key:
         return {"error": "ANTHROPIC_API_KEY non configuree dans .env"}
+
+    await _resolve_pending(symbol)
 
     prompt = await build_prompt(symbol)
 
@@ -101,12 +110,186 @@ async def analyze(symbol: str) -> dict:
         result["input_tokens"] = message.usage.input_tokens
         result["output_tokens"] = message.usage.output_tokens
         _analyses[symbol] = result
+
+        if result.get("direction"):
+            await _save_to_db(result)
+
         log.info("llm_analysis_done", symbol=symbol, direction=result.get("direction"),
                  tokens_in=message.usage.input_tokens, tokens_out=message.usage.output_tokens)
         return result
     except Exception as e:
         log.error("llm_analysis_failed", symbol=symbol, error=str(e), exc_info=True)
         return {"error": str(e), "symbol": symbol}
+
+
+# ── DB persistence ────────────────────────────────────────
+
+async def _save_to_db(result: dict):
+    symbol = result["symbol"]
+    now = datetime.now(timezone.utc)
+
+    async with async_session() as session:
+        # Supersede any remaining pending for this symbol
+        pending = await session.execute(
+            select(LlmAnalysis).where(
+                LlmAnalysis.symbol == symbol,
+                LlmAnalysis.outcome.is_(None),
+            )
+        )
+        for row in pending.scalars().all():
+            row.outcome = "superseded"
+            row.resolved_at = now
+
+        row = LlmAnalysis(
+            symbol=symbol,
+            direction=result["direction"],
+            entry=Decimal(str(result["entry"])),
+            stop_loss=Decimal(str(result["stop_loss"])),
+            tp1=Decimal(str(result["tp1"])),
+            tp2=Decimal(str(result["tp2"])) if result.get("tp2") else None,
+            confidence=int(result.get("confidence", 50)),
+            risk_reward=Decimal(str(result["risk_reward"])) if result.get("risk_reward") else None,
+            market_read=result.get("market_read"),
+            explanation=result.get("explanation"),
+            key_signal=result.get("key_signal"),
+            invalidation=result.get("invalidation"),
+            llm_model=result.get("model"),
+            input_tokens=result.get("input_tokens"),
+            output_tokens=result.get("output_tokens"),
+            analyzed_at=datetime.fromisoformat(result["analyzed_at"]),
+        )
+        session.add(row)
+        await session.commit()
+
+
+async def _resolve_pending(symbol: str | None = None):
+    now = datetime.now(timezone.utc)
+
+    async with async_session() as session:
+        q = select(LlmAnalysis).where(LlmAnalysis.outcome.is_(None))
+        if symbol:
+            q = q.where(LlmAnalysis.symbol == symbol)
+        result = await session.execute(q.order_by(LlmAnalysis.analyzed_at.asc()))
+        pending = result.scalars().all()
+
+        for row in pending:
+            analyzed_at = row.analyzed_at.replace(tzinfo=timezone.utc)
+            age_h = (now - analyzed_at).total_seconds() / 3600
+
+            klines = await _get_klines_after(row.symbol, analyzed_at)
+            outcome = _check_outcome(row, klines) if klines else None
+
+            if outcome:
+                row.outcome = outcome["type"]
+                row.outcome_price = Decimal(str(outcome["price"]))
+                row.outcome_pnl_pct = Decimal(str(outcome["pnl_pct"]))
+                row.resolved_at = now
+            elif age_h >= EXPIRY_HOURS:
+                last_price = float(klines[-1]["close"]) if klines else float(row.entry)
+                entry = float(row.entry)
+                pnl = ((last_price - entry) / entry * 100) if row.direction == "LONG" else ((entry - last_price) / entry * 100)
+                row.outcome = "expired"
+                row.outcome_price = Decimal(str(last_price))
+                row.outcome_pnl_pct = Decimal(str(round(pnl, 2)))
+                row.resolved_at = now
+
+        await session.commit()
+
+
+async def _get_klines_after(symbol: str, after: datetime) -> list[dict]:
+    async with async_session() as session:
+        result = await session.execute(
+            select(Kline)
+            .where(Kline.symbol == symbol, Kline.interval == "5m", Kline.open_time >= after)
+            .order_by(Kline.open_time.asc())
+            .limit(500)
+        )
+        return [{"high": float(r.high), "low": float(r.low), "close": float(r.close)} for r in result.scalars()]
+
+
+def _check_outcome(row, klines: list[dict]) -> dict | None:
+    entry = float(row.entry)
+    sl = float(row.stop_loss)
+    tp1 = float(row.tp1)
+    tp2 = float(row.tp2) if row.tp2 else None
+    is_long = row.direction == "LONG"
+
+    for k in klines:
+        h, lo = k["high"], k["low"]
+        sl_hit = (lo <= sl) if is_long else (h >= sl)
+        tp1_hit = (h >= tp1) if is_long else (lo <= tp1)
+
+        if sl_hit:
+            pnl = ((sl - entry) / entry * 100) if is_long else ((entry - sl) / entry * 100)
+            return {"type": "sl_hit", "price": sl, "pnl_pct": round(pnl, 2)}
+
+        if tp1_hit:
+            tp2_hit = tp2 and ((h >= tp2) if is_long else (lo <= tp2))
+            if tp2_hit:
+                pnl = ((tp2 - entry) / entry * 100) if is_long else ((entry - tp2) / entry * 100)
+                return {"type": "tp2_hit", "price": tp2, "pnl_pct": round(pnl, 2)}
+            pnl = ((tp1 - entry) / entry * 100) if is_long else ((entry - tp1) / entry * 100)
+            return {"type": "tp1_hit", "price": tp1, "pnl_pct": round(pnl, 2)}
+
+    return None
+
+
+# ── History & stats ───────────────────────────────────────
+
+def _row_to_dict(r: LlmAnalysis) -> dict:
+    return {
+        "id": r.id, "symbol": r.symbol, "direction": r.direction,
+        "entry": float(r.entry), "stop_loss": float(r.stop_loss),
+        "tp1": float(r.tp1), "tp2": float(r.tp2) if r.tp2 else None,
+        "confidence": r.confidence,
+        "risk_reward": float(r.risk_reward) if r.risk_reward else None,
+        "market_read": r.market_read, "explanation": r.explanation,
+        "key_signal": r.key_signal, "invalidation": r.invalidation,
+        "outcome": r.outcome,
+        "outcome_price": float(r.outcome_price) if r.outcome_price else None,
+        "outcome_pnl_pct": float(r.outcome_pnl_pct) if r.outcome_pnl_pct else None,
+        "resolved_at": r.resolved_at.isoformat() if r.resolved_at else None,
+        "analyzed_at": r.analyzed_at.isoformat() if r.analyzed_at else None,
+        "llm_model": r.llm_model,
+        "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
+    }
+
+
+async def get_history(symbol: str | None = None, limit: int = 50) -> list[dict]:
+    await _resolve_pending(symbol)
+    async with async_session() as session:
+        q = select(LlmAnalysis)
+        if symbol:
+            q = q.where(LlmAnalysis.symbol == symbol)
+        q = q.order_by(LlmAnalysis.analyzed_at.desc()).limit(limit)
+        result = await session.execute(q)
+        return [_row_to_dict(r) for r in result.scalars()]
+
+
+async def get_stats(symbol: str | None = None) -> dict:
+    history = await get_history(symbol, limit=200)
+    resolved = [h for h in history if h["outcome"] and h["outcome"] not in ("superseded",)]
+    if not resolved:
+        return {"total": 0, "wins": 0, "losses": 0, "expired": 0, "win_rate": 0}
+
+    wins = [h for h in resolved if h["outcome"] in ("tp1_hit", "tp2_hit")]
+    losses = [h for h in resolved if h["outcome"] == "sl_hit"]
+    expired = [h for h in resolved if h["outcome"] == "expired"]
+    win_pnls = [h["outcome_pnl_pct"] for h in wins if h["outcome_pnl_pct"] is not None]
+    loss_pnls = [h["outcome_pnl_pct"] for h in losses if h["outcome_pnl_pct"] is not None]
+    all_pnls = [h["outcome_pnl_pct"] for h in resolved if h["outcome_pnl_pct"] is not None]
+    win_confs = [h["confidence"] for h in wins]
+    loss_confs = [h["confidence"] for h in losses]
+
+    return {
+        "total": len(resolved), "wins": len(wins), "losses": len(losses), "expired": len(expired),
+        "win_rate": round(len(wins) / len(resolved) * 100) if resolved else 0,
+        "avg_win_pct": round(sum(win_pnls) / len(win_pnls), 2) if win_pnls else 0,
+        "avg_loss_pct": round(sum(loss_pnls) / len(loss_pnls), 2) if loss_pnls else 0,
+        "total_pnl_pct": round(sum(all_pnls), 2),
+        "avg_confidence_win": round(sum(win_confs) / len(win_confs)) if win_confs else 0,
+        "avg_confidence_loss": round(sum(loss_confs) / len(loss_confs)) if loss_confs else 0,
+    }
 
 
 def _parse_response(text: str) -> dict:
@@ -153,10 +336,10 @@ async def build_prompt(symbol: str) -> str:
     # 8. Temporal context
     sections.append(_build_temporal_section())
 
-    # 9. Previous analysis (if any)
-    prev = _analyses.get(symbol)
-    if prev and prev.get("direction"):
-        sections.append(_build_previous_analysis_section(prev))
+    # 9. Track record + previous analysis
+    track = await _build_track_record_section(symbol)
+    if track:
+        sections.append(track)
 
     sections.append(f"\nAnalyse {symbol} et donne ta recommandation de trade.")
 
@@ -220,38 +403,100 @@ def _build_position_section(symbol: str) -> str:
     return "\n".join(lines)
 
 
-def _build_previous_analysis_section(prev: dict) -> str:
-    analyzed_at = prev.get("analyzed_at", "?")
-    direction = prev.get("direction", "?")
-    confidence = prev.get("confidence", "?")
-    entry = prev.get("entry", "?")
-    sl = prev.get("stop_loss", "?")
-    tp1 = prev.get("tp1", "?")
-    tp2 = prev.get("tp2", "?")
-    explanation = prev.get("explanation", "")
-    market_read = prev.get("market_read", "")
-    key_signal = prev.get("key_signal", "")
-    invalidation = prev.get("invalidation", "")
+async def _build_track_record_section(symbol: str) -> str:
+    async with async_session() as session:
+        result = await session.execute(
+            select(LlmAnalysis)
+            .where(LlmAnalysis.outcome.isnot(None), LlmAnalysis.outcome != "superseded")
+            .order_by(LlmAnalysis.analyzed_at.desc())
+            .limit(50)
+        )
+        resolved = [r for r in result.scalars()]
+
+    if not resolved:
+        # Fallback to in-memory last analysis
+        prev = _analyses.get(symbol)
+        if prev and prev.get("direction"):
+            return _format_prev_analysis(prev)
+        return ""
+
+    wins = [r for r in resolved if r.outcome in ("tp1_hit", "tp2_hit")]
+    losses = [r for r in resolved if r.outcome == "sl_hit"]
+    wr = round(len(wins) / len(resolved) * 100) if resolved else 0
+    avg_win = sum(float(r.outcome_pnl_pct) for r in wins if r.outcome_pnl_pct) / len(wins) if wins else 0
+    avg_loss = sum(float(r.outcome_pnl_pct) for r in losses if r.outcome_pnl_pct) / len(losses) if losses else 0
+    win_conf = sum(r.confidence for r in wins) / len(wins) if wins else 0
+    loss_conf = sum(r.confidence for r in losses) / len(losses) if losses else 0
 
     lines = [
-        f"\n=== TON ANALYSE PRECEDENTE ({analyzed_at}) ===",
-        f"Direction: {direction} (confiance {confidence}%)",
-        f"Entry: {entry} | SL: {sl} | TP1: {tp1} | TP2: {tp2}",
+        f"\n=== TON TRACK RECORD ({len(resolved)} analyses resolues) ===",
+        f"Win rate: {wr}% ({len(wins)}W / {len(losses)}L)",
+        f"PnL moyen: gagnant +{avg_win:.2f}% | perdant {avg_loss:.2f}%",
+        f"Confiance moy: gagnants {win_conf:.0f}% | perdants {loss_conf:.0f}%",
     ]
-    if market_read:
-        lines.append(f"Ta lecture du marche: {market_read}")
-    if explanation:
-        lines.append(f"Explication: {explanation}")
-    if key_signal:
-        lines.append(f"Signal cle: {key_signal}")
-    if invalidation:
-        lines.append(f"Invalidation: {invalidation}")
-    lines.append("Compare avec la situation actuelle : ton biais est-il renforce ou invalide ?")
+
+    # Symbol-specific recent history
+    sym_analyses = [r for r in resolved if r.symbol == symbol]
+    if sym_analyses:
+        lines.append(f"\nHistorique {symbol}:")
+        for r in sym_analyses[:8]:
+            at = r.analyzed_at.strftime("%d/%m %H:%M") if r.analyzed_at else "?"
+            icon = "V" if r.outcome in ("tp1_hit", "tp2_hit") else "X" if r.outcome == "sl_hit" else "-"
+            pnl = float(r.outcome_pnl_pct) if r.outcome_pnl_pct else 0
+            pnl_s = f"{'+' if pnl >= 0 else ''}{pnl:.1f}%"
+            lines.append(f"  {at} {r.direction} entry={float(r.entry):.0f} SL={float(r.stop_loss):.0f} TP={float(r.tp1):.0f} conf={r.confidence}% -> {r.outcome} {icon} {pnl_s}")
+
+    # Other symbols summary
+    other = {}
+    for r in resolved:
+        if r.symbol == symbol:
+            continue
+        s = r.symbol
+        if s not in other:
+            other[s] = {"w": 0, "l": 0, "pnls": []}
+        if r.outcome in ("tp1_hit", "tp2_hit"):
+            other[s]["w"] += 1
+        elif r.outcome == "sl_hit":
+            other[s]["l"] += 1
+        if r.outcome_pnl_pct:
+            other[s]["pnls"].append(float(r.outcome_pnl_pct))
+
+    if other:
+        lines.append("\nAutres symboles:")
+        for s, d in other.items():
+            avg = sum(d["pnls"]) / len(d["pnls"]) if d["pnls"] else 0
+            lines.append(f"  {s}: {d['w']}W/{d['l']}L, PnL moy {'+' if avg >= 0 else ''}{avg:.1f}%")
+
+    lines.append("\nANALYSE TES ERREURS PASSEES. Identifie les patterns dans tes pertes (direction, timing, SL trop serre, overconfidence).")
+    lines.append("Ajuste ta confiance et tes niveaux en consequence.")
+
+    # Last analysis details for this symbol
+    prev = _analyses.get(symbol)
+    if prev and prev.get("direction"):
+        lines.append(_format_prev_analysis(prev))
+
+    return "\n".join(lines)
+
+
+def _format_prev_analysis(prev: dict) -> str:
+    at = prev.get("analyzed_at", "?")
+    d = prev.get("direction", "?")
+    c = prev.get("confidence", "?")
+    lines = [
+        f"\n--- Ton analyse precedente ({at}) ---",
+        f"Direction: {d} (confiance {c}%)",
+        f"Entry: {prev.get('entry', '?')} | SL: {prev.get('stop_loss', '?')} | TP1: {prev.get('tp1', '?')} | TP2: {prev.get('tp2', '?')}",
+    ]
+    if prev.get("market_read"):
+        lines.append(f"Ta lecture: {prev['market_read']}")
+    if prev.get("key_signal"):
+        lines.append(f"Signal cle: {prev['key_signal']}")
+    lines.append("Compare avec la situation actuelle.")
     return "\n".join(lines)
 
 
 async def _build_tf_section(symbol: str, tf: str) -> str | None:
-    limit = {"5m": 100, "15m": 80, "1h": 60, "4h": 45}.get(tf, 60)
+    limit = {"5m": 200, "15m": 150, "1h": 120, "4h": 100}.get(tf, 80)
     await kline_manager.fetch_and_store(symbol, tf, limit=limit)
     klines = await kline_manager.get_klines(symbol, tf, limit=limit)
     if not klines or len(klines) < 20:
@@ -359,7 +604,7 @@ async def _build_tf_section(symbol: str, tf: str) -> str | None:
 
 def _build_price_action(klines: list, tf: str) -> str:
     """Build a compact price structure summary so Claude can 'see' the chart."""
-    n_candles = {"5m": 24, "15m": 20, "1h": 16, "4h": 12}.get(tf, 20)
+    n_candles = {"5m": 48, "15m": 36, "1h": 30, "4h": 24}.get(tf, 24)
     recent = klines[-n_candles:]
     if len(recent) < 5:
         return ""
@@ -491,13 +736,15 @@ def _build_macro_section() -> str:
         "nasdaq": "Nasdaq", "sp500": "S&P 500", "gold": "Or",
         "us10y": "Taux US 10 ans", "oil": "Petrole",
         "usdjpy": "USD/JPY", "mstr": "MicroStrategy", "ibit": "BTC ETF (IBIT)",
+        "cac40": "CAC 40", "dax": "DAX", "eurusd": "EUR/USD",
     }
     impacts = {
         "dxy": "inverse", "vix": "inverse", "nasdaq": "direct",
         "sp500": "direct", "gold": "inverse", "us10y": "inverse",
         "oil": "inverse", "usdjpy": "direct", "mstr": "direct", "ibit": "direct",
+        "cac40": "direct", "dax": "direct", "eurusd": "inverse",
     }
-    for key in ["dxy", "vix", "nasdaq", "sp500", "gold", "us10y", "oil", "usdjpy", "mstr", "ibit"]:
+    for key in ["dxy", "vix", "nasdaq", "sp500", "gold", "us10y", "oil", "usdjpy", "mstr", "ibit", "cac40", "dax", "eurusd"]:
         ind = indicators.get(key)
         if not ind:
             continue

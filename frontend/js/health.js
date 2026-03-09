@@ -168,7 +168,7 @@ const Health = (() => {
         if (!db) { el.innerHTML = ''; return; }
 
         const rows = Object.entries(db.table_counts || {}).map(([table, count]) =>
-            `<div class="flex justify-between text-xs py-1 border-b border-gray-800/30">
+            `<div class="flex justify-between text-xs py-1 border-b border-stone-800/30">
                 <span class="text-gray-400">${table}</span>
                 <span class="tabular-nums">${count.toLocaleString()}</span>
             </div>`
@@ -356,14 +356,14 @@ const Health = (() => {
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    ${configured ? `<button id="tg-test-btn" class="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 border border-gray-700 rounded">Test</button>` : ''}
+                    ${configured ? `<button id="tg-test-btn" class="text-xs text-gray-400 hover:text-gray-200 px-2 py-1 border border-stone-700 rounded">Test</button>` : ''}
                     <label class="toggle-switch">
                         <input type="checkbox" id="tg-toggle" ${enabled ? 'checked' : ''} ${!configured ? 'disabled' : ''}>
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
             </div>
-            ${catToggles ? `<div class="mt-3 pt-3 border-t border-gray-800/40">${catToggles}</div>` : ''}
+            ${catToggles ? `<div class="mt-3 pt-3 border-t border-stone-800/40">${catToggles}</div>` : ''}
         </div>`;
 
         _bindNotificationEvents(configured);

@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="fr" class="bg-gray-950 text-white">
+<html lang="fr" class="bg-stone-950 text-white">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#111827">
+    <meta name="theme-color" content="#1c1917">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="apple-touch-icon" href="/static/icon-192.png">
     <link rel="icon" type="image/png" href="/static/icon-192.png">
@@ -83,7 +83,7 @@
                         <div><span class="text-gray-400">PnL ouvert</span> <span id="pos-portfolio-pnl" class="font-bold tabular-nums">--</span></div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="Positions.showOpen()" class="action-btn bg-emerald-600 px-3 py-2 text-sm font-medium rounded">+ Ouvrir</button>
+                        <button onclick="Positions.showOpen()" class="action-btn open-position-btn px-3 py-2 text-sm font-medium rounded">+ Ouvrir</button>
                         <select id="positions-sort" class="px-3 py-2 text-sm">
                             <option value="pnl">Tri : PnL</option>
                             <option value="value">Tri : Valeur</option>
@@ -96,7 +96,7 @@
             <div id="positions-empty" class="empty-state">
                 <div class="empty-state-icon">📊</div>
                 <div class="empty-state-text">Aucune position ouverte</div>
-                <button onclick="Positions.showOpen()" class="action-btn bg-emerald-600 px-4 py-3 text-sm font-medium rounded mt-3">+ Ouvrir une position</button>
+                <button onclick="Positions.showOpen()" class="action-btn open-position-btn px-4 py-3 text-sm font-medium rounded mt-3">+ Ouvrir une position</button>
             </div>
             <div id="positions-list" class="space-y-3 hidden"></div>
         </div>
@@ -179,7 +179,7 @@
                             <th class="text-left">Asset</th>
                             <th class="text-center">Quantité</th>
                             <th class="text-center">USD</th>
-                            <th class="text-center border-l border-gray-800/50 pl-4 pr-2">Total</th>
+                            <th class="text-center border-l border-stone-800/50 pl-4 pr-2">Total</th>
                         </tr>
                     </thead>
                     <tbody id="balances-tbody"></tbody>
@@ -199,7 +199,6 @@
                     <span id="chart-header-price" class="chart-header-price">--</span>
                     <span id="chart-header-change" class="chart-header-change">--</span>
                 </div>
-                <span id="candle-countdown" class="candle-countdown"></span>
                 <div class="flex gap-0.5" id="chart-intervals">
                     <button class="chart-interval-btn" data-interval="1m">1m</button>
                     <button class="chart-interval-btn" data-interval="5m">5m</button>
@@ -208,7 +207,7 @@
                     <button class="chart-interval-btn" data-interval="4h">4h</button>
                     <button class="chart-interval-btn" data-interval="1d">1d</button>
                 </div>
-                <button id="chart-reset-btn" class="chart-interval-btn" title="Reset zoom">&#x21BA;</button>
+                <button id="chart-reset-btn" class="chart-reset-btn" title="Reset zoom">&#x21BA;</button>
             </div>
             <div class="flex items-center gap-1 mb-2 flex-wrap">
                 <button class="indicator-toggle active" data-ind="ma">MA</button>
@@ -218,7 +217,6 @@
                 <button class="indicator-toggle active" data-ind="obv">OBV</button>
                 <button class="indicator-toggle active" data-ind="macd">MACD</button>
                 <button class="indicator-toggle active" data-ind="buy_sell">B/S</button>
-                <button class="indicator-toggle" data-ind="trades">Fills</button>
                 <button class="indicator-toggle active" data-ind="cycles">Cycles</button>
                 <button class="indicator-toggle active" data-ind="orders">Orders</button>
                 <button class="indicator-toggle" data-ind="levels">Levels</button>
@@ -228,8 +226,8 @@
                 <summary class="text-xs font-medium text-gray-500 cursor-pointer select-none py-1">Alertes prix</summary>
                 <div class="flex items-center gap-2 mt-1.5 mb-1.5">
                     <input id="alert-price-input" type="number" step="any" placeholder="Prix cible..."
-                           class="flex-1 px-3 py-1.5 text-sm bg-gray-800/80 border border-gray-700/50 rounded-md focus:border-blue-500 focus:outline-none">
-                    <select id="alert-direction" class="px-2 py-1.5 text-sm bg-gray-800/80 border border-gray-700/50 rounded-md">
+                           class="flex-1 px-3 py-1.5 text-sm bg-stone-800/80 border border-stone-700/50 rounded-md focus:border-blue-500 focus:outline-none">
+                    <select id="alert-direction" class="px-2 py-1.5 text-sm bg-stone-800/80 border border-stone-700/50 rounded-md">
                         <option value="auto">Auto</option>
                         <option value="above">Au-dessus</option>
                         <option value="below">En-dessous</option>
@@ -243,15 +241,15 @@
                 <div id="kline-chart-main" class="overflow-hidden" style="width:100%"></div>
                 <div id="kline-wrap-volume" class="hidden">
                     <div class="subchart-label">Vol</div>
-                    <div id="kline-chart-volume" class="overflow-hidden" style="height:60px;width:100%"></div>
+                    <div id="kline-chart-volume" class="overflow-hidden" style="height:80px;width:100%"></div>
                 </div>
                 <div id="kline-wrap-buysell" class="hidden">
                     <div class="subchart-label">B/S</div>
-                    <div id="kline-chart-buysell" class="overflow-hidden" style="height:60px;width:100%"></div>
+                    <div id="kline-chart-buysell" class="overflow-hidden" style="height:70px;width:100%"></div>
                 </div>
                 <div id="kline-wrap-rsi" class="hidden">
                     <div class="subchart-label">RSI</div>
-                    <div id="kline-chart-rsi" class="overflow-hidden" style="height:80px;width:100%"></div>
+                    <div id="kline-chart-rsi" class="overflow-hidden" style="height:100px;width:100%"></div>
                 </div>
                 <div id="kline-wrap-macd" class="hidden">
                     <div class="subchart-label">MACD</div>
@@ -259,7 +257,7 @@
                 </div>
                 <div id="kline-wrap-obv" class="hidden">
                     <div class="subchart-label">OBV</div>
-                    <div id="kline-chart-obv" class="overflow-hidden" style="height:80px;width:100%"></div>
+                    <div id="kline-chart-obv" class="overflow-hidden" style="height:100px;width:100%"></div>
                 </div>
             </div>
         </div>
@@ -271,6 +269,7 @@
                 <span id="analysis-freshness" class="text-xs text-gray-500"></span>
             </div>
             <div id="analysis-llm" class="mb-4"></div>
+            <div id="analysis-llm-track" class="mb-4"></div>
             <div id="analysis-opportunities" class="mb-4"></div>
             <div id="analysis-track-record" class="mb-4"></div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
@@ -392,7 +391,7 @@
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-lg font-bold">Trades</h2>
-                    <select id="journal-symbol-filter" class="px-3 py-2 text-sm bg-gray-800 border border-gray-700 rounded-lg">
+                    <select id="journal-symbol-filter" class="px-3 py-2 text-sm bg-stone-800 border border-stone-700 rounded-lg">
                         <option value="">Tous</option>
                     </select>
                 </div>
@@ -424,7 +423,7 @@
                     <div class="metric-label">Memo</div>
                     <span id="memo-status" class="text-xs text-gray-600"></span>
                 </div>
-                <textarea id="memo-text" class="w-full bg-gray-800/50 text-gray-200 border border-gray-700 rounded p-3 text-sm resize-y" rows="4" placeholder="Notes, idees, rappels..."></textarea>
+                <textarea id="memo-text" class="w-full bg-stone-800/50 text-gray-200 border border-stone-700 rounded p-3 text-sm resize-y" rows="4" placeholder="Notes, idees, rappels..."></textarea>
             </div>
             <div id="health-errors" class="mb-4"></div>
             <div id="health-events" class="mb-4"></div>
@@ -432,7 +431,7 @@
                 <div class="flex items-center justify-between mb-2">
                     <div class="metric-label">Live Logs</div>
                     <div class="flex items-center gap-2">
-                        <select id="log-level-filter" class="bg-gray-800 text-gray-300 border border-gray-700 rounded px-2 py-1 text-xs">
+                        <select id="log-level-filter" class="bg-stone-800 text-gray-300 border border-stone-700 rounded px-2 py-1 text-xs">
                             <option value="">All</option>
                             <option value="error">ERROR</option>
                             <option value="warning">WARNING</option>
