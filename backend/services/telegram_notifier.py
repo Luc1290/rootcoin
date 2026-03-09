@@ -432,9 +432,9 @@ async def notify_pnl_threshold(
     if threshold == 0.0:
         header = f"\u2696\ufe0f <b>{symbol} {side} — Retour au breakeven</b>"
     elif threshold > 0:
-        header = f"\U0001f4c8 <b>{symbol} {side} — +{threshold:.0f}% de gain</b>"
+        header = f"\U0001f4c8 <b>{symbol} {side} — +{threshold:g}% de gain</b>"
     else:
-        header = f"\U0001f4c9 <b>{symbol} {side} — {threshold:.0f}% de perte</b>"
+        header = f"\U0001f4c9 <b>{symbol} {side} — {threshold:g}% de perte</b>"
     msg = (
         f"{header}\n"
         f"\n"

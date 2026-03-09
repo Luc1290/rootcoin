@@ -791,11 +791,11 @@ const KlineChart = (() => {
 
                 let color;
                 if (c.is_active) {
-                    color = 'rgba(99,179,255,';   // bright blue
+                    color = 'rgba(59,130,246,';   // vivid blue
                 } else if (c.realized_pnl && parseFloat(c.realized_pnl) > 0) {
-                    color = 'rgba(38,166,154,';   // teal
+                    color = 'rgba(16,185,129,';   // vivid green
                 } else {
-                    color = 'rgba(239,83,80,';    // warm red
+                    color = 'rgba(239,68,68,';    // vivid red
                 }
 
                 const intSec = (_intervalMs[_interval] || 900000) / 1000;
@@ -812,7 +812,7 @@ const KlineChart = (() => {
                     value: cd.high + pad,
                 }));
 
-                const opFill = c.is_active ? '0.18)' : '0.10)';
+                const opFill = c.is_active ? '0.30)' : '0.18)';
                 const area = _mainChart.addAreaSeries({
                     topColor: color + opFill,
                     bottomColor: color + opFill,

@@ -36,6 +36,7 @@ _DEF_STEP = Decimal("0.15")
 _DEF_OFFSET = Decimal("0.5")
 _DEF_TP_GUARD = Decimal("0.3")
 _DEF_MIN_RR = Decimal("1.5")
+_MAX_SL_GAP = Decimal("0.9")  # max unprotected gain % before forcing SL advance
 
 # Timings
 _POLL_INTERVAL = 3.0
@@ -368,6 +369,16 @@ async def _recover_naked_position(pos_id: int):
         log.error("trailing_naked_recovery_failed", symbol=pos.symbol, exc_info=True)
 
 
+def _sl_protection_pct(side: str, entry: Decimal, auto_sl: Decimal) -> Decimal:
+    """Return the SL protection as a gain % relative to entry."""
+    if not auto_sl or entry <= 0:
+        return Decimal(0)
+    if side == "LONG":
+        return (auto_sl - entry) / entry * 100
+    else:
+        return (entry - auto_sl) / entry * 100
+
+
 # ── Price handler (trailing logic) ───────────────────────────
 
 async def _handle_price_update(msg: dict):
@@ -428,8 +439,21 @@ async def _handle_price_update(msg: dict):
                                       tracking["auto_sl"], tracking["auto_tp"]):
                     should_move = True
                 else:
-                    # No better levels: defer next check
-                    tracking["last_step_pct"] = gain_pct
+                    # Safety net: force move if SL protection gap too large
+                    sl_protection = _sl_protection_pct(
+                        pos.side, entry, tracking["auto_sl"],
+                    )
+                    gap = gain_pct - sl_protection
+                    if gap >= _MAX_SL_GAP:
+                        should_move = True
+                        log.info("trailing_safety_net",
+                                 symbol=pos.symbol,
+                                 gain=f"{gain_pct:.2f}%",
+                                 sl_prot=f"{sl_protection:.2f}%",
+                                 gap=f"{gap:.2f}%")
+                    else:
+                        # No better levels and gap OK: defer next check
+                        tracking["last_step_pct"] = gain_pct
 
         # ── TP Guard override: force move if approaching TP ──
         if tp_guard_triggered and not should_move:
