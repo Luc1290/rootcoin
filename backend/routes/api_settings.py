@@ -6,6 +6,7 @@ from sqlalchemy import select
 from backend.core.database import async_session
 from backend.core.models import Setting
 from backend.services import telegram_notifier
+from backend.trading import trailing_manager
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -42,6 +43,10 @@ async def put_setting(key: str, body: dict):
                 updated_at=datetime.now(timezone.utc),
             ))
         await session.commit()
+    # Hot-reload trailing settings without restart
+    if key.startswith("trailing_"):
+        await trailing_manager._load_settings()
+
     return {"key": key, "value": str(value)}
 
 

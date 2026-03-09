@@ -3,11 +3,11 @@ then trail SL+TP up as profit grows.
 
 Settings (DB key -> default):
   trailing_enabled    -> "1"
-  trailing_activation -> "0.8"   (gain % for first move -> breakeven)
+  trailing_activation -> "0.5"   (gain % for first move -> breakeven)
   trailing_breakeven  -> "0.2"   (SL % for first move, covers fees)
-  trailing_step       -> "0.3"   (min gain increment between moves)
-  trailing_offset     -> "0.4"   (SL = last_step - offset%)
-  trailing_tp_guard   -> "0.2"   (% proximity to TP -> force move)
+  trailing_step       -> "0.15"  (min gain increment between level checks)
+  trailing_offset     -> "0.5"   (SL = gain - offset%)
+  trailing_tp_guard   -> "0.3"   (% proximity to TP -> force move, works pre-activation)
   trailing_min_rr     -> "1.5"   (min R:R for initial OCO)
 """
 
@@ -30,10 +30,10 @@ from backend.trading import order_manager, position_tracker
 log = structlog.get_logger()
 
 # Defaults
-_DEF_ACTIVATION = Decimal("0.8")
+_DEF_ACTIVATION = Decimal("0.5")
 _DEF_BREAKEVEN = Decimal("0.2")
-_DEF_STEP = Decimal("0.5")
-_DEF_OFFSET = Decimal("0.8")
+_DEF_STEP = Decimal("0.15")
+_DEF_OFFSET = Decimal("0.5")
 _DEF_TP_GUARD = Decimal("0.3")
 _DEF_MIN_RR = Decimal("1.5")
 
@@ -42,6 +42,7 @@ _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
 _NAKED_GRACE = 90.0     # seconds before re-placing OCO on unprotected position
 _MIN_MOVE_INTERVAL = 60.0  # minimum seconds between consecutive trailing moves
+_TP_GUARD_INTERVAL = 15.0  # shorter interval for TP guard (urgent)
 _RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes
 _OVERRIDE_REMINDER = 7200.0  # remind user after 2h of manual control
 
@@ -396,40 +397,47 @@ async def _handle_price_update(msg: dict):
             gain_pct = (entry - current_price) / entry * 100
 
         activation = _settings.get("activation", _DEF_ACTIVATION)
-        if gain_pct < activation:
-            continue
+        tp_guard_triggered = False
 
-        step = _settings.get("step", _DEF_STEP)
-        last_step = tracking.get("last_step_pct", Decimal(0))
-        should_move = False
-        new_sl_pct = None
-
-        if not tracking.get("trailing_active"):
-            # First move: breakeven
-            breakeven = _settings.get("breakeven", _DEF_BREAKEVEN)
-            new_sl_pct = breakeven
-            should_move = True
-        elif gain_pct >= last_step + step:
-            # Subsequent moves: every +step%, SL = gain - offset
-            offset = _settings.get("offset", _DEF_OFFSET)
-            new_sl_pct = gain_pct - offset
-            should_move = True
-
-        # TP guard: force move if price approaches TP
+        # ── TP Guard: check FIRST regardless of activation ──
         auto_tp = tracking["auto_tp"]
-        if auto_tp and not should_move:
+        if auto_tp:
             tp_guard = _settings.get("tp_guard", _DEF_TP_GUARD)
             if pos.side == "LONG":
                 tp_dist_pct = (auto_tp - current_price) / current_price * 100
             else:
                 tp_dist_pct = (current_price - auto_tp) / current_price * 100
             if Decimal(0) < tp_dist_pct <= tp_guard:
-                offset = _settings.get("offset", _DEF_OFFSET)
-                new_sl_pct = gain_pct - offset
+                tp_guard_triggered = True
+
+        # Skip if below activation AND no TP guard
+        if gain_pct < activation and not tp_guard_triggered:
+            continue
+
+        step = _settings.get("step", _DEF_STEP)
+        last_step = tracking.get("last_step_pct", Decimal(0))
+        should_move = False
+
+        # ── Regular trailing logic ──
+        if gain_pct >= activation:
+            if not tracking.get("trailing_active"):
                 should_move = True
+            elif gain_pct >= last_step + step:
+                # Only move if key levels offer a better SL or TP
+                if _has_better_levels(pos.symbol, current_price, pos.side,
+                                      tracking["auto_sl"], tracking["auto_tp"]):
+                    should_move = True
+                else:
+                    # No better levels: defer next check
+                    tracking["last_step_pct"] = gain_pct
+
+        # ── TP Guard override: force move if approaching TP ──
+        if tp_guard_triggered and not should_move:
+            should_move = True
+            log.info("trailing_tp_guard", symbol=pos.symbol,
+                     gain=f"{gain_pct:.2f}%", tp_dist=f"{tp_dist_pct:.3f}%")
 
         # Periodic re-snap: re-evaluate SL from current key levels
-        # (after consolidation, new levels may allow tighter SL)
         if not should_move and tracking.get("trailing_active"):
             now = _time.monotonic()
             last_resnap = tracking.get("last_resnap_at", 0.0)
@@ -449,31 +457,34 @@ async def _handle_price_update(msg: dict):
                             (pos.side == "LONG" and candidate > current_auto_sl)
                         )
                         if is_better:
-                            new_sl_pct = gain_pct
                             should_move = True
                             log.info("trailing_resnap_triggered", symbol=symbol,
                                      old_sl=str(current_auto_sl), new_candidate=str(candidate))
 
-        if not should_move or new_sl_pct is None:
+        if not should_move:
             continue
 
-        # Manual override: trailing takes back control above activation
+        # Manual override: trailing takes back control
         if tracking.get("manual_override"):
             tracking["manual_override"] = False
             tracking.pop("override_at", None)
             tracking.pop("override_reminded", None)
             log.info("trailing_resuming", symbol=pos.symbol, gain=f"{gain_pct:.2f}%")
 
-        # Rate-limit: don't move more than once per _MIN_MOVE_INTERVAL
+        # Rate-limit: shorter for TP guard (urgent)
         last_move = tracking.get("last_move_at", 0.0)
-        if last_move and _time.monotonic() - last_move < _MIN_MOVE_INTERVAL:
+        rate_limit = _TP_GUARD_INTERVAL if tp_guard_triggered else _MIN_MOVE_INTERVAL
+        if last_move and _time.monotonic() - last_move < rate_limit:
             continue
 
         is_breakeven = not tracking.get("trailing_active")
-        asyncio.create_task(_move_oco(pos, tracking, gain_pct, current_price, is_breakeven))
+        asyncio.create_task(_move_oco(
+            pos, tracking, gain_pct, current_price, is_breakeven,
+            tp_guard=tp_guard_triggered,
+        ))
 
 
-async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False):
+async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, tp_guard=False):
     tracking["moving"] = True
     try:
         analysis = market_analyzer.get_analysis(pos.symbol)
@@ -502,12 +513,16 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False):
                 else:
                     new_sl_price = entry * (1 - sl_pct / 100)
 
-        # SL never goes backwards
+        # SL never goes backwards (TP guard: keep current SL, still move TP)
         current_auto_sl = tracking["auto_sl"]
         if pos.side == "LONG" and new_sl_price <= current_auto_sl:
-            return
+            if not tp_guard:
+                return
+            new_sl_price = current_auto_sl
         if pos.side == "SHORT" and new_sl_price >= current_auto_sl:
-            return
+            if not tp_guard:
+                return
+            new_sl_price = current_auto_sl
 
         # --- Compute TP from key levels ---
         new_tp = tracking["auto_tp"]
@@ -522,6 +537,10 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False):
 
         new_sl_price = round_price(pos.symbol, new_sl_price)
         new_tp = round_price(pos.symbol, new_tp)
+
+        # Nothing changed: skip useless OCO replace
+        if new_sl_price == tracking["auto_sl"] and new_tp == tracking["auto_tp"]:
+            return
 
         result = await order_manager.place_oco(pos, new_tp, new_sl_price, silent=True)
         oco_id = str(result.get("orderListId", ""))
@@ -619,12 +638,32 @@ def _parse_levels(key_levels: list) -> list[Decimal]:
     return result
 
 
+def _has_better_levels(symbol, current_price, side, current_sl, current_tp):
+    """Check if key levels offer a better SL or TP than current (in-memory, fast)."""
+    analysis = market_analyzer.get_analysis(symbol)
+    if not analysis:
+        return False
+    key_levels = analysis.get("key_levels", [])
+    offset = _settings.get("offset", _DEF_OFFSET)
+    sl = _find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=offset)
+    if sl:
+        if (side == "LONG" and sl > current_sl) or \
+           (side == "SHORT" and sl < current_sl):
+            return True
+    tp = _find_next_resistance(key_levels, current_price, side)
+    if tp:
+        if (side == "LONG" and tp > current_tp) or \
+           (side == "SHORT" and tp < current_tp):
+            return True
+    return False
+
+
 def _find_initial_sl_tp(key_levels, entry_price, side):
     prices = _parse_levels(key_levels)
     if not prices:
         return None, None
 
-    min_dist = Decimal("0.15")  # skip levels < 0.15% away
+    min_dist = Decimal("0.5")  # skip levels < 0.5% away (covers fees + noise)
 
     if side == "LONG":
         sl = None
@@ -662,7 +701,7 @@ def _find_initial_sl_tp(key_levels, entry_price, side):
 
 def _adjust_for_rr(key_levels, entry_price, side, min_rr):
     prices = _parse_levels(key_levels)
-    min_dist = Decimal("0.15")
+    min_dist = Decimal("0.5")
 
     if side == "LONG":
         below = [p for p in prices
@@ -719,7 +758,7 @@ def _find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=Decima
 
 def _find_next_resistance(key_levels, current_price, side):
     prices = _parse_levels(key_levels)
-    min_dist = Decimal("0.3")
+    min_dist = Decimal("0.5")
 
     if side == "LONG":
         for p in prices:
