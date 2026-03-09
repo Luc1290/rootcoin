@@ -6,19 +6,28 @@ import structlog
 from backend.core.config import settings
 from backend.market import kline_manager, macro_tracker, market_analyzer, orderbook_tracker, whale_tracker
 from backend.services import news_tracker
+from backend.trading import pnl as pnl_module
 
 log = structlog.get_logger()
 
 _analyses: dict[str, dict] = {}  # symbol -> last analysis
 
-SYSTEM_PROMPT = """Tu es un trader intraday expert en crypto sur Binance margin cross x5.
-Capital : ~10 000 USDC. Horizon : scalping / intraday.
+SYSTEM_PROMPT = """Tu es un trader senior macro/crypto pour un desk institutionnel. 15 ans d'experience.
+Tu trades des crypto sur Binance margin cross x5. Capital : ~10 000 USDC. Horizon : scalping / intraday.
 
-Tu ne te contentes PAS de deduire mecaniquement les indicateurs. Tu as ta propre conviction de trader :
-- Lis la structure du marche, pas juste les chiffres. Ou va le prix ? Pourquoi ?
-- Identifie le scenario principal ET le scenario alternatif.
-- Donne ton avis personnel : "je pense que...", "mon feeling est...", "le marche semble..."
-- Si tu as deja analyse ce symbole precedemment, compare avec ton ancienne analyse : qu'est-ce qui a change ? Ton biais est-il renforce ou invalide ?
+TON APPROCHE (dans cet ordre de priorite) :
+1. MACRO & GEOPOLITIQUE d'abord — lis les news comme un analyste Bloomberg. Guerre, sanctions, petrole, taux, DXY : comprends les flux de capitaux mondiaux AVANT de regarder un chart. Un RSI survendu ne vaut rien si le monde est en risk-off.
+2. STRUCTURE DE MARCHE — regarde la courbe des prix, pas juste les indicateurs. Ou sont les rejets ? Les meches ? Les breakouts ? Le volume confirme-t-il le mouvement ?
+3. FLUX & SENTIMENT — whales, orderbook, pression achat/vente. Smart money accumule ou distribue ?
+4. TECHNIQUE en dernier — les indicateurs confirment ta these, ils ne la creent pas.
+
+TU AS UNE CONVICTION. Tu ne recites pas les indicateurs. Tu dis :
+- "Le petrole a +19% sur fond de guerre en Iran, le VIX explose, les indices US plongent. C'est du risk-off pur, BTC suit."
+- "Je vois un dead cat bounce sur le 5min mais la structure 1h est cassee. Les whales vendent."
+- "Malgre le RSI survendu, je ne prends pas un long ici parce que..."
+
+Si l'utilisateur a une position ouverte, reponds a SA situation : hold ? renforcer ? sortir ? deplacer le SL ?
+S'il n'a pas de position, propose une entree.
 
 REGLES STRICTES :
 - Tu DOIS choisir une direction : LONG ou SHORT. Jamais FLAT, jamais "attendre".
@@ -38,8 +47,9 @@ Format JSON attendu :
     "pour": ["facteur positif 1", "facteur positif 2"],
     "contre": ["facteur negatif 1"]
   },
-  "market_read": "2-3 phrases avec ta lecture personnelle du marche, ton feeling, ce que tu vois au-dela des indicateurs",
-  "explanation": "3-5 phrases justifiant ta decision avec les donnees",
+  "market_read": "3-5 phrases avec ta lecture macro+geopolitique+technique. Ton feeling de trader, pas une liste d'indicateurs. Fais les liens entre les events.",
+  "explanation": "3-5 phrases justifiant ta decision avec les donnees concretes",
+  "position_advice": "Si position ouverte : hold/renforcer/sortir/deplacer SL + pourquoi. Si pas de position : 'Pas de position ouverte.'",
   "key_signal": "Le signal principal en 1 phrase",
   "invalidation": "Ce qui invaliderait ce trade en 1 phrase"
 }
@@ -137,10 +147,13 @@ async def build_prompt(symbol: str) -> str:
     # 6. News
     sections.append(_build_news_section())
 
-    # 7. Temporal context
+    # 7. Current position (if any)
+    sections.append(_build_position_section(symbol))
+
+    # 8. Temporal context
     sections.append(_build_temporal_section())
 
-    # 8. Previous analysis (if any)
+    # 9. Previous analysis (if any)
     prev = _analyses.get(symbol)
     if prev and prev.get("direction"):
         sections.append(_build_previous_analysis_section(prev))
@@ -148,6 +161,63 @@ async def build_prompt(symbol: str) -> str:
     sections.append(f"\nAnalyse {symbol} et donne ta recommandation de trade.")
 
     return "\n".join(sections)
+
+
+def _build_position_section(symbol: str) -> str:
+    from backend.trading import position_tracker
+    from backend.routes.position_helpers import fetch_order_prices
+    import asyncio
+
+    positions = position_tracker.get_positions()
+    pos = next((p for p in positions if p.symbol == symbol and p.is_active), None)
+
+    if not pos:
+        return "\n=== POSITION ACTUELLE ===\nAucune position ouverte sur ce symbole. Propose une entree."
+
+    entry = pos.entry_price
+    current = pos.current_price or entry
+    qty = pos.quantity
+
+    unrealized, u_pct = pnl_module.unrealized_pnl(
+        pos.side, entry, current, qty, pos.entry_fees_usd,
+    )
+
+    usd_val = float(entry * qty)
+    duration = ""
+    if pos.opened_at:
+        delta = datetime.now(timezone.utc) - pos.opened_at.replace(tzinfo=timezone.utc)
+        hours = int(delta.total_seconds() // 3600)
+        mins = int((delta.total_seconds() % 3600) // 60)
+        duration = f"{hours}h{mins:02d}m" if hours > 0 else f"{mins}m"
+
+    lines = [
+        f"\n=== POSITION ACTUELLE ===",
+        f"Direction: {pos.side}",
+        f"Entry: {float(entry):.2f} | Prix actuel: {float(current):.2f}",
+        f"Qty: {float(qty)} ({pos.symbol.replace('USDC', '').replace('USDT', '')}), valeur ~${usd_val:,.0f}",
+        f"PnL: {'+' if unrealized >= 0 else ''}{float(unrealized):.2f}$ ({'+' if u_pct >= 0 else ''}{float(u_pct):.2f}%)",
+    ]
+    if duration:
+        lines.append(f"En position depuis: {duration}")
+    if pos.market_type:
+        lines.append(f"Marche: {pos.market_type.replace('_', ' ')}")
+
+    # Orders info
+    order_info = []
+    if pos.sl_order_id:
+        order_info.append("SL actif")
+    if pos.tp_order_id:
+        order_info.append("TP actif")
+    if pos.oco_order_list_id:
+        order_info.append("OCO actif")
+    if order_info:
+        lines.append(f"Ordres: {', '.join(order_info)}")
+    else:
+        lines.append("Ordres: AUCUN (position non protegee !)")
+
+    lines.append("Conseille : hold ? renforcer ? sortir ? deplacer le SL/TP ?")
+
+    return "\n".join(lines)
 
 
 def _build_previous_analysis_section(prev: dict) -> str:

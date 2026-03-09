@@ -292,6 +292,7 @@ const Analysis = (() => {
                 </div>
             </div>
             ${a.market_read ? `<div class="llm-market-read"><span class="text-xs text-gray-500 font-semibold">Lecture du marche :</span> ${Utils.escHtml(a.market_read)}</div>` : ''}
+            ${a.position_advice && a.position_advice !== 'Pas de position ouverte.' ? `<div class="llm-position-advice"><span class="text-xs text-gray-500 font-semibold">Ta position :</span> ${Utils.escHtml(a.position_advice)}</div>` : ''}
             ${a.confidence_factors ? _renderConfidenceFactors(a.confidence_factors) : ''}
             <div class="llm-explanation"><span class="text-xs text-gray-500 font-semibold">Analyse :</span> ${Utils.escHtml(a.explanation || '')}</div>
             ${a.key_signal ? `<div class="llm-key-signal"><span class="text-xs text-gray-500 font-semibold">Signal cle :</span> ${Utils.escHtml(a.key_signal)}</div>` : ''}

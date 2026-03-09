@@ -1362,6 +1362,16 @@ select {
     border-left: 2px solid rgba(59, 130, 246, 0.3);
     border-radius: 0 0.25rem 0.25rem 0;
 }
+.llm-position-advice {
+    font-size: 0.8rem;
+    color: #fbbf24;
+    line-height: 1.5;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(251, 191, 36, 0.08);
+    border-left: 2px solid rgba(251, 191, 36, 0.3);
+    border-radius: 0 0.25rem 0.25rem 0;
+}
 .llm-explanation {
     font-size: 0.8rem;
     color: #d1d5db;
