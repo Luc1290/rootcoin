@@ -787,7 +787,6 @@ const KlineChart = (() => {
             }
 
             const now = Math.floor(Date.now() / 1000);
-            const markers = [];
 
             cycles.forEach(c => {
                 if (!c.opened_at) return;
@@ -812,11 +811,11 @@ const KlineChart = (() => {
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
                 const pad = maxHigh * 0.013; // 1.3% above highs
 
-                // Smooth highs with a 5-point moving average (skip for short cycles)
+                // Smooth highs with a 3-point moving average (skip for short cycles)
                 const rawVals = cycleCandles.map(cd => cd.high + pad);
-                const values = rawVals.length >= 3 ? rawVals.map((_, i, arr) => {
-                    const start = Math.max(0, i - 2);
-                    const end = Math.min(arr.length, i + 3);
+                const values = rawVals.length > 3 ? rawVals.map((_, i, arr) => {
+                    const start = Math.max(0, i - 1);
+                    const end = Math.min(arr.length, i + 2);
                     let sum = 0;
                     for (let j = start; j < end; j++) sum += arr[j];
                     return sum / (end - start);
@@ -860,34 +859,7 @@ const KlineChart = (() => {
                     _activeCycleRefs.push({ area, entryPrice, pad });
                 }
 
-                // Cycle boundary markers
-                const openCandle = cycleCandles[0];
-                if (openCandle) {
-                    markers.push({
-                        time: openCandle.time,
-                        position: 'belowBar',
-                        color: c.is_active ? '#e6aa3c' : (parseFloat(c.realized_pnl || 0) > 0 ? '#5ab469' : '#c85a50'),
-                        shape: 'arrowUp',
-                        text: 'O',
-                    });
-                }
-                if (!c.is_active) {
-                    const closeCandle = cycleCandles[cycleCandles.length - 1];
-                    if (closeCandle) {
-                        markers.push({
-                            time: closeCandle.time,
-                            position: 'aboveBar',
-                            color: parseFloat(c.realized_pnl || 0) > 0 ? '#5ab469' : '#c85a50',
-                            shape: 'arrowDown',
-                            text: 'C',
-                        });
-                    }
-                }
             });
-
-            // setMarkers requires sorted by time
-            markers.sort((a, b) => a.time - b.time);
-            _candleSeries.setMarkers(markers);
 
             _cyclesRendered = { symbol: _symbol, interval: _interval };
         } catch (e) {
