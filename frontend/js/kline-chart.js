@@ -199,7 +199,7 @@ const KlineChart = (() => {
             height: height,
             layout: { background: { color: C.bg }, textColor: C.text, fontSize: 10 },
             grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-            rightPriceScale: { borderColor: C.border, minimumWidth: 80, scaleMargins: { top: 0.02, bottom: 0.05 } },
+            rightPriceScale: { borderColor: C.border, minimumWidth: 88, scaleMargins: { top: 0.02, bottom: 0.05 } },
             timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: _isMobile() ? 3 : 0.5, lockVisibleTimeRangeOnResize: true },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
@@ -308,6 +308,16 @@ const KlineChart = (() => {
 
         seriesRef.series = seriesFactory(chartRef.chart);
 
+        // Add a hidden sync series to ensure time-axis alignment
+        chartRef.syncSeries = chartRef.chart.addLineSeries({
+            color: 'transparent',
+            lineWidth: 0,
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+            autoscaleInfoProvider: () => null,
+        });
+
         _syncTimeScales(_mainChart, chartRef.chart);
         _observeResize(el, chartRef.chart);
     }
@@ -325,6 +335,9 @@ const KlineChart = (() => {
             base: 0,
         });
         _volChart.priceScale('right').applyOptions({ scaleMargins: { top: 0.15, bottom: 0 }, entireTextOnly: true });
+
+        // Hidden sync series
+        _volChart.syncSeries = _volChart.addLineSeries({ color: 'transparent', lineWidth: 0, priceLineVisible: false, lastValueVisible: false, autoscaleInfoProvider: () => null });
 
         _syncTimeScales(_mainChart, _volChart);
         _registerChart(_volChart, _volSeries, 'volume');
@@ -434,7 +447,7 @@ const KlineChart = (() => {
     function _alignPriceScales() {
         const charts = [_mainChart, _volChart, _rsiChart, _obvChart, _macdChart, _bsChart].filter(Boolean);
         if (charts.length <= 1) return;
-        let maxW = 80;
+        let maxW = 88;
         for (const c of charts) {
             try { maxW = Math.max(maxW, c.priceScale('right').width()); } catch (_) {}
         }
@@ -711,13 +724,14 @@ const KlineChart = (() => {
             requestAnimationFrame(() => {
                 _alignPriceScales();
                 const allCharts = [_mainChart, _volChart, _rsiChart, _obvChart, _macdChart, _bsChart].filter(Boolean);
-                for (const c of allCharts) {
-                    c.timeScale().applyOptions({ rightOffset: rightPad });
-                }
-                _mainChart.timeScale().setVisibleLogicalRange({
+                const range = {
                     from: total - visible,
                     to: total - 1,
-                });
+                };
+                for (const c of allCharts) {
+                    c.timeScale().applyOptions({ rightOffset: rightPad });
+                    c.timeScale().setVisibleLogicalRange(range);
+                }
             });
 
             _startCountdown();
@@ -810,12 +824,22 @@ const KlineChart = (() => {
                 return;
             }
 
+            const lastCandleTs = candles[candles.length - 1].time;
             const now = Math.floor(Date.now() / 1000);
+            
+            // To keep all charts perfectly aligned, we must collect all unique timestamps
+            // used in the main chart (including precise trade starts/ends)
+            // and feed them to the hidden sync series of every sub-chart.
+            const allTs = new Set(candles.map(c => c.time));
 
             cycles.forEach(c => {
                 if (!c.opened_at) return;
                 const openTs = _toTs(c.opened_at);
                 const closeTs = c.is_active ? now : (c.closed_at ? _toTs(c.closed_at) : now);
+                
+                // Keep timestamps for syncing
+                allTs.add(openTs);
+                allTs.add(closeTs);
 
                 let color;
                 if (c.is_active) {
@@ -828,18 +852,23 @@ const KlineChart = (() => {
 
                 const intSec = (_intervalMs[_interval] || 900000) / 1000;
                 const cycleCandles = candles.filter(cd => cd.time + intSec > openTs && cd.time <= closeTs);
-                if (!cycleCandles.length) return;
+                if (!cycleCandles.length && !c.is_active) return;
 
                 // Follow highs with per-candle pad, compressed variation
                 const pad = 0.013;
-                const rawVals = cycleCandles.map(cd => cd.high * (1 + pad));
-                let avg = 0;
-                for (const v of rawVals) avg += v;
-                avg /= rawVals.length;
-                const compress = 0.3; // keep 30% of the original variation
-                const values = rawVals.map(v => avg + (v - avg) * compress);
-                let maxHigh = 0;
-                for (const v of values) { if (v > maxHigh) maxHigh = v; }
+                let values = [];
+                if (cycleCandles.length) {
+                    const rawVals = cycleCandles.map(cd => cd.high * (1 + pad));
+                    let avg = 0;
+                    for (const v of rawVals) avg += v;
+                    avg /= rawVals.length;
+                    const compress = 0.3; 
+                    values = rawVals.map(v => avg + (v - avg) * compress);
+                } else if (c.is_active) {
+                    // Just started, use current price
+                    values = [_currentPrice * (1 + pad)];
+                }
+
                 const areaData = cycleCandles.map((cd, i) => ({
                     time: cd.time,
                     value: values[i],
@@ -848,13 +877,15 @@ const KlineChart = (() => {
                 // Clip area start to exact position open time
                 if (areaData.length > 0 && areaData[0].time < openTs) {
                     areaData[0] = { time: openTs, value: areaData[0].value };
+                } else if (areaData.length === 0 && c.is_active) {
+                    // New trade: start exactly at openTs
+                    areaData.push({ time: openTs, value: values[0] });
                 }
-                // Extend area end to exact close time for closed cycles
-                if (!c.is_active && areaData.length > 0) {
-                    const lastTime = areaData[areaData.length - 1].time;
-                    if (closeTs > lastTime) {
-                        areaData.push({ time: closeTs, value: areaData[areaData.length - 1].value });
-                    }
+
+                // Extend area end to exact close time
+                const lastTime = areaData.length > 0 ? areaData[areaData.length - 1].time : 0;
+                if (closeTs > lastTime) {
+                    areaData.push({ time: closeTs, value: (values.length ? values[values.length - 1] : _currentPrice * (1 + pad)) });
                 }
 
                 const opTop = c.is_active ? '0.06)' : '0.04)';
@@ -890,8 +921,21 @@ const KlineChart = (() => {
                 if (c.is_active) {
                     _activeCycleRefs.push({ area, entryPrice, pad });
                 }
-
             });
+
+            // FEED SYNC SERIES to all sub-charts
+            const sortedTs = Array.from(allTs).sort((a,b) => a-b).map(t => ({ time: t, value: 0 }));
+            const subCharts = [
+                { chart: _volChart, sync: _volChart?.syncSeries },
+                { chart: _rsiChart, sync: _rsiChart?.syncSeries },
+                { chart: _obvChart, sync: _obvChart?.syncSeries },
+                { chart: _macdChart, sync: _macdChart?.syncSeries }, // Macd chart might need syncSeries but handled differently if macdChart object structure differs
+                { chart: _bsChart, sync: _bsChart?.syncSeries }
+            ].filter(s => s.chart && s.sync);
+            
+            for (const s of subCharts) {
+                s.sync.setData(sortedTs);
+            }
 
             _cyclesRendered = { symbol: _symbol, interval: _interval };
         } catch (e) {
