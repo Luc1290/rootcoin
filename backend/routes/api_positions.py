@@ -45,6 +45,7 @@ class OpenBody(BaseModel):
     symbol: str
     side: str  # LONG or SHORT
     price: str | None = None  # None = MARKET
+    amount_usdc: str | None = None  # None = full balance
 
 
 @router.get("")
@@ -167,7 +168,16 @@ async def open_position(body: OpenBody):
         max_borrow_info = await client.get_max_margin_loan(asset=borrow_asset)
         max_borrow = Decimal(str(max_borrow_info.get("amount", "0")))
 
-        naive_notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
+        if body.amount_usdc:
+            user_amount = Decimal(body.amount_usdc)
+            if user_amount <= 0:
+                raise HTTPException(400, "amount_usdc must be > 0")
+            if user_amount > usdc_free:
+                raise HTTPException(400, f"Montant demandé ({user_amount}) > USDC dispo ({usdc_free})")
+            naive_notional = user_amount * OPEN_LEVERAGE * OPEN_SAFETY
+        else:
+            naive_notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
+
         if side == "SHORT":
             max_borrow_notional = max_borrow * price * OPEN_SAFETY
         else:

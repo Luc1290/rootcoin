@@ -603,10 +603,12 @@ const Positions = (() => {
 
     let _openSide = 'LONG';
     let _openPreview = null;
+    let _openAmount = null; // null = MAX
 
     function showOpen() {
         _openSide = 'LONG';
         _openPreview = null;
+        _openAmount = null;
         showModal('Ouvrir une position', `
             <div class="mb-3">
                 <div class="flex gap-1 mb-2">
@@ -623,6 +625,15 @@ const Positions = (() => {
                     data-side="LONG" onclick="Positions._setSide('LONG')">LONG</button>
                 <button type="button" class="open-side-btn flex-1 text-sm py-2 rounded font-medium bg-stone-700"
                     data-side="SHORT" onclick="Positions._setSide('SHORT')">SHORT</button>
+            </div>
+            <div class="mb-3">
+                <label class="block text-xs text-gray-500 mb-1">Montant USDC</label>
+                <div class="flex gap-1" id="open-amount-presets">
+                    <button type="button" class="open-amount-btn text-sm px-3 py-2 rounded bg-stone-700 hover:bg-stone-600 text-gray-300 font-medium flex-1" data-pct="25" onclick="Positions._setAmount('25')">25%</button>
+                    <button type="button" class="open-amount-btn text-sm px-3 py-2 rounded bg-stone-700 hover:bg-stone-600 text-gray-300 font-medium flex-1" data-pct="50" onclick="Positions._setAmount('50')">50%</button>
+                    <button type="button" class="open-amount-btn text-sm px-3 py-2 rounded bg-stone-700 hover:bg-stone-600 text-gray-300 font-medium flex-1" data-pct="75" onclick="Positions._setAmount('75')">75%</button>
+                    <button type="button" class="open-amount-btn active text-sm px-3 py-2 rounded bg-blue-600 text-white font-medium flex-1" data-pct="100" onclick="Positions._setAmount(null)">MAX</button>
+                </div>
             </div>
             <div class="mb-3">
                 <input id="open-price" type="number" step="any" placeholder="Prix (vide = Market)"
@@ -660,6 +671,20 @@ const Positions = (() => {
         });
     }
 
+    function _setAmount(pct) {
+        _openAmount = pct; // null = 100% (MAX), '25'/'50'/'75' otherwise
+        const container = document.getElementById('open-amount-presets');
+        if (!container) return;
+        container.querySelectorAll('.open-amount-btn').forEach(btn => {
+            const isActive = pct === null ? btn.dataset.pct === '100' : btn.dataset.pct === pct;
+            btn.classList.toggle('active', isActive);
+            btn.className = `open-amount-btn text-sm px-3 py-2 rounded font-medium flex-1 ${
+                isActive ? 'bg-blue-600 text-white' : 'bg-stone-700 hover:bg-stone-600 text-gray-300'
+            }`;
+        });
+        _previewOpen();
+    }
+
     let _previewTimer = null;
 
     function _previewOpen() {
@@ -693,16 +718,21 @@ const Positions = (() => {
 
             const priceInput = document.getElementById('open-price');
             const usePrice = priceInput && priceInput.value ? priceInput.value : data.current_price;
-            const notional = parseFloat(data.usdc_free) * 5 * 0.98;
+            const usdcFree = parseFloat(data.usdc_free);
+            const pctValue = _openAmount ? parseInt(_openAmount) : 100;
+            const effectiveAmount = usdcFree * pctValue / 100;
+            const notional = effectiveAmount * 5 * 0.98;
             const qty = notional / parseFloat(usePrice);
+            const amountLabel = _openAmount ? `$${effectiveAmount.toFixed(2)} (${pctValue}%)` : `$${usdcFree.toFixed(2)} (MAX)`;
 
             previewEl.innerHTML = `
                 <div class="space-y-1">
-                    <div class="flex justify-between"><span class="text-gray-500">USDC dispo (cross)</span><span class="text-white font-medium">$${parseFloat(data.usdc_free).toFixed(2)}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">USDC dispo (cross)</span><span class="text-white font-medium">$${usdcFree.toFixed(2)}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Montant utilise</span><span class="text-blue-400 font-medium">${amountLabel}</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">Prix courant</span><span class="text-white font-medium">${Utils.fmtPrice(parseFloat(data.current_price))}</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">Leverage</span><span class="text-white font-medium">x${data.leverage}</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">Notionnel (x5 × 0.98)</span><span class="text-blue-400 font-medium">$${notional.toFixed(2)}</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">Quantite max</span><span class="text-emerald-400 font-medium">${qty.toFixed(6)}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">Quantite</span><span class="text-emerald-400 font-medium">${qty.toFixed(6)}</span></div>
                 </div>
             `;
             if (submitBtn) { submitBtn.disabled = false; submitBtn.style.opacity = '1'; }
@@ -725,9 +755,15 @@ const Positions = (() => {
         if (priceInput && priceInput.value) {
             body.price = priceInput.value;
         }
+        if (_openAmount && _openPreview) {
+            const usdcFree = parseFloat(_openPreview.usdc_free);
+            const amount = (usdcFree * parseInt(_openAmount) / 100).toFixed(2);
+            body.amount_usdc = amount;
+        }
 
+        const pctLabel = _openAmount ? `${_openAmount}%` : 'MAX';
         const typeLabel = body.price ? 'LIMIT' : 'MARKET';
-        await apiPost('/api/positions/open', body, `${_openSide} ${symbol} ${typeLabel} place`);
+        await apiPost('/api/positions/open', body, `${_openSide} ${symbol} ${typeLabel} ${pctLabel} place`);
     }
 
     // Real-time updates
@@ -769,6 +805,6 @@ const Positions = (() => {
         submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
         confirmCancelOrders, submitCancelOrders, selectClosePct,
         _setMode, _updateRisk, _updateRR, _fillLevel, getActiveSymbols,
-        showOpen, submitOpen, _setSide, _previewOpen, _pickSymbol,
+        showOpen, submitOpen, _setSide, _setAmount, _previewOpen, _pickSymbol,
     };
 })();
