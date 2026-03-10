@@ -222,7 +222,8 @@ const KlineChart = (() => {
             upColor: C.upCandle, downColor: C.downCandle,
             borderVisible: false,
             wickUpColor: C.wickUp, wickDownColor: C.wickDown,
-            priceLineStyle: LightweightCharts.LineStyle.SparseDotted,
+            lastValueVisible: false,
+            priceLineVisible: false,
         });
 
         // Floating % label next to crosshair
@@ -868,20 +869,24 @@ const KlineChart = (() => {
     }
 
     // ── Current price label line ("P") ─────────────────────
+    let _prevClose = null;
     function _updatePriceLabelLine(price) {
         if (!_candleSeries || !price) return;
+        const up = _prevClose == null || price >= _prevClose;
+        const color = up ? C.upCandle : C.downCandle;
         if (_priceLabelLine) {
-            _priceLabelLine.applyOptions({ price });
+            _priceLabelLine.applyOptions({ price, color });
         } else {
             _priceLabelLine = _candleSeries.createPriceLine({
                 price,
-                color: 'rgba(255,255,255,0.5)',
+                color,
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.SparseDotted,
                 axisLabelVisible: true,
                 title: 'P',
             });
         }
+        _prevClose = price;
     }
 
     // ── Order lines (SL/TP) ────────────────────────────────
