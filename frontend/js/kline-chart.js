@@ -701,17 +701,23 @@ const KlineChart = (() => {
             _renderLevelLines();
             _renderAlertLines();
 
-            // Show last ~360 candles with 1/14 empty space on the right
+            // Show last ~360 candles with right padding
             const total = candles.length;
             const visible = Math.min(total, 360);
             const rightPad = Math.round(visible / 13);
-            const range = { from: total - visible, to: total - 1 + rightPad };
 
-            // Align price scales first, THEN set visible range
-            // (price scale resize recalculates visible range if done after)
+            // Use rightOffset for padding (consistent per-chart property,
+            // not included in synced logical range → no drift between charts)
             requestAnimationFrame(() => {
                 _alignPriceScales();
-                _mainChart.timeScale().setVisibleLogicalRange(range);
+                const allCharts = [_mainChart, _volChart, _rsiChart, _obvChart, _macdChart, _bsChart].filter(Boolean);
+                for (const c of allCharts) {
+                    c.timeScale().applyOptions({ rightOffset: rightPad });
+                }
+                _mainChart.timeScale().setVisibleLogicalRange({
+                    from: total - visible,
+                    to: total - 1,
+                });
             });
 
             _startCountdown();
