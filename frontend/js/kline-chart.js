@@ -822,6 +822,18 @@ const KlineChart = (() => {
                     value: values[i],
                 }));
 
+                // Clip area start to exact position open time
+                if (areaData.length > 0 && areaData[0].time < openTs) {
+                    areaData[0] = { time: openTs, value: areaData[0].value };
+                }
+                // Extend area end to exact close time for closed cycles
+                if (!c.is_active && areaData.length > 0) {
+                    const lastTime = areaData[areaData.length - 1].time;
+                    if (closeTs > lastTime) {
+                        areaData.push({ time: closeTs, value: areaData[areaData.length - 1].value });
+                    }
+                }
+
                 const opTop = c.is_active ? '0.02)' : '0.01)';
                 const opBot = c.is_active ? '0.10)' : '0.06)';
                 const opLine = c.is_active ? '0.35)' : '0.20)';
