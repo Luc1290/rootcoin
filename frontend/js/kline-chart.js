@@ -150,10 +150,9 @@ const KlineChart = (() => {
     function _updateSymbolSelect(symbols) {
         const sel = document.getElementById('chart-symbol');
         if (!sel) return;
-        const current = sel.value;
         const unique = [...new Set(symbols)];
         sel.innerHTML = unique.map(s =>
-            `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`
+            `<option value="${s}" ${s === _symbol ? 'selected' : ''}>${s}</option>`
         ).join('');
     }
 
