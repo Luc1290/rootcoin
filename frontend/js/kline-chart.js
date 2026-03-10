@@ -134,15 +134,10 @@ const KlineChart = (() => {
         try {
             const resp = await fetch('/api/positions');
             const positions = await resp.json();
-            const activePos = (positions || []).filter(p => p.is_active);
-            if (activePos.length > 0) {
-                // Pick most recently updated position (latest trade activity)
-                activePos.sort((a, b) => {
-                    const ta = a.updated_at || a.opened_at || '';
-                    const tb = b.updated_at || b.opened_at || '';
-                    return tb.localeCompare(ta);
-                });
-                const preferred = activePos[0].symbol;
+            if (positions && positions.length > 0) {
+                // Sort by most recently opened so the latest position is selected
+                positions.sort((a, b) => (b.opened_at || '').localeCompare(a.opened_at || ''));
+                const preferred = positions[0].symbol;
                 if (_symbol !== preferred) {
                     _symbol = preferred;
                     const sel = document.getElementById('chart-symbol');
