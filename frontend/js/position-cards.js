@@ -98,6 +98,22 @@ const PositionCards = (() => {
         return ((op - ep) / ep * 100).toFixed(1);
     }
 
+    function _pnlAtPrice(p, targetPrice) {
+        const entry = parseFloat(p.entry_price);
+        const qty = parseFloat(p.quantity);
+        const target = parseFloat(targetPrice);
+        if (!entry || !qty || !target) return null;
+        const gross = p.side === 'SHORT' ? (entry - target) * qty : (target - entry) * qty;
+        const entryFees = parseFloat(p.entry_fees_usd) || 0;
+        const exitFees = target * qty * 0.001;
+        return gross - entryFees - exitFees;
+    }
+
+    function _fmtPnlUsd(usd) {
+        const sign = usd >= 0 ? '+' : '-';
+        return `${sign}$${Math.abs(usd).toFixed(0)}`;
+    }
+
     function _buildBadgesHtml(p) {
         const badges = [];
         const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
@@ -107,7 +123,9 @@ const PositionCards = (() => {
             const rawDist = _distancePct(p.sl_price, p.entry_price);
             const dist = rawDist !== null ? (p.side === 'SHORT' ? -rawDist : +rawDist) : null;
             const priceStr = price ? formatPrice(price) : '';
-            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${parseFloat(dist).toFixed(1)}%)` : '';
+            const pnlUsd = _pnlAtPrice(p, p.sl_price);
+            const usdStr = pnlUsd !== null ? ` ${_fmtPnlUsd(pnlUsd)}` : '';
+            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${parseFloat(dist).toFixed(1)}%${usdStr})` : '';
             const label = priceStr ? `SL ${priceStr}${distStr}` : 'SL';
             const slInProfit = dist !== null && dist > 0;
             const slBg = slInProfit ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400';
@@ -118,7 +136,9 @@ const PositionCards = (() => {
             const rawDist = _distancePct(p.tp_price, p.entry_price);
             const dist = rawDist !== null ? (p.side === 'SHORT' ? -rawDist : +rawDist) : null;
             const priceStr = price ? formatPrice(price) : '';
-            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${parseFloat(dist).toFixed(1)}%)` : '';
+            const pnlUsd = _pnlAtPrice(p, p.tp_price);
+            const usdStr = pnlUsd !== null ? ` ${_fmtPnlUsd(pnlUsd)}` : '';
+            const distStr = dist !== null ? ` (${dist > 0 ? '+' : ''}${parseFloat(dist).toFixed(1)}%${usdStr})` : '';
             const label = priceStr ? `TP ${priceStr}${distStr}` : 'TP';
             badges.push(`<span class="badge bg-emerald-900/40 text-emerald-400 tabular-nums">${label}</span>`);
         }

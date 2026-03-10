@@ -1,6 +1,6 @@
 const KlineChart = (() => {
     let _symbol = 'BTCUSDC';
-    let _interval = '15m';
+    let _interval = '5m';
     let _mainChart = null;
     let _candleSeries = null;
     let _maSeries = {};
@@ -514,7 +514,9 @@ const KlineChart = (() => {
         }
 
         const pnl = c.realized_pnl_pct ? parseFloat(c.realized_pnl_pct) : 0;
-        const pnlUsd = c.realized_pnl ? parseFloat(c.realized_pnl) : 0;
+        const grossUsd = c.realized_pnl ? parseFloat(c.realized_pnl) : 0;
+        const feesUsd = c.total_fees_usd ? parseFloat(c.total_fees_usd) : 0;
+        const pnlUsd = grossUsd - feesUsd;
         const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
         const pnlSign = pnl >= 0 ? '+' : '';
         const exit = c.exit_price ? Utils.fmtPrice(parseFloat(c.exit_price)) : '--';
@@ -525,7 +527,7 @@ const KlineChart = (() => {
 
         return `<div class="ct-header"><span class="${sideClass}">${side}</span> ${sym} <span class="ct-status ${statusClass}">${statusLabel}</span></div>`
             + `<div class="ct-row">Entry <b>${entry}</b> &rarr; <b>${exit}</b></div>`
-            + `<div class="ct-row ${pnlClass}">${pnlSign}${pnl.toFixed(2)}% (${pnlSign}$${Math.abs(pnlUsd).toFixed(2)})</div>`
+            + `<div class="ct-row ${pnlClass}">${pnlSign}${pnl.toFixed(2)}% (${pnlUsd >= 0 ? '+' : '-'}$${Math.abs(pnlUsd).toFixed(2)})</div>`
             + (fees ? `<div class="ct-row ct-dim">Fees $${fees.toFixed(2)}</div>` : '')
             + (dur ? `<div class="ct-row ct-dim">${dur}</div>` : '');
     }
@@ -1017,8 +1019,13 @@ const KlineChart = (() => {
             const price = parseFloat(lvl.price);
             if (!price) continue;
             const above = price >= cp;
-            const color = lvl.type === 'PP'
+            const t = lvl.type;
+            const color = (t === 'PP' || t === 'W_PP')
                 ? 'rgba(59,130,246,0.5)'
+                : (t === 'VWAP')
+                ? 'rgba(156,39,176,0.5)'
+                : (t === 'PDC')
+                ? 'rgba(255,167,38,0.5)'
                 : above ? 'rgba(38,166,154,0.5)' : 'rgba(239,83,80,0.5)';
             _levelPriceLines.push(_candleSeries.createPriceLine({
                 price,

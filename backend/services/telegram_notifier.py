@@ -325,11 +325,12 @@ async def notify_sl_placed(
     if not is_orders_enabled():
         return
     dist_pct = _pct_distance(side, entry_price, stop_price)
+    pnl = _pnl_usd_str(side, entry_price, stop_price, qty)
     base = symbol.replace("USDC", "").replace("USDT", "")
     msg = (
         f"\u26d4 <b>{symbol} — Stop Loss place</b>\n"
         f"\n"
-        f"Stop : {_fp(stop_price)} ({dist_pct} depuis entry)\n"
+        f"Stop : {_fp(stop_price)} ({dist_pct} \u2192 {pnl})\n"
         f"Qty : {_fq(qty)} {base}"
     )
     await notify(msg)
@@ -341,11 +342,12 @@ async def notify_tp_placed(
     if not is_orders_enabled():
         return
     dist_pct = _pct_distance(side, entry_price, tp_price)
+    pnl = _pnl_usd_str(side, entry_price, tp_price, qty)
     base = symbol.replace("USDC", "").replace("USDT", "")
     msg = (
         f"\U0001f3af <b>{symbol} — Take Profit place</b>\n"
         f"\n"
-        f"Target : {_fp(tp_price)} ({dist_pct} depuis entry)\n"
+        f"Target : {_fp(tp_price)} ({dist_pct} \u2192 {pnl})\n"
         f"Qty : {_fq(qty)} {base}"
     )
     await notify(msg)
@@ -359,11 +361,13 @@ async def notify_oco_placed(
         return
     tp_dist = _pct_distance(side, entry_price, tp_price)
     sl_dist = _pct_distance(side, entry_price, sl_price)
+    tp_pnl = _pnl_usd_str(side, entry_price, tp_price, qty)
+    sl_pnl = _pnl_usd_str(side, entry_price, sl_price, qty)
     msg = (
         f"\U0001f500 <b>{symbol} — OCO place</b>\n"
         f"\n"
-        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist})\n"
-        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist})"
+        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist} \u2192 {tp_pnl})\n"
+        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist} \u2192 {sl_pnl})"
     )
     await notify(msg)
 
@@ -395,6 +399,8 @@ async def notify_trailing_moved(
     pnl_usd = float((current_price - entry_price) * quantity)
     if side == "SHORT":
         pnl_usd = -pnl_usd
+    sl_pnl_str = _pnl_usd_str(side, entry_price, sl_price, quantity)
+    tp_pnl_str = _pnl_usd_str(side, entry_price, tp_price, quantity)
     value_usd = float(current_price * quantity)
     sign = "+" if gain_pct >= 0 else ""
     pnl_sign = "+" if pnl_usd >= 0 else ""
@@ -413,8 +419,8 @@ async def notify_trailing_moved(
         f"\U0001f4c8 Entree {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
         f"\U0001f4b5 Valeur : ${value_usd:,.2f} ({_fq(quantity)} {base})\n"
         f"\n"
-        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist})\n"
-        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist})"
+        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist} \u2192 {tp_pnl_str})\n"
+        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist} \u2192 {sl_pnl_str})"
     )
     await notify(msg)
 
@@ -607,6 +613,14 @@ def _fq(value: Decimal) -> str:
         return str(int(v))
     s = f"{v:.8f}".rstrip("0").rstrip(".")
     return s
+
+
+def _pnl_usd_str(side: str, entry: Decimal, target: Decimal, qty: Decimal) -> str:
+    gross = float((target - entry) * qty) if side == "LONG" else float((entry - target) * qty)
+    fees = float((entry + target) * qty) * 0.001  # 0.1% entry + 0.1% exit
+    pnl = gross - fees
+    sign = "+" if pnl >= 0 else "-"
+    return f"{sign}${abs(pnl):,.0f}"
 
 
 def _pct_distance(side: str, entry: Decimal, target: Decimal) -> str:

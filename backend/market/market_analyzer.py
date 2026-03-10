@@ -327,17 +327,23 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     current_price = Decimal(klines[-1]["close"])
 
     pivot = (high + low + close) / 3
+    rng = high - low
     s1 = 2 * pivot - high
     r1 = 2 * pivot - low
-    s2 = pivot - (high - low)
-    r2 = pivot + (high - low)
+    s2 = pivot - rng
+    r2 = pivot + rng
+    s3 = low - 2 * (high - pivot)
+    r3 = high + 2 * (pivot - low)
 
     levels = [
+        {"price": str(round(r3, 2)), "type": "R3", "label": "Resistance extreme"},
         {"price": str(round(r2, 2)), "type": "R2", "label": "Forte resistance"},
         {"price": str(round(r1, 2)), "type": "R1", "label": "Resistance"},
         {"price": str(round(pivot, 2)), "type": "PP", "label": "Pivot du jour"},
         {"price": str(round(s1, 2)), "type": "S1", "label": "Support"},
         {"price": str(round(s2, 2)), "type": "S2", "label": "Fort support"},
+        {"price": str(round(s3, 2)), "type": "S3", "label": "Support extreme"},
+        {"price": str(round(close, 2)), "type": "PDC", "label": "Cloture veille"},
     ]
 
     # Session high/low (current forming daily candle)
@@ -346,6 +352,13 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
     today_low = Decimal(today["low"])
     levels.append({"price": str(round(today_high, 2)), "type": "D_H", "label": "Plus haut du jour"})
     levels.append({"price": str(round(today_low, 2)), "type": "D_L", "label": "Plus bas du jour"})
+
+    # Weekly pivot + high/low (from last closed 7 daily candles)
+    if len(klines) >= 8:
+        _add_weekly_levels(klines, levels)
+
+    # VWAP (daily, from current forming candle using 1h klines)
+    await _add_vwap_level(symbol, levels)
 
     # 4H swings — 150 candles (~25 days) for historical context
     await kline_manager.fetch_and_store(symbol, "4h", limit=150)
@@ -407,19 +420,24 @@ async def _compute_key_levels(symbol: str) -> list[dict]:
 
 
 def _detect_swings(closed_klines: list[dict], levels: list[dict]):
-    for i in range(1, len(closed_klines) - 1):
-        h = float(closed_klines[i]["high"])
-        l = float(closed_klines[i]["low"])
-        prev_h = float(closed_klines[i - 1]["high"])
-        next_h = float(closed_klines[i + 1]["high"])
-        prev_l = float(closed_klines[i - 1]["low"])
-        next_l = float(closed_klines[i + 1]["low"])
+    n = len(closed_klines)
+    for i in range(2, n - 2):
+        h = Decimal(closed_klines[i]["high"])
+        lo = Decimal(closed_klines[i]["low"])
+        left_h = max(Decimal(closed_klines[i - 1]["high"]),
+                     Decimal(closed_klines[i - 2]["high"]))
+        right_h = max(Decimal(closed_klines[i + 1]["high"]),
+                      Decimal(closed_klines[i + 2]["high"]))
+        left_l = min(Decimal(closed_klines[i - 1]["low"]),
+                     Decimal(closed_klines[i - 2]["low"]))
+        right_l = min(Decimal(closed_klines[i + 1]["low"]),
+                      Decimal(closed_klines[i + 2]["low"]))
 
-        if h > prev_h and h > next_h:
-            levels.append({"price": str(round(Decimal(str(h)), 2)),
+        if h > left_h and h > right_h:
+            levels.append({"price": str(round(h, 2)),
                            "type": "SW_H", "label": "Plus haut"})
-        if l < prev_l and l < next_l:
-            levels.append({"price": str(round(Decimal(str(l)), 2)),
+        if lo < left_l and lo < right_l:
+            levels.append({"price": str(round(lo, 2)),
                            "type": "SW_L", "label": "Plus bas"})
 
 
@@ -429,10 +447,12 @@ def _deduplicate_levels(levels: list[dict]) -> list[dict]:
     result = []
     prices_seen = []
     priority = {
-        "R2": 0, "R1": 1, "PP": 2, "S1": 3, "S2": 4, "D_H": 5, "D_L": 6,
-        "FIB_618": 7, "FIB_50": 8, "FIB_382": 9,
-        "FIB_1272": 10, "FIB_1618": 11, "PSYCH": 12,
-        "SW_H": 13, "SW_L": 14,
+        "R3": 0, "R2": 1, "R1": 2, "PP": 3, "S1": 4, "S2": 5, "S3": 6,
+        "PDC": 7, "VWAP": 8, "W_PP": 9, "W_H": 10, "W_L": 11,
+        "D_H": 12, "D_L": 13,
+        "FIB_618": 14, "FIB_50": 15, "FIB_382": 16,
+        "FIB_1272": 17, "FIB_1618": 18, "PSYCH": 19,
+        "SW_H": 20, "SW_L": 21,
     }
     levels.sort(key=lambda x: priority.get(x["type"], 99))
     for level in levels:
@@ -446,6 +466,51 @@ def _deduplicate_levels(levels: list[dict]) -> list[dict]:
             result.append(level)
             prices_seen.append(price)
     return result
+
+
+# ── Weekly levels ─────────────────────────────────────────────
+
+def _add_weekly_levels(daily_klines: list[dict], levels: list[dict]):
+    """Weekly pivot from last 7 closed daily candles."""
+    closed = daily_klines[:-1]  # exclude forming candle
+    if len(closed) < 7:
+        return
+    week = closed[-7:]
+    w_high = max(Decimal(k["high"]) for k in week)
+    w_low = min(Decimal(k["low"]) for k in week)
+    w_close = Decimal(week[-1]["close"])
+    w_pivot = (w_high + w_low + w_close) / 3
+
+    levels.append({"price": str(round(w_pivot, 2)), "type": "W_PP", "label": "Pivot hebdo"})
+    levels.append({"price": str(round(w_high, 2)), "type": "W_H", "label": "Plus haut hebdo"})
+    levels.append({"price": str(round(w_low, 2)), "type": "W_L", "label": "Plus bas hebdo"})
+
+
+# ── VWAP ─────────────────────────────────────────────────────
+
+async def _add_vwap_level(symbol: str, levels: list[dict]):
+    """VWAP from today's 1h klines (volume-weighted average price)."""
+    klines_1h = await kline_manager.get_klines(symbol, "1h", limit=24)
+    if not klines_1h or len(klines_1h) < 2:
+        return
+    # Use only candles from the current UTC day
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_ts = int(today_start.timestamp() * 1000)
+
+    cum_vp = Decimal("0")
+    cum_vol = Decimal("0")
+    for k in klines_1h:
+        if k["open_time"] < today_ts:
+            continue
+        typical = (Decimal(k["high"]) + Decimal(k["low"]) + Decimal(k["close"])) / 3
+        vol = Decimal(k["volume"])
+        cum_vp += typical * vol
+        cum_vol += vol
+
+    if cum_vol > 0:
+        vwap = cum_vp / cum_vol
+        levels.append({"price": str(round(vwap, 2)), "type": "VWAP", "label": "VWAP jour"})
 
 
 # ── Fibonacci levels ──────────────────────────────────────────
@@ -465,49 +530,64 @@ def _add_fibonacci_levels(klines_1h: list[dict], levels: list[dict]):
     swing = _find_significant_swing(klines_1h)
     if not swing:
         return
-    swing_high, swing_low = swing
+    swing_high, swing_low, is_bullish = swing
     diff = swing_high - swing_low
 
-    for ratio, ftype, label in _FIB_RATIOS:
-        price = swing_low + diff * ratio
-        levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
+    if is_bullish:
+        # Uptrend retracement: from high down toward low
+        for ratio, ftype, label in _FIB_RATIOS:
+            price = swing_high - diff * ratio
+            levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
+        # Extensions above the high
+        for ratio, ftype, label in _FIB_EXT_RATIOS:
+            price = swing_high + diff * ratio
+            levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
+    else:
+        # Downtrend retracement: from low up toward high
+        for ratio, ftype, label in _FIB_RATIOS:
+            price = swing_low + diff * ratio
+            levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
+        # Extensions below the low
+        for ratio, ftype, label in _FIB_EXT_RATIOS:
+            price = swing_low - diff * ratio
+            levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
 
-    for ratio, ftype, label in _FIB_EXT_RATIOS:
-        price = swing_high + diff * ratio
-        levels.append({"price": str(round(price, 2)), "type": ftype, "label": label})
 
+def _find_significant_swing(klines: list[dict]) -> tuple[Decimal, Decimal, bool] | None:
+    """Return (swing_high, swing_low, is_bullish) or None.
 
-def _find_significant_swing(klines: list[dict]) -> tuple[Decimal, Decimal] | None:
+    is_bullish=True means low came BEFORE high (uptrend),
+    is_bullish=False means high came BEFORE low (downtrend).
+    """
     if len(klines) < 30:
         return None
 
-    # Find all swing highs and lows
-    highs = []
-    lows = []
-    closed = klines[:-1]  # Skip forming candle
+    highs: list[tuple[int, Decimal]] = []
+    lows: list[tuple[int, Decimal]] = []
+    closed = klines[:-1]
     for i in range(1, len(closed) - 1):
         h = Decimal(closed[i]["high"])
-        l = Decimal(closed[i]["low"])
+        lo = Decimal(closed[i]["low"])
         prev_h = Decimal(closed[i - 1]["high"])
         next_h = Decimal(closed[i + 1]["high"])
         prev_l = Decimal(closed[i - 1]["low"])
         next_l = Decimal(closed[i + 1]["low"])
         if h > prev_h and h > next_h:
             highs.append((i, h))
-        if l < prev_l and l < next_l:
-            lows.append((i, l))
+        if lo < prev_l and lo < next_l:
+            lows.append((i, lo))
 
     if not highs or not lows:
         return None
 
-    # Find the most recent pair with >= 1% range and >= 10 candles apart
     for hi_idx, hi_price in reversed(highs):
         for lo_idx, lo_price in reversed(lows):
             if abs(hi_idx - lo_idx) < 10:
                 continue
             diff = hi_price - lo_price
             if lo_price > 0 and diff / lo_price >= Decimal("0.01"):
-                return (hi_price, lo_price)
+                is_bullish = lo_idx < hi_idx
+                return (hi_price, lo_price, is_bullish)
 
     return None
 
@@ -515,36 +595,35 @@ def _find_significant_swing(klines: list[dict]) -> tuple[Decimal, Decimal] | Non
 # ── Psychological levels ─────────────────────────────────────
 
 def _add_psychological_levels(current_price: Decimal, levels: list[dict]):
-    cp = float(current_price)
-    if cp <= 0:
+    if current_price <= 0:
         return
 
-    # Determine magnitude based on price range
+    cp = current_price
     if cp >= 10000:
-        step = 1000
+        step = Decimal("1000")
     elif cp >= 1000:
-        step = 100
+        step = Decimal("100")
     elif cp >= 100:
-        step = 50
+        step = Decimal("50")
     elif cp >= 10:
-        step = 10
+        step = Decimal("10")
     elif cp >= 1:
-        step = 1
+        step = Decimal("1")
     else:
-        return  # Too small for psychological levels
+        return
 
-    base = int(cp / step) * step
+    base = (cp / step).to_integral_value() * step
     for m in range(-2, 4):
         psych = base + m * step
         if psych <= 0:
             continue
         dist_pct = abs(psych - cp) / cp * 100
-        if dist_pct > 5:  # Only within 5% of current price
+        if dist_pct > 5:
             continue
         levels.append({
-            "price": str(psych),
+            "price": str(round(psych, 2)),
             "type": "PSYCH",
-            "label": f"Niveau psycho {psych:,.0f}".replace(",", " "),
+            "label": f"Niveau psycho {int(psych):,}".replace(",", " "),
         })
 
 

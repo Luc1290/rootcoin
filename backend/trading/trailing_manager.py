@@ -36,7 +36,7 @@ _DEF_STEP = Decimal("0.15")
 _DEF_OFFSET = Decimal("0.5")
 _DEF_TP_GUARD = Decimal("0.3")
 _DEF_MIN_RR = Decimal("1.5")
-_MAX_SL_GAP = Decimal("0.9")  # max unprotected gain % before forcing SL advance
+_MAX_SL_GAP = Decimal("0.7")  # max unprotected gain % before forcing SL advance
 
 # Timings
 _POLL_INTERVAL = 3.0
@@ -518,12 +518,21 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
 
         # --- Compute SL ---
         if is_breakeven:
-            # Breakeven: percentage-based near entry (covers fees)
-            breakeven = _settings.get("breakeven", _DEF_BREAKEVEN)
+            # Breakeven: cover real entry fees + estimated exit fees (0.1%)
+            qty = pos.quantity
+            entry_fees = pos.entry_fees_usd or Decimal("0")
+            exit_fee_rate = Decimal("0.001")
+            # SL must recoup: entry_fees + exit_fees_at_sl
+            # For LONG: (sl - entry) * qty = entry_fees + sl * qty * exit_fee_rate
+            #   sl * qty - sl * qty * exit_fee_rate = entry * qty + entry_fees
+            #   sl = (entry * qty + entry_fees) / (qty * (1 - exit_fee_rate))
+            # For SHORT: (entry - sl) * qty = entry_fees + sl * qty * exit_fee_rate
+            #   sl = (entry * qty - entry_fees) / (qty * (1 + exit_fee_rate))
+            buffer = Decimal("5")  # $5 net profit cushion above true breakeven
             if pos.side == "LONG":
-                new_sl_price = entry * (1 + breakeven / 100)
+                new_sl_price = (entry * qty + entry_fees + buffer) / (qty * (1 - exit_fee_rate))
             else:
-                new_sl_price = entry * (1 - breakeven / 100)
+                new_sl_price = (entry * qty - entry_fees - buffer) / (qty * (1 + exit_fee_rate))
         else:
             # Trailing: snap to nearest key level with min offset% distance
             new_sl_price = _find_trailing_sl_level(
@@ -688,7 +697,7 @@ def _find_initial_sl_tp(key_levels, entry_price, side):
     if not prices:
         return None, None
 
-    min_dist = Decimal("0.5")  # skip levels < 0.5% away (covers fees + noise)
+    min_dist = Decimal("0.8")  # skip levels < 0.8% away (covers fees + noise)
 
     if side == "LONG":
         sl = None
@@ -726,7 +735,7 @@ def _find_initial_sl_tp(key_levels, entry_price, side):
 
 def _adjust_for_rr(key_levels, entry_price, side, min_rr):
     prices = _parse_levels(key_levels)
-    min_dist = Decimal("0.5")
+    min_dist = Decimal("0.8")
 
     if side == "LONG":
         below = [p for p in prices
