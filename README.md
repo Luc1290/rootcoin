@@ -22,17 +22,25 @@
 
 RootCoin is a self-hosted trading dashboard designed for a single trader on Binance. It runs 24/7 on a VPS and provides a mobile-first web interface accessible from any device.
 
-**What it does:**
+---
 
-- Tracks open positions in real-time across Binance **spot** and **margin** (cross + isolated)
-- Displays PnL, entry price, current price, position duration, and fees
-- Places SL, TP, OCO orders and closes positions directly from the dashboard
-- Stores full trade history, balance snapshots, and price data in SQLite
-- Runs multi-timeframe technical analysis with a unified confluence scoring system
-- Detects trading opportunities and sends Telegram alerts
-- Provides on-demand AI analysis powered by Claude Opus
+## Project Documentation
 
-> **Note:** This is a personal project built for a single user. There is no authentication system.
+Detailed technical documentation is available for each layer of the project:
+
+- 🧠 **[Backend Documentation](backend/README.md)**: FastAPI architecture, async modules, trading logic, and database models.
+- 🎨 **[Frontend Documentation](frontend/README.md)**: SPA architecture, Vanilla JS modules, WebSocket client, and charts.
+- 🛠️ **[Scripts Documentation](scripts/README.md)**: VPS setup, automated deployment, and maintenance scripts.
+
+---
+
+## 🔒 Security
+
+RootCoin is designed for personal use and **does not include a built-in authentication system**. It is highly recommended to:
+
+1. **Use a VPN**: Access the dashboard only via [Tailscale](https://tailscale.com/) or a similar secure VPN.
+2. **API Keys**: Never share or commit your `.env` file. Ensure your Binance API keys have only the necessary permissions (Spot/Margin Trading, but **strictly NO Withdrawals**).
+3. **VPS Hardening**: Disable root login and use SSH keys for server access.
 
 ---
 
