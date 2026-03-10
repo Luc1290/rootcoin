@@ -54,7 +54,7 @@ def compute_unified_score(
     m5 = signals_5m["momentum"]["score"]
     s5 = signals_5m["structure"]["score"]
 
-    log.info(
+    log.debug(
         "scoring_result",
         symbol=symbol,
         direction=dir_str,

@@ -9,9 +9,12 @@ _subscribers: set[asyncio.Queue] = set()
 
 
 def capture_processor(logger, method_name: str, event_dict: dict) -> dict:
+    level = event_dict.get("level", "info")
+    if level == "debug":
+        return event_dict
     entry = {
         "timestamp": event_dict.get("timestamp", ""),
-        "level": event_dict.get("level", "info"),
+        "level": level,
         "event": event_dict.get("event", ""),
         "context": {
             k: _safe_str(v)

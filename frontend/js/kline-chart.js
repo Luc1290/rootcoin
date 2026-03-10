@@ -130,6 +130,23 @@ const KlineChart = (() => {
         } catch (e) { /* ignore */ }
     }
 
+    async function selectActivePosition() {
+        try {
+            const resp = await fetch('/api/positions');
+            const positions = await resp.json();
+            const activePos = (positions || []).filter(p => p.is_active);
+            if (activePos.length > 0) {
+                const preferred = activePos[0].symbol;
+                if (_symbol !== preferred) {
+                    _symbol = preferred;
+                    const sel = document.getElementById('chart-symbol');
+                    if (sel) sel.value = _symbol;
+                }
+            }
+            _cachedPositions = positions;
+        } catch (e) { /* ignore */ }
+    }
+
     function _updateSymbolSelect(symbols) {
         const sel = document.getElementById('chart-symbol');
         if (!sel) return;
@@ -733,6 +750,7 @@ const KlineChart = (() => {
         _entryPriceLines = [];
         _activeCycleRefs = [];
         _cycleInfos = [];
+        if (_candleSeries) _candleSeries.setMarkers([]);
         _cyclesRendered = { symbol: null, interval: null };
     }
 
@@ -762,12 +780,14 @@ const KlineChart = (() => {
             _entryPriceLines = [];
             _activeCycleRefs = [];
             _cycleInfos = [];
+            _candleSeries.setMarkers([]);
             if (!cycles.length || !candles.length) {
                 _cyclesRendered = { symbol: _symbol, interval: _interval };
                 return;
             }
 
             const now = Math.floor(Date.now() / 1000);
+            const markers = [];
 
             cycles.forEach(c => {
                 if (!c.opened_at) return;
@@ -792,18 +812,18 @@ const KlineChart = (() => {
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
                 const pad = maxHigh * 0.013; // 1.3% above highs
 
-                // Smooth highs with a 5-point moving average
+                // Smooth highs with a 5-point moving average (skip for short cycles)
                 const rawVals = cycleCandles.map(cd => cd.high + pad);
-                const smoothed = rawVals.map((_, i, arr) => {
+                const values = rawVals.length >= 3 ? rawVals.map((_, i, arr) => {
                     const start = Math.max(0, i - 2);
                     const end = Math.min(arr.length, i + 3);
                     let sum = 0;
                     for (let j = start; j < end; j++) sum += arr[j];
                     return sum / (end - start);
-                });
+                }) : rawVals;
                 const areaData = cycleCandles.map((cd, i) => ({
                     time: cd.time,
-                    value: smoothed[i],
+                    value: values[i],
                 }));
 
                 const opTop = c.is_active ? '0.02)' : '0.01)';
@@ -839,7 +859,36 @@ const KlineChart = (() => {
                 if (c.is_active) {
                     _activeCycleRefs.push({ area, entryPrice, pad });
                 }
+
+                // Cycle boundary markers
+                const openCandle = cycleCandles[0];
+                if (openCandle) {
+                    markers.push({
+                        time: openCandle.time,
+                        position: 'belowBar',
+                        color: c.is_active ? '#e6aa3c' : (parseFloat(c.realized_pnl || 0) > 0 ? '#5ab469' : '#c85a50'),
+                        shape: 'arrowUp',
+                        text: 'O',
+                    });
+                }
+                if (!c.is_active) {
+                    const closeCandle = cycleCandles[cycleCandles.length - 1];
+                    if (closeCandle) {
+                        markers.push({
+                            time: closeCandle.time,
+                            position: 'aboveBar',
+                            color: parseFloat(c.realized_pnl || 0) > 0 ? '#5ab469' : '#c85a50',
+                            shape: 'arrowDown',
+                            text: 'C',
+                        });
+                    }
+                }
             });
+
+            // setMarkers requires sorted by time
+            markers.sort((a, b) => a.time - b.time);
+            _candleSeries.setMarkers(markers);
+
             _cyclesRendered = { symbol: _symbol, interval: _interval };
         } catch (e) {
             console.error('KlineChart: cycles failed', e);
@@ -857,7 +906,7 @@ const KlineChart = (() => {
                 color: 'rgba(255,255,255,0.5)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.SparseDotted,
-                axisLabelVisible: false,
+                axisLabelVisible: true,
                 title: 'P',
             });
         }
@@ -1179,11 +1228,11 @@ const KlineChart = (() => {
         const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
         const posSymbols = data.map(p => p.symbol);
         _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
-        // Detect position opened/closed for current symbol → invalidate cycles cache
+        // Detect any change in active positions for current symbol → invalidate cycles cache
         const prev = _cachedPositions;
-        const hadSymbol = prev ? prev.some(p => p.symbol === _symbol && p.is_active) : false;
-        const hasSymbol = data.some(p => p.symbol === _symbol && p.is_active);
-        if (hadSymbol !== hasSymbol) {
+        const prevIds = prev ? prev.filter(p => p.symbol === _symbol && p.is_active).map(p => p.id).join(',') : '';
+        const curIds = data.filter(p => p.symbol === _symbol && p.is_active).map(p => p.id).join(',');
+        if (prevIds !== curIds) {
             _cyclesCache = { symbol: null, data: null };
             _cyclesRendered = { symbol: null, interval: null };
             if (_activeIndicators.has('cycles')) loadChart();
@@ -1238,5 +1287,5 @@ const KlineChart = (() => {
         }
     });
 
-    return { init, loadChart, renderAlertLines: _renderAlertLines };
+    return { init, loadChart, selectActivePosition, renderAlertLines: _renderAlertLines };
 })();

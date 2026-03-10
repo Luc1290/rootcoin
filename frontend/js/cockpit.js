@@ -229,7 +229,7 @@ const Cockpit = (() => {
 
             if (chartId) {
                 _posChartIds[p.id] = chartId;
-                if (p.opened_at) MiniTradeChart.addMarker(chartId, p.opened_at, p.side || 'LONG');
+                if (p.opened_at) MiniTradeChart.addMarker(chartId, p.opened_at, p.side || 'LONG', p.entry_price);
 
                 // Dynamic interval: 1m for <24h positions, 5m for longer
                 let interval = '1m', lookback = 1440;

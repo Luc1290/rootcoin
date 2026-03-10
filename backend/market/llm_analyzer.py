@@ -71,13 +71,24 @@ INDICATORS_SET = {"ema", "rsi", "macd", "bb", "obv", "stoch_rsi", "atr", "adx", 
 TIMEFRAMES = ["5m", "15m", "1h", "4h"]
 
 
-def get_last_analysis(symbol: str | None = None) -> dict | None:
-    if symbol:
-        return _analyses.get(symbol)
-    if not _analyses:
-        return None
-    # Return most recent across all symbols
-    return max(_analyses.values(), key=lambda a: a.get("analyzed_at", ""), default=None)
+async def get_last_analysis(symbol: str | None = None) -> dict | None:
+    if symbol and symbol in _analyses:
+        return _analyses[symbol]
+    if _analyses and not symbol:
+        return max(_analyses.values(), key=lambda a: a.get("analyzed_at", ""), default=None)
+    # Fallback: load from DB (after restart)
+    async with async_session() as session:
+        q = select(LlmAnalysis)
+        if symbol:
+            q = q.where(LlmAnalysis.symbol == symbol)
+        q = q.order_by(LlmAnalysis.analyzed_at.desc()).limit(1)
+        result = await session.execute(q)
+        row = result.scalar_one_or_none()
+        if not row:
+            return None
+        analysis = _row_to_dict(row)
+        _analyses[row.symbol] = analysis
+        return analysis
 
 
 EXPIRY_HOURS = 24

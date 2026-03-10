@@ -86,7 +86,7 @@ async def _fetch_macro():
     if data:
         _macro_cache["indicators"] = data
         _macro_cache["fetched_at"] = datetime.now(timezone.utc)
-        log.info("macro_data_refreshed", indicators=list(data.keys()))
+        log.debug("macro_data_refreshed", indicators=list(data.keys()))
 
 
 def _sync_fetch() -> dict:

@@ -117,7 +117,7 @@ async def _fetch_all():
 
     _news_cache = all_items
     _fetched_at = datetime.now(timezone.utc)
-    log.info("news_refreshed", count=len(all_items))
+    log.debug("news_refreshed", count=len(all_items))
 
 
 async def _fetch_feed(session: aiohttp.ClientSession, name: str, feed: dict) -> list[dict]:

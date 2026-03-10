@@ -202,7 +202,7 @@ async def _position_monitor_loop():
                     _naked_since.pop(pid, None)
                 elif pid not in _naked_since:
                     _naked_since[pid] = _time.monotonic()
-                    log.warning("trailing_position_naked", symbol=pos.symbol, pos_id=pid)
+                    log.info("trailing_position_naked", symbol=pos.symbol, pos_id=pid)
                 elif _time.monotonic() - _naked_since[pid] > _NAKED_GRACE:
                     _naked_since.pop(pid)
                     asyncio.create_task(_recover_naked_position(pid))

@@ -91,7 +91,7 @@ async def _compute_all():
         if analysis:
             _analysis_cache[symbol] = analysis
     _cache_time = datetime.now(timezone.utc)
-    log.info("analysis_refreshed", symbols=len(symbols))
+    log.debug("analysis_refreshed", symbols=len(symbols))
 
 
 def _get_symbols() -> list[str]:

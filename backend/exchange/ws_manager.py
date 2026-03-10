@@ -177,7 +177,7 @@ class WSManager:
             if not token:
                 log.error("listen_token_unexpected_response", response=data)
                 raise ValueError(f"No token in response: {data}")
-            log.info("listen_token_obtained")
+            log.debug("listen_token_obtained")
             return token
 
     # --- User Data Stream ---
@@ -279,7 +279,7 @@ class WSManager:
                 if not self._running:
                     break
                 await self._keepalive_listen_key()
-                log.info("listen_token_refreshed")
+                log.debug("listen_token_refreshed")
             except asyncio.CancelledError:
                 break
             except Exception as e:

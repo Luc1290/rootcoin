@@ -210,14 +210,14 @@ const MiniTradeChart = (() => {
         entry.timingEl = badge;
     }
 
-    function addMarker(chartId, timestamp, direction) {
+    function addMarker(chartId, timestamp, direction, price) {
         const entry = _charts[chartId];
         if (!entry) return;
-        // Convert ISO string or ms to seconds
         let ts = timestamp;
-        if (typeof ts === 'string') ts = Math.floor(new Date(ts).getTime() / 1000);
+        if (typeof ts === 'string') ts = Math.floor(new Date(ts.endsWith('Z') ? ts : ts + 'Z').getTime() / 1000);
         else if (ts > 1e12) ts = Math.floor(ts / 1000);
-        entry.pendingMarker = { time: ts, direction: direction || 'LONG' };
+        const p = price ? parseFloat(price) : null;
+        entry.pendingMarker = { time: ts, direction: direction || 'LONG', price: p };
     }
 
     function _applyMarker(entry, data) {
@@ -232,14 +232,41 @@ const MiniTradeChart = (() => {
             if (diff < bestDiff) { bestDiff = diff; closest = d; }
         }
 
+        // Use entry price for marker position if available
+        const markerPrice = m.price || closest.value;
         const isLong = m.direction === 'LONG';
-        entry.series.setMarkers([{
-            time: closest.time,
-            position: isLong ? 'belowBar' : 'aboveBar',
-            color: isLong ? '#22c55e' : '#ef4444',
-            shape: isLong ? 'arrowUp' : 'arrowDown',
-            size: 1,
-        }]);
+
+        // Create a hidden line series at the entry price so the marker sits at the right Y
+        if (m.price && entry.markerSeries) {
+            entry.chart.removeSeries(entry.markerSeries);
+            entry.markerSeries = null;
+        }
+        if (m.price) {
+            const ms = entry.chart.addLineSeries({
+                color: 'transparent',
+                lineWidth: 0,
+                lastValueVisible: false,
+                priceLineVisible: false,
+                crosshairMarkerVisible: false,
+            });
+            ms.setData([{ time: closest.time, value: markerPrice }]);
+            ms.setMarkers([{
+                time: closest.time,
+                position: isLong ? 'belowBar' : 'aboveBar',
+                color: isLong ? '#22c55e' : '#ef4444',
+                shape: isLong ? 'arrowUp' : 'arrowDown',
+                size: 1,
+            }]);
+            entry.markerSeries = ms;
+        } else {
+            entry.series.setMarkers([{
+                time: closest.time,
+                position: isLong ? 'belowBar' : 'aboveBar',
+                color: isLong ? '#22c55e' : '#ef4444',
+                shape: isLong ? 'arrowUp' : 'arrowDown',
+                size: 1,
+            }]);
+        }
     }
 
     function destroy(chartId) {
@@ -251,6 +278,7 @@ const MiniTradeChart = (() => {
         if (entry.slLine_label) entry.slLine_label.remove();
         if (entry.tpLine_label) entry.tpLine_label.remove();
         if (entry.retestLine_label) entry.retestLine_label.remove();
+        if (entry.markerSeries) entry.chart.removeSeries(entry.markerSeries);
         if (entry.ro) entry.ro.disconnect();
         entry.chart.remove();
         delete _charts[chartId];

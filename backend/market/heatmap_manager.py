@@ -176,4 +176,4 @@ async def _fetch_tickers(window: str = "4h"):
         "assets": assets,
         "fetched_at": datetime.now(timezone.utc),
     }
-    log.info("heatmap_refreshed", window=window, count=len(assets))
+    log.debug("heatmap_refreshed", window=window, count=len(assets))
