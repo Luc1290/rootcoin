@@ -175,19 +175,37 @@ const Cockpit = (() => {
             const containerId = `pos-chart-${p.id}`;
 
             const entryPrice = parseFloat(p.entry_price) || 0;
+            const qty = parseFloat(p.quantity) || 0;
             const slPrice = parseFloat(p.sl_price) || 0;
             const tpPrice = parseFloat(p.tp_price) || 0;
 
             let levelsHtml = '';
             if (entryPrice) {
+                const dot = '<span style="color:#555;margin:0 2px">&middot;</span>';
                 const parts = [];
-                parts.push(`<span style="color:#c9956b">Entry ${Utils.fmtPriceCompact(entryPrice)}</span>`);
+                parts.push(`<span style="color:#c9956b">Entry <b>${Utils.fmtPriceCompact(entryPrice)}</b></span>`);
                 if (slPrice) {
-                    const slInProfit = p.side === 'LONG' ? slPrice > entryPrice : slPrice < entryPrice;
+                    const rawDist = ((slPrice - entryPrice) / entryPrice * 100);
+                    const dist = p.side === 'SHORT' ? -rawDist : rawDist;
+                    const slInProfit = dist > 0;
                     const slColor = slInProfit ? '#22c55e' : '#ef4444';
-                    parts.push(`<span style="color:${slColor}">SL ${Utils.fmtPriceCompact(slPrice)}</span>`);
+                    const gross = p.side === 'SHORT' ? (entryPrice - slPrice) * qty : (slPrice - entryPrice) * qty;
+                    const exitFees = slPrice * qty * 0.001;
+                    const slPnl = gross - (parseFloat(p.entry_fees_usd) || 0) - exitFees;
+                    const slPnlStr = `${slPnl >= 0 ? '+' : '-'}$${Math.abs(slPnl).toFixed(0)}`;
+                    const distStr = `${dist > 0 ? '+' : ''}${dist.toFixed(1)}%`;
+                    parts.push(`<span style="color:${slColor}">SL <b>${Utils.fmtPriceCompact(slPrice)}</b>${dot}<span style="opacity:0.7">${distStr}</span>${dot}${slPnlStr}</span>`);
                 }
-                if (tpPrice) parts.push(`<span style="color:#22c55e">TP ${Utils.fmtPriceCompact(tpPrice)}</span>`);
+                if (tpPrice) {
+                    const rawDist = ((tpPrice - entryPrice) / entryPrice * 100);
+                    const dist = p.side === 'SHORT' ? -rawDist : rawDist;
+                    const gross = p.side === 'SHORT' ? (entryPrice - tpPrice) * qty : (tpPrice - entryPrice) * qty;
+                    const exitFees = tpPrice * qty * 0.001;
+                    const tpPnl = gross - (parseFloat(p.entry_fees_usd) || 0) - exitFees;
+                    const tpPnlStr = `${tpPnl >= 0 ? '+' : '-'}$${Math.abs(tpPnl).toFixed(0)}`;
+                    const distStr = `${dist > 0 ? '+' : ''}${dist.toFixed(1)}%`;
+                    parts.push(`<span style="color:#22c55e">TP <b>${Utils.fmtPriceCompact(tpPrice)}</b>${dot}<span style="opacity:0.7">${distStr}</span>${dot}${tpPnlStr}</span>`);
+                }
                 levelsHtml = `<div class="flex flex-wrap gap-x-3 gap-y-0 mt-1" style="font-size:10px;opacity:0.8">${parts.join('')}</div>`;
             }
 

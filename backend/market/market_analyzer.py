@@ -495,13 +495,12 @@ async def _add_vwap_level(symbol: str, levels: list[dict]):
         return
     # Use only candles from the current UTC day
     now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_ts = int(today_start.timestamp() * 1000)
+    today_iso = now.strftime("%Y-%m-%dT00:00:00")
 
     cum_vp = Decimal("0")
     cum_vol = Decimal("0")
     for k in klines_1h:
-        if k["open_time"] < today_ts:
+        if k["open_time"] < today_iso:
             continue
         typical = (Decimal(k["high"]) + Decimal(k["low"]) + Decimal(k["close"])) / 3
         vol = Decimal(k["volume"])

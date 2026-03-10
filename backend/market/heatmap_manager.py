@@ -14,7 +14,8 @@ STALE_THRESHOLD = 900
 EXCLUDED_SUFFIXES = ("UP", "DOWN", "BEAR", "BULL")
 EXCLUDED_BASES = {"FRONT"}
 BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker"
-VALID_WINDOWS = ("15m", "1h", "4h")
+VALID_WINDOWS = ("15m", "1h", "4h", "24h")
+WINDOW_TO_BINANCE = {"24h": "1d"}  # Binance accepts 1d not 24h
 TOP_GAINER_THRESHOLD = Decimal("6")  # 24h change % to qualify as top gainer
 TOP_GAINERS_MAX = 10
 
@@ -139,7 +140,8 @@ async def _fetch_tickers(window: str = "4h"):
     symbols_list = [a["symbol"] for a in top]
     # Binance requires symbols as raw JSON array in the URL (not percent-encoded by aiohttp)
     symbols_param = "[" + ",".join(f'"{s}"' for s in symbols_list) + "]"
-    url = f"{BINANCE_TICKER_URL}?windowSize={window}&symbols={symbols_param}"
+    binance_window = WINDOW_TO_BINANCE.get(window, window)
+    url = f"{BINANCE_TICKER_URL}?windowSize={binance_window}&symbols={symbols_param}"
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
         async with session.get(url) as resp:
