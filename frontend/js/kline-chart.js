@@ -833,9 +833,9 @@ const KlineChart = (() => {
                     }
                 }
 
-                const opTop = c.is_active ? '0.02)' : '0.01)';
-                const opBot = c.is_active ? '0.10)' : '0.06)';
-                const opLine = c.is_active ? '0.35)' : '0.20)';
+                const opTop = c.is_active ? '0.06)' : '0.04)';
+                const opBot = c.is_active ? '0.22)' : '0.15)';
+                const opLine = c.is_active ? '0.45)' : '0.30)';
                 const area = _mainChart.addAreaSeries({
                     topColor: color + opTop,
                     bottomColor: color + opBot,
