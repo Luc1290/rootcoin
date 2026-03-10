@@ -797,7 +797,7 @@ const KlineChart = (() => {
                 let color;
                 if (c.is_active) {
                     color = 'rgba(230,170,60,';   // vivid gold
-                } else if (c.realized_pnl && parseFloat(c.realized_pnl) > 0) {
+                } else if (c.realized_pnl_pct && parseFloat(c.realized_pnl_pct) > 0) {
                     color = 'rgba(90,180,105,';   // rich olive
                 } else {
                     color = 'rgba(200,90,80,';    // deep terracotta
@@ -807,19 +807,16 @@ const KlineChart = (() => {
                 const cycleCandles = candles.filter(cd => cd.time + intSec > openTs && cd.time <= closeTs);
                 if (!cycleCandles.length) return;
 
-                // Add padding above candle highs so area visibly exceeds them
+                // Follow highs with per-candle pad, compressed variation
+                const pad = 0.013;
+                const rawVals = cycleCandles.map(cd => cd.high * (1 + pad));
+                let avg = 0;
+                for (const v of rawVals) avg += v;
+                avg /= rawVals.length;
+                const compress = 0.3; // keep 30% of the original variation
+                const values = rawVals.map(v => avg + (v - avg) * compress);
                 let maxHigh = 0;
-                for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
-                const pad = maxHigh * 0.013; // 1.3% above highs
-
-                // Follow highs but limit max descent between candles
-                const rawVals = cycleCandles.map(cd => cd.high + pad);
-                const values = [rawVals[0]];
-                const maxDrop = maxHigh * 0.003; // max 0.3% drop per candle
-                for (let i = 1; i < rawVals.length; i++) {
-                    const prev = values[i - 1];
-                    values.push(rawVals[i] >= prev ? rawVals[i] : Math.max(rawVals[i], prev - maxDrop));
-                }
+                for (const v of values) { if (v > maxHigh) maxHigh = v; }
                 const areaData = cycleCandles.map((cd, i) => ({
                     time: cd.time,
                     value: values[i],
@@ -1172,7 +1169,7 @@ const KlineChart = (() => {
         // Extend active cycle overlays to the current candle
         const high = parseFloat(data.high);
         for (const ref of _activeCycleRefs) {
-            ref.area.update({ time: t, value: high + (ref.pad || 0) });
+            ref.area.update({ time: t, value: high * (1 + (ref.pad || 0)) });
         }
 
         // Live indicator update
