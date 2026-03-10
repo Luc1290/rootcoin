@@ -820,15 +820,10 @@ const KlineChart = (() => {
                     const prev = values[i - 1];
                     values.push(rawVals[i] >= prev ? rawVals[i] : Math.max(rawVals[i], prev - maxDrop));
                 }
-                // Add edge points to create vertical side borders
-                let minLow = Infinity;
-                for (const cd of cycleCandles) { if (cd.low < minLow) minLow = cd.low; }
-                const bottomVal = minLow - pad;
-                const areaData = [
-                    { time: cycleCandles[0].time - 1, value: bottomVal },
-                    ...cycleCandles.map((cd, i) => ({ time: cd.time, value: values[i] })),
-                    { time: cycleCandles[cycleCandles.length - 1].time + 1, value: bottomVal },
-                ];
+                const areaData = cycleCandles.map((cd, i) => ({
+                    time: cd.time,
+                    value: values[i],
+                }));
 
                 const opTop = c.is_active ? '0.02)' : '0.01)';
                 const opBot = c.is_active ? '0.10)' : '0.06)';
