@@ -199,8 +199,8 @@ const KlineChart = (() => {
             height: height,
             layout: { background: { color: C.bg }, textColor: C.text, fontSize: 10 },
             grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-            rightPriceScale: { borderColor: C.border, minimumWidth: 60, scaleMargins: { top: 0.02, bottom: 0.05 } },
-            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: _isMobile() ? 3 : 0.5 },
+            rightPriceScale: { borderColor: C.border, minimumWidth: 80, scaleMargins: { top: 0.02, bottom: 0.05 } },
+            timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: _isMobile() ? 3 : 0.5, lockVisibleTimeRangeOnResize: true },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
                 vertLine: { color: 'rgba(255,255,255,0.1)', width: 1, style: LightweightCharts.LineStyle.Solid, labelBackgroundColor: '#3d3836' },
@@ -431,6 +431,18 @@ const KlineChart = (() => {
         });
     }
 
+    function _alignPriceScales() {
+        const charts = [_mainChart, _volChart, _rsiChart, _obvChart, _macdChart, _bsChart].filter(Boolean);
+        if (charts.length <= 1) return;
+        let maxW = 80;
+        for (const c of charts) {
+            try { maxW = Math.max(maxW, c.priceScale('right').width()); } catch (_) {}
+        }
+        for (const c of charts) {
+            c.priceScale('right').applyOptions({ minimumWidth: maxW });
+        }
+    }
+
     function _registerChart(chart, series, dataMapKey) {
         if (_chartRegistry.some(e => e.chart === chart)) return;
         _chartRegistry.push({ chart, series, dataMapKey });
@@ -463,6 +475,7 @@ const KlineChart = (() => {
             if (el) el.classList.toggle('hidden', !_activeIndicators.has(ind));
         }
         _resizeMainChart();
+        requestAnimationFrame(_alignPriceScales);
     }
 
     let _headerChange24h = null;
@@ -692,9 +705,20 @@ const KlineChart = (() => {
             const total = candles.length;
             const visible = Math.min(total, 360);
             const rightPad = Math.round(visible / 13);
-            _mainChart.timeScale().setVisibleLogicalRange({
-                from: total - visible,
-                to: total - 1 + rightPad,
+            const range = { from: total - visible, to: total - 1 + rightPad };
+
+            // Align price scales first, THEN set visible range on all charts
+            // (price scale resize can recalculate visible range if done after)
+            requestAnimationFrame(() => {
+                _alignPriceScales();
+                _syncing = true;
+                _mainChart.timeScale().setVisibleLogicalRange(range);
+                for (const { chart } of _chartRegistry) {
+                    if (chart && chart !== _mainChart) {
+                        chart.timeScale().setVisibleLogicalRange(range);
+                    }
+                }
+                _syncing = false;
             });
 
             _startCountdown();
