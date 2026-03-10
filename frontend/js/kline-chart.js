@@ -812,19 +812,23 @@ const KlineChart = (() => {
                 for (const cd of cycleCandles) { if (cd.high > maxHigh) maxHigh = cd.high; }
                 const pad = maxHigh * 0.013; // 1.3% above highs
 
-                // Smooth highs with a 3-point moving average (skip for short cycles)
+                // Follow highs but limit max descent between candles
                 const rawVals = cycleCandles.map(cd => cd.high + pad);
-                const values = rawVals.length > 3 ? rawVals.map((_, i, arr) => {
-                    const start = Math.max(0, i - 1);
-                    const end = Math.min(arr.length, i + 2);
-                    let sum = 0;
-                    for (let j = start; j < end; j++) sum += arr[j];
-                    return sum / (end - start);
-                }) : rawVals;
-                const areaData = cycleCandles.map((cd, i) => ({
-                    time: cd.time,
-                    value: values[i],
-                }));
+                const values = [rawVals[0]];
+                const maxDrop = maxHigh * 0.003; // max 0.3% drop per candle
+                for (let i = 1; i < rawVals.length; i++) {
+                    const prev = values[i - 1];
+                    values.push(rawVals[i] >= prev ? rawVals[i] : Math.max(rawVals[i], prev - maxDrop));
+                }
+                // Add edge points to create vertical side borders
+                let minLow = Infinity;
+                for (const cd of cycleCandles) { if (cd.low < minLow) minLow = cd.low; }
+                const bottomVal = minLow - pad;
+                const areaData = [
+                    { time: cycleCandles[0].time - 1, value: bottomVal },
+                    ...cycleCandles.map((cd, i) => ({ time: cd.time, value: values[i] })),
+                    { time: cycleCandles[cycleCandles.length - 1].time + 1, value: bottomVal },
+                ];
 
                 const opTop = c.is_active ? '0.02)' : '0.01)';
                 const opBot = c.is_active ? '0.10)' : '0.06)';
