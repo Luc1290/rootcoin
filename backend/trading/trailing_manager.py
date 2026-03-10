@@ -9,6 +9,7 @@ Settings (DB key -> default):
   trailing_offset     -> "0.5"   (SL = gain - offset%)
   trailing_tp_guard   -> "0.3"   (% proximity to TP -> force move, works pre-activation)
   trailing_min_rr     -> "1.5"   (min R:R for initial OCO)
+  trailing_tighten_after -> "1"  (hours before tightening stale/ranging positions, 0=disabled)
 """
 
 import asyncio
@@ -37,6 +38,9 @@ _DEF_OFFSET = Decimal("0.5")
 _DEF_TP_GUARD = Decimal("0.3")
 _DEF_MIN_RR = Decimal("1.5")
 _MAX_SL_GAP = Decimal("0.7")  # max unprotected gain % before forcing SL advance
+_DEF_TIGHTEN_AFTER = Decimal("1")  # hours before tightening stale/ranging positions
+_TIGHTEN_INTERVAL = 1800.0  # 30min between tighten re-evaluations
+_TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
 
 # Timings
 _POLL_INTERVAL = 3.0
@@ -73,6 +77,7 @@ async def _load_settings():
         "offset": Decimal(s.get("trailing_offset", str(_DEF_OFFSET))),
         "tp_guard": Decimal(s.get("trailing_tp_guard", str(_DEF_TP_GUARD))),
         "min_rr": Decimal(s.get("trailing_min_rr", str(_DEF_MIN_RR))),
+        "tighten_after": Decimal(s.get("trailing_tighten_after", str(_DEF_TIGHTEN_AFTER))),
     }
 
 
@@ -133,6 +138,7 @@ async def _resume_existing(positions):
             "moving": False,
             "last_move_at": 0.0,
             "last_step_pct": resumed_pct + _DEF_OFFSET if is_trailing else Decimal(0),
+            "initial_at": _time.monotonic(),
         }
         log.info("trailing_resumed", symbol=pos.symbol, pos_id=pos.id,
                  sl=sl_str, tp=tp_str, has_oco=bool(pos.oco_order_list_id))
@@ -207,6 +213,26 @@ async def _position_monitor_loop():
                     _naked_since.pop(pid)
                     asyncio.create_task(_recover_naked_position(pid))
 
+            # Tighten stale/ranging positions (below activation, open for a long time)
+            tighten_hours = float(_settings.get("tighten_after", _DEF_TIGHTEN_AFTER))
+            if tighten_hours > 0:
+                tighten_secs = tighten_hours * 3600
+                now = _time.monotonic()
+                for pid, tracking in list(_tracked.items()):
+                    if tracking.get("trailing_active") or tracking.get("manual_override"):
+                        continue
+                    if tracking.get("moving"):
+                        continue
+                    initial_at = tracking.get("initial_at", now)
+                    if now - initial_at < tighten_secs:
+                        continue
+                    last_tighten = tracking.get("last_tighten_at", 0.0)
+                    if last_tighten and now - last_tighten < _TIGHTEN_INTERVAL:
+                        continue
+                    pos = active.get(pid)
+                    if pos:
+                        asyncio.create_task(_tighten_stale_position(pos, tracking))
+
         except asyncio.CancelledError:
             break
         except Exception:
@@ -269,6 +295,7 @@ async def _handle_new_position(pos_id: int):
             "moving": False,
             "last_move_at": 0.0,
             "last_step_pct": Decimal(0),
+            "initial_at": _time.monotonic(),
         }
         log.info("trailing_initial_oco", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price), rr=f"{rr:.1f}")
@@ -361,12 +388,106 @@ async def _recover_naked_position(pos_id: int):
             "moving": False,
             "last_move_at": _time.monotonic(),
             "last_step_pct": last_step_pct,
+            "initial_at": _time.monotonic(),
         }
         log.info("trailing_naked_recovery", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price),
                  trailing=trailing_active, gain=f"{gain_pct:.2f}%")
     except Exception:
         log.error("trailing_naked_recovery_failed", symbol=pos.symbol, exc_info=True)
+
+
+async def _tighten_stale_position(pos, tracking):
+    """Re-evaluate SL/TP for ranging positions using current key levels."""
+    tracking["last_tighten_at"] = _time.monotonic()
+    tracking["moving"] = True
+    try:
+        analysis = market_analyzer.get_analysis(pos.symbol)
+        if not analysis:
+            return
+        key_levels = analysis.get("key_levels", [])
+        if not key_levels:
+            return
+
+        current = pos.current_price
+        if not current or current <= 0:
+            return
+
+        entry = pos.entry_price
+
+        # Find levels from current price perspective (not entry)
+        new_sl, new_tp = _find_initial_sl_tp(key_levels, current, pos.side)
+        if not new_sl or not new_tp:
+            return
+
+        # TP must be in profit territory
+        if pos.side == "LONG" and new_tp <= entry:
+            new_tp = tracking["auto_tp"]
+        if pos.side == "SHORT" and new_tp >= entry:
+            new_tp = tracking["auto_tp"]
+
+        # Check R:R from entry (relaxed threshold)
+        rr = _compute_rr(entry, new_sl, new_tp, pos.side)
+        if rr < _TIGHTEN_MIN_RR:
+            return
+
+        # Only tighten — never widen
+        old_sl = tracking["auto_sl"]
+        old_tp = tracking["auto_tp"]
+
+        if pos.side == "LONG":
+            sl_tighter = new_sl > old_sl
+            tp_tighter = new_tp < old_tp
+        else:
+            sl_tighter = new_sl < old_sl
+            tp_tighter = new_tp > old_tp
+
+        if not sl_tighter and not tp_tighter:
+            return
+
+        final_sl = round_price(pos.symbol, new_sl if sl_tighter else old_sl)
+        final_tp = round_price(pos.symbol, new_tp if tp_tighter else old_tp)
+
+        if final_sl == old_sl and final_tp == old_tp:
+            return
+
+        pos = _get_pos(pos.id)
+        if not pos:
+            return
+
+        result = await order_manager.place_oco(pos, final_tp, final_sl, silent=True)
+        oco_id = str(result.get("orderListId", ""))
+
+        tracking.update({
+            "auto_sl": final_sl,
+            "auto_tp": final_tp,
+            "oco_list_id": oco_id,
+            "last_move_at": _time.monotonic(),
+        })
+
+        if pos.side == "LONG":
+            gain_pct = (current - entry) / entry * 100
+        else:
+            gain_pct = (entry - current) / entry * 100
+        sign = "+" if gain_pct >= 0 else ""
+
+        log.info("trailing_tightened", symbol=pos.symbol,
+                 old_sl=str(old_sl), new_sl=str(final_sl),
+                 old_tp=str(old_tp), new_tp=str(final_tp))
+
+        sl_changed = f"SL : {old_sl} \u2192 {final_sl}" if sl_tighter else f"SL : {final_sl} (inchang\u00e9)"
+        tp_changed = f"TP : {old_tp} \u2192 {final_tp}" if tp_tighter else f"TP : {final_tp} (inchang\u00e9)"
+        asyncio.create_task(telegram_notifier.notify(
+            f"\U0001f527 <b>{pos.symbol} {pos.side}</b> \u2014 SL/TP resserr\u00e9s (range)\n"
+            f"{sl_changed}\n{tp_changed}\n"
+            f"Gain : {sign}{gain_pct:.2f}%\n"
+            f"Le trailing reprendra si le prix progresse."
+        ))
+    except Exception:
+        log.error("trailing_tighten_failed", symbol=pos.symbol, exc_info=True)
+        await _retry_oco_or_fallback_sl(pos, tracking)
+    finally:
+        tracking["moving"] = False
 
 
 def _sl_protection_pct(side: str, entry: Decimal, auto_sl: Decimal) -> Decimal:
