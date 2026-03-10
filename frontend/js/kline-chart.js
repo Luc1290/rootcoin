@@ -707,18 +707,11 @@ const KlineChart = (() => {
             const rightPad = Math.round(visible / 13);
             const range = { from: total - visible, to: total - 1 + rightPad };
 
-            // Align price scales first, THEN set visible range on all charts
-            // (price scale resize can recalculate visible range if done after)
+            // Align price scales first, THEN set visible range
+            // (price scale resize recalculates visible range if done after)
             requestAnimationFrame(() => {
                 _alignPriceScales();
-                _syncing = true;
                 _mainChart.timeScale().setVisibleLogicalRange(range);
-                for (const { chart } of _chartRegistry) {
-                    if (chart && chart !== _mainChart) {
-                        chart.timeScale().setVisibleLogicalRange(range);
-                    }
-                }
-                _syncing = false;
             });
 
             _startCountdown();
