@@ -147,7 +147,7 @@ const Opportunities = (() => {
 
                 if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction, lvl.entry);
 
-                MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', _klineLimitForDetection(o.detected_at));
+                MiniTradeChart.fetchAndRender(chartId, o.symbol, '1m', _klineLimitForDetection(o.detected_at));
             }
         }
         _containerCharts[cid] = newCharts;
@@ -209,12 +209,12 @@ const Opportunities = (() => {
     }
 
     function _klineLimitForDetection(detectedAt) {
-        if (!detectedAt) return 72;
+        if (!detectedAt) return 360;
         const elapsed = Date.now() - new Date(detectedAt).getTime();
-        const candleMs = 5 * 60 * 1000;
+        const candleMs = 60 * 1000; // 1m candles
         const candles = Math.ceil(elapsed / candleMs);
-        // 36 candles (3h) padding before, min 72 (6h), max 1000 (~3.5 days at 5m)
-        return Math.max(72, Math.min(candles + 36, 1000));
+        // 180 candles (3h) padding before, min 360 (6h), max 1440 (24h at 1m)
+        return Math.max(360, Math.min(candles + 180, 1440));
     }
 
     // ── Compact list mode (analysis page) ──────────────────
@@ -361,7 +361,7 @@ const Opportunities = (() => {
                 if (chartId) {
                     newCharts[o.id] = chartId;
                     if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction, lvl.entry);
-                    MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', _klineLimitForDetection(o.detected_at));
+                    MiniTradeChart.fetchAndRender(chartId, o.symbol, '1m', _klineLimitForDetection(o.detected_at));
                 }
                 _containerCharts[cid] = newCharts;
             }

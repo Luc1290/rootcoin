@@ -301,9 +301,10 @@ const Cockpit = (() => {
                 usdEl.className = `text-xs tabular-nums ${pnlClass}`;
             }
 
-            // Update SL/TP lines if changed
+            // Update PnL colors + SL/TP lines if changed
             const chartId = _posChartIds[p.id];
             if (chartId) {
+                MiniTradeChart.updatePnl(chartId, pnlUsd);
                 MiniTradeChart.updateLevels(chartId, {
                     slPrice: parseFloat(p.sl_price) || 0,
                     tpPrice: parseFloat(p.tp_price) || 0,

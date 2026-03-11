@@ -1,5 +1,6 @@
 import asyncio
 import time
+from collections import deque
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -32,9 +33,15 @@ _TYPE_KEYED_COOLDOWNS = {"D_H", "D_L", "VWAP", "RH1", "RH2", "RH3", "RL1", "RL2"
 SYMBOL_COOLDOWN = 3600  # 1h min between alerts for same symbol
 ALERT_SYMBOLS = {"BTCUSDC"}  # only these symbols send Telegram level alerts
 
+# Velocity-based cooldown reduction — bypass cooldowns during fast moves
+VELOCITY_WINDOW = 60  # seconds lookback for price velocity
+VELOCITY_FAST = Decimal("1")    # >1% in 60s = fast move → cooldowns /6
+VELOCITY_EXTREME = Decimal("2.5")  # >2.5% in 60s = extreme → cooldowns /20
+
 _last_prices: dict[str, Decimal] = {}
 _cooldowns: dict[tuple[str, str], float] = {}
 _symbol_last_alert: dict[str, float] = {}
+_price_history: dict[str, deque[tuple[float, Decimal]]] = {}  # symbol → deque of (mono_time, price)
 
 # Custom price alerts loaded from DB, refreshed periodically
 _custom_alerts: list[PriceAlert] = []
@@ -52,6 +59,7 @@ async def stop():
     _last_prices.clear()
     _cooldowns.clear()
     _custom_alerts.clear()
+    _price_history.clear()
     log.info("level_alert_stopped")
 
 
@@ -71,6 +79,35 @@ async def _refresh_custom_alerts():
         log.error("custom_alerts_refresh_failed", exc_info=True)
 
 
+def _get_velocity(symbol: str) -> Decimal:
+    """Return abs % price change over the velocity window. 0 if not enough data."""
+    buf = _price_history.get(symbol)
+    if not buf or len(buf) < 2:
+        return Decimal(0)
+    now = time.monotonic()
+    cutoff = now - VELOCITY_WINDOW
+    # Find oldest price still within window
+    while len(buf) > 1 and buf[0][0] < cutoff:
+        buf.popleft()
+    if not buf:
+        return Decimal(0)
+    oldest_price = buf[0][1]
+    newest_price = buf[-1][1]
+    if oldest_price <= 0:
+        return Decimal(0)
+    return abs(newest_price - oldest_price) / oldest_price * 100
+
+
+def _cooldown_divisor(symbol: str) -> int:
+    """Return cooldown divisor based on current price velocity."""
+    vel = _get_velocity(symbol)
+    if vel >= VELOCITY_EXTREME:
+        return 20
+    if vel >= VELOCITY_FAST:
+        return 6
+    return 1
+
+
 async def _on_price(msg: dict):
     symbol = msg.get("s", "")
     price_str = msg.get("c", "")
@@ -86,6 +123,13 @@ async def _on_price(msg: dict):
 
     prev = _last_prices.get(symbol)
     _last_prices[symbol] = price
+
+    # Track price history for velocity calculation (only for alert symbols)
+    if not ALERT_SYMBOLS or symbol in ALERT_SYMBOLS:
+        now = time.monotonic()
+        if symbol not in _price_history:
+            _price_history[symbol] = deque(maxlen=300)
+        _price_history[symbol].append((now, price))
 
     # Check custom price alerts for ALL symbols (no ALERT_SYMBOLS filter)
     if prev is not None:
@@ -183,8 +227,9 @@ async def _deactivate_alert(alert_id: int):
 
 def _try_alert(symbol: str, price: Decimal, level: dict):
     now = time.monotonic()
+    divisor = _cooldown_divisor(symbol)
     # Global per-symbol rate limit
-    if now - _symbol_last_alert.get(symbol, 0) < SYMBOL_COOLDOWN:
+    if now - _symbol_last_alert.get(symbol, 0) < SYMBOL_COOLDOWN / divisor:
         return
     level_type = level.get("type", "")
     # For types where price shifts often, key on type not exact price
@@ -193,12 +238,13 @@ def _try_alert(symbol: str, price: Decimal, level: dict):
     else:
         key = (symbol, level.get("price", ""))
     cooldown = COOLDOWN_BY_TYPE.get(level_type, COOLDOWN_DEFAULT)
-    if now - _cooldowns.get(key, 0) < cooldown:
+    if now - _cooldowns.get(key, 0) < cooldown / divisor:
         return
     _cooldowns[key] = now
     _symbol_last_alert[symbol] = now
+    velocity_tag = "" if divisor == 1 else " ⚡" if divisor == 6 else " ⚡⚡"
     log.info("level_alert_triggered", symbol=symbol, level_type=level.get("type"),
-             price=str(price), level_price=level.get("price"))
+             price=str(price), level_price=level.get("price"), velocity_divisor=divisor)
     asyncio.create_task(telegram_notifier.notify_level_reached(
-        symbol, price, level["price"], level.get("type", ""), level.get("label", ""),
+        symbol, price, level["price"], level.get("type", ""), level.get("label", "") + velocity_tag,
     ))

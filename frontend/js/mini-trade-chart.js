@@ -122,9 +122,8 @@ const MiniTradeChart = (() => {
 
         entry.chart.timeScale().fitContent();
 
-        // Color entry line + marker based on current PnL
-        const lastPrice = data[data.length - 1].value;
-        _updatePnlVisuals(entry, lastPrice);
+        // Recolor entry line + marker if PnL already known
+        _updatePnlVisuals(entry);
 
         // Reposition line labels now that data + scale exist
         requestAnimationFrame(() => {
@@ -164,14 +163,12 @@ const MiniTradeChart = (() => {
         try {
             entry.series.update({ time: t, value: v });
             if (t > entry.lastTs) entry.lastTs = t;
-            _updatePnlVisuals(entry, v);
         } catch (_) { /* chart not ready */ }
     }
 
-    function _updatePnlVisuals(entry, currentPrice) {
-        const ep = entry.priceLevels && entry.priceLevels.entry;
-        if (!ep || !entry.side) return;
-        const winning = entry.side === 'LONG' ? currentPrice >= ep : currentPrice <= ep;
+    function _updatePnlVisuals(entry) {
+        if (entry._pnlWinning == null) return;
+        const winning = entry._pnlWinning;
         const color = winning ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)';
 
         if (entry.entryLine) {
@@ -179,8 +176,6 @@ const MiniTradeChart = (() => {
         }
 
         if (entry.pendingMarker) {
-            const m = entry.pendingMarker;
-            const isLong = m.direction === 'LONG';
             const markerColor = winning ? '#22c55e' : '#ef4444';
             const markers = entry.series.markers ? entry.series.markers() : [];
             if (markers.length) {
@@ -190,6 +185,15 @@ const MiniTradeChart = (() => {
                 }]);
             }
         }
+    }
+
+    function updatePnl(chartId, pnlUsd) {
+        const entry = _charts[chartId];
+        if (!entry) return;
+        const winning = pnlUsd >= 0;
+        if (entry._pnlWinning === winning) return;
+        entry._pnlWinning = winning;
+        _updatePnlVisuals(entry);
     }
 
     function addLabel(chartId, direction, strength) {
@@ -411,6 +415,7 @@ const MiniTradeChart = (() => {
         setData,
         updateLevels,
         appendCandle,
+        updatePnl,
         addLabel,
         addTiming,
         addMarker,

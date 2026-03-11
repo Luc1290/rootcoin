@@ -97,6 +97,7 @@ const Positions = (() => {
             const card = existing[p.id];
             if (card) {
                 PositionCards.updateCardData(card, p);
+                Charts.updatePnl(p.id, parseFloat(p.pnl_usd) || 0);
                 Charts.updateOrderLines(p.id, p.sl_price, p.tp_price);
             } else {
                 const tmp = document.createElement('div');

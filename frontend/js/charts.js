@@ -165,11 +165,15 @@ const Charts = (() => {
         entry.chart.timeScale().fitContent();
     }
 
-    function _isWinning(entry, currentPrice) {
-        if (!entry.entryInfo || !entry.entryInfo.entryPrice) return null;
-        const ep = entry.entryInfo.entryPrice;
-        if (entry.entryInfo.side === 'LONG') return currentPrice >= ep;
-        return currentPrice <= ep;
+    function _isWinning(entry) {
+        if (entry._pnlUsd == null) return null;
+        return entry._pnlUsd >= 0;
+    }
+
+    function updatePnl(positionId, pnlUsd) {
+        const entry = _posCharts[positionId];
+        if (!entry) return;
+        entry._pnlUsd = pnlUsd;
     }
 
     function _pnlColor(winning, alpha) {
@@ -179,13 +183,12 @@ const Charts = (() => {
             : `rgba(248, 113, 113, ${alpha})`;
     }
 
-    function _updateEntryVisuals(entry, currentPrice) {
+    function _updateEntryVisuals(entry) {
+        const winning = _isWinning(entry);
         if (entry.priceLine) {
-            const winning = _isWinning(entry, currentPrice);
             entry.priceLine.applyOptions({ color: _pnlColor(winning, 0.5) });
         }
         if (entry._markerTime != null) {
-            const winning = _isWinning(entry, currentPrice);
             const isLong = !entry.entryInfo || entry.entryInfo.side !== 'SHORT';
             entry.series.setMarkers([{
                 time: entry._markerTime,
@@ -256,7 +259,7 @@ const Charts = (() => {
                     entry._markerTime = closest.time;
                 }
 
-                _updateEntryVisuals(entry, lastPrice);
+                _updateEntryVisuals(entry);
                 entry.chart.timeScale().fitContent();
             }
         } catch (e) {
@@ -281,7 +284,7 @@ const Charts = (() => {
                 } else {
                     entry.series.update({ time: entry.lastTs, value });
                 }
-                _updateEntryVisuals(entry, value);
+                _updateEntryVisuals(entry);
             } catch (_) { /* chart not ready */ }
         }
     }
@@ -563,5 +566,5 @@ const Charts = (() => {
         _cockpitSeries.applyOptions({ lineColor: color, topColor: fill });
     }
 
-    return { createMiniChart, updateOrderLines, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData, updateCockpitColor, createCockpitMarketChart, loadCockpitMarketData, getCockpitMarketSymbol };
+    return { createMiniChart, updateOrderLines, updatePnl, appendPrice, cleanup, createPortfolioChart, loadPortfolioData, createCockpitChart, loadCockpitData, updateCockpitColor, createCockpitMarketChart, loadCockpitMarketData, getCockpitMarketSymbol };
 })();
