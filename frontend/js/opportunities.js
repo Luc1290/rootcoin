@@ -209,12 +209,12 @@ const Opportunities = (() => {
     }
 
     function _klineLimitForDetection(detectedAt) {
-        if (!detectedAt) return 48;
+        if (!detectedAt) return 72;
         const elapsed = Date.now() - new Date(detectedAt).getTime();
         const candleMs = 5 * 60 * 1000;
         const candles = Math.ceil(elapsed / candleMs);
-        // 12 candles (1h) padding before, min 48 (4h), max 120 (10h)
-        return Math.max(48, Math.min(candles + 12, 120));
+        // 36 candles (3h) padding before, min 72 (6h), max 1000 (~3.5 days at 5m)
+        return Math.max(72, Math.min(candles + 36, 1000));
     }
 
     // ── Compact list mode (analysis page) ──────────────────
