@@ -114,7 +114,7 @@ const Cockpit = (() => {
         if (totalSpan) {
             totalSpan.textContent = portfolioStr;
             const dayEl = el.querySelector('[data-field="day"]');
-            if (dayEl) { dayEl.textContent = dayStr; dayEl.className = `text-sm tabular-nums ${dayPnlClass}`; }
+            if (dayEl) { dayEl.textContent = dayStr; dayEl.className = 'text-sm tabular-nums text-gray-300'; }
             const openEl = el.querySelector('[data-field="open"]');
             if (openEl) {
                 if (hasPositions) {
@@ -132,7 +132,7 @@ const Cockpit = (() => {
         <div class="cockpit-card">
             <div class="flex items-center gap-3 justify-end flex-wrap">
                 <span class="text-lg font-bold tabular-nums" data-field="total">${portfolioStr}</span>
-                ${dayStr ? `<span class="cockpit-sep"></span><span class="text-sm tabular-nums ${dayPnlClass}" data-field="day">${dayStr}</span>` : '<span data-field="day"></span>'}
+                ${dayStr ? `<span class="cockpit-sep"></span><span class="text-sm tabular-nums text-gray-300" data-field="day">${dayStr}</span>` : '<span data-field="day"></span>'}
             </div>
             <div class="flex items-center gap-3 justify-end mt-1 ${hasPositions ? '' : 'hidden'}">
                 <span class="text-xs text-gray-500">PnL ouvert</span>
@@ -552,7 +552,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<details class="context-section context-macro cockpit-card"${openAttr}>
+        return `<details class="context-section context-macro cockpit-card"${openAttr} style="border-left:3px solid #a78b6d">
             <summary>Macro</summary>
             <div>${items}</div>
         </details>`;
@@ -687,16 +687,27 @@ const Cockpit = (() => {
     });
 
     WS.on('price_update', (data) => {
-        if (!_marketSymbol || data.symbol !== _marketSymbol || _positions.length) return;
+        if (!data.symbol || !data.price) return;
         if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
         const price = parseFloat(data.price);
         if (!price || !isFinite(price)) return;
-        if (_marketFirstPrice) {
-            const changePct = ((price - _marketFirstPrice) / _marketFirstPrice) * 100;
-            _updateMarketHeader(price, changePct);
-        } else {
-            const priceEl = document.getElementById('market-chart-price');
-            if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(price);
+        // Market chart (no positions mode)
+        if (_marketSymbol && data.symbol === _marketSymbol && !_positions.length) {
+            if (_marketFirstPrice) {
+                const changePct = ((price - _marketFirstPrice) / _marketFirstPrice) * 100;
+                _updateMarketHeader(price, changePct);
+            } else {
+                const priceEl = document.getElementById('market-chart-price');
+                if (priceEl) priceEl.textContent = Utils.fmtPriceCompact(price);
+            }
+        }
+        // Feed live price to position mini-charts
+        const t5m = Math.floor(Date.now() / 300000) * 300;
+        for (const p of _positions) {
+            const chartId = _posChartIds[p.id];
+            if (chartId && p.symbol === data.symbol) {
+                MiniTradeChart.appendCandle(chartId, { time: t5m, close: price });
+            }
         }
     });
 

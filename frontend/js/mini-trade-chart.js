@@ -39,9 +39,9 @@ const MiniTradeChart = (() => {
         };
 
         const series = chart.addAreaSeries({
-            lineColor: '#3b82f6',
-            topColor: 'rgba(59,130,246,0.15)',
-            bottomColor: 'rgba(59,130,246,0)',
+            lineColor: '#d1d5db',
+            topColor: 'rgba(209,213,219,0.12)',
+            bottomColor: 'rgba(209,213,219,0)',
             lineWidth: 1.5,
             priceLineVisible: false,
             lastValueVisible: false,

@@ -25,6 +25,8 @@ const KlineChart = (() => {
     let _cycleTooltipEl = null;
     let _activeIndicators = new Set(['ma', 'volume', 'obv', 'rsi', 'macd', 'buy_sell', 'cycles', 'orders']);
     let _loading = false;
+    let _pendingReload = false;
+    let _cachedCandles = null;
     let _initialized = false;
     let _syncing = false;
     let _subscribedStream = null;
@@ -561,14 +563,13 @@ const KlineChart = (() => {
     }
 
     async function loadChart() {
-        if (_loading) return;
+        if (_loading) { _pendingReload = true; return; }
         _loading = true;
+        _pendingReload = false;
         _orderScaleForce = true;
-        // Invalidate active cycles cache so position overlays refresh
-        if (_cyclesCache.data?.some(c => c.is_active)) {
-            _cyclesCache = { symbol: null, data: null };
-            _cyclesRendered = { symbol: null, interval: null };
-        }
+        // Always invalidate cycles cache — active cycles change price, closed cycles can appear
+        _cyclesCache = { symbol: null, data: null };
+        _cyclesRendered = { symbol: null, interval: null };
         _subscribeWS();
 
         try {
@@ -587,6 +588,7 @@ const KlineChart = (() => {
                 close: parseFloat(k.close),
             }));
             _candleSeries.setData(candles);
+            _cachedCandles = candles;
             _currentPrice = candles[candles.length - 1].close;
             _lastCandleTime = candles[candles.length - 1].time;
             _updatePriceHeader(_currentPrice, null);
@@ -746,6 +748,10 @@ const KlineChart = (() => {
             console.error('KlineChart: load failed', e);
         } finally {
             _loading = false;
+            if (_pendingReload) {
+                _pendingReload = false;
+                loadChart();
+            }
         }
     }
 
@@ -799,17 +805,23 @@ const KlineChart = (() => {
         _cyclesRendered = { symbol: null, interval: null };
     }
 
+    async function _reloadCyclesOnly() {
+        if (!_cachedCandles || !_mainChart) return;
+        await _loadCycles(_cachedCandles);
+    }
+
     async function _loadCycles(candles) {
-        // Same symbol + interval: series already correct, skip entirely
+        // Same symbol + interval already rendered — skip
         if (_cyclesRendered.symbol === _symbol && _cyclesRendered.interval === _interval) {
             return;
         }
 
         try {
             let cycles;
-            const hasActiveCached = _cyclesCache.symbol === _symbol
-                && _cyclesCache.data?.some(c => c.is_active);
-            if (_cyclesCache.symbol === _symbol && !hasActiveCached) {
+            // Use cache only when same symbol AND no active cycles (closed cycles don't change)
+            const cachedHasNoActive = _cyclesCache.symbol === _symbol
+                && _cyclesCache.data && !_cyclesCache.data.some(c => c.is_active);
+            if (cachedHasNoActive) {
                 cycles = _cyclesCache.data;
             } else {
                 const resp = await fetch(`/api/cycles?symbol=${_symbol}&limit=50`);
@@ -1268,7 +1280,7 @@ const KlineChart = (() => {
         if (prevIds !== curIds) {
             _cyclesCache = { symbol: null, data: null };
             _cyclesRendered = { symbol: null, interval: null };
-            if (_activeIndicators.has('cycles')) loadChart();
+            if (_activeIndicators.has('cycles')) _reloadCyclesOnly();
         }
         _cachedPositions = data;
         if (_activeIndicators.has('orders')) {

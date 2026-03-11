@@ -42,9 +42,9 @@ const Charts = (() => {
         };
 
         const series = chart.addAreaSeries({
-            lineColor: '#3b82f6',
-            topColor: 'rgba(59,130,246,0.15)',
-            bottomColor: 'rgba(59,130,246,0)',
+            lineColor: '#d1d5db',
+            topColor: 'rgba(209,213,219,0.12)',
+            bottomColor: 'rgba(209,213,219,0)',
             lineWidth: 1.5,
             priceLineVisible: false,
             lastValueVisible: false,
@@ -67,11 +67,11 @@ const Charts = (() => {
         if (entryInfo && entryInfo.entryPrice > 0) {
             priceLine = series.createPriceLine({
                 price: entryInfo.entryPrice,
-                color: 'rgba(59, 130, 246, 0.5)',
+                color: '#3b82f6',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
                 axisLabelVisible: true,
-                title: 'Entry',
+                title: '',
             });
         }
 
@@ -80,11 +80,11 @@ const Charts = (() => {
         if (entryInfo && entryInfo.slPrice > 0) {
             slLine = series.createPriceLine({
                 price: entryInfo.slPrice,
-                color: 'rgba(239, 68, 68, 0.5)',
+                color: 'rgba(239, 68, 68, 0.6)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
                 axisLabelVisible: true,
-                title: 'SL',
+                title: '',
             });
         }
 
@@ -93,11 +93,11 @@ const Charts = (() => {
         if (entryInfo && entryInfo.tpPrice > 0) {
             tpLine = series.createPriceLine({
                 price: entryInfo.tpPrice,
-                color: 'rgba(34, 197, 94, 0.5)',
+                color: 'rgba(34, 197, 94, 0.6)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
                 axisLabelVisible: true,
-                title: 'TP',
+                title: '',
             });
         }
 
@@ -186,7 +186,7 @@ const Charts = (() => {
     function _updateEntryVisuals(entry) {
         const winning = _isWinning(entry);
         if (entry.priceLine) {
-            entry.priceLine.applyOptions({ color: _pnlColor(winning, 0.5) });
+            // Keep entry line blue — don't recolor with PnL
         }
         if (entry._markerTime != null) {
             const isLong = !entry.entryInfo || entry.entryInfo.side !== 'SHORT';

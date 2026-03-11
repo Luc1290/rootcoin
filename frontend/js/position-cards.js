@@ -57,8 +57,8 @@ const PositionCards = (() => {
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
                 <div>
-                    <div class="metric-label mb-0.5">Entrée</div>
-                    <div class="font-medium tabular-nums" data-field="entry">${formatPrice(entry)}</div>
+                    <div class="metric-label mb-0.5" style="color:#3b82f6">Entrée</div>
+                    <div class="font-medium tabular-nums" style="color:#3b82f6" data-field="entry">${formatPrice(entry)}</div>
                 </div>
                 <div>
                     <div class="metric-label mb-0.5">Actuel <span data-field="stale-dot">${_staleDot(p.price_age)}</span></div>
