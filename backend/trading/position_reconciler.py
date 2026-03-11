@@ -28,13 +28,30 @@ def _tracker():
 
 async def fast_load_from_db():
     tracker = _tracker()
+    skipped = []
     async with async_session() as session:
         result = await session.execute(select(Position).where(Position.is_active == True))
         for pos in result.scalars().all():
+            # Skip residual positions (value < threshold)
+            price = pos.current_price or pos.entry_price
+            if price and pos.quantity and _is_residual(pos.quantity, price):
+                skipped.append((pos.symbol, pos.quantity, price, pos.market_type))
+                pos.is_active = False
+                pos.quantity = Decimal("0")
+                pos.closed_at = datetime.now(timezone.utc)
+                pos.updated_at = datetime.now(timezone.utc)
+                await session.merge(pos)
+                continue
             tracker._positions[pos.id] = pos
+        if skipped:
+            await session.commit()
     symbols = {pos.symbol for pos in tracker._positions.values()}
     for symbol in symbols:
         await ws_manager.subscribe_symbol(symbol)
+    if skipped:
+        for sym, qty, price, mtype in skipped:
+            await _notify_residual(sym, qty, price, mtype)
+        log.info("fast_load_skipped_residuals", count=len(skipped))
     log.info("fast_load_complete", positions=len(tracker._positions))
 
 
