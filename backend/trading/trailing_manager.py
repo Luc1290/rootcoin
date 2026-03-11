@@ -178,6 +178,7 @@ async def _resume_existing(positions):
             "last_move_at": 0.0,
             "last_step_pct": resumed_pct + _DEF_OFFSET if is_trailing else Decimal(0),
             "initial_at": _time.monotonic() - max(age_secs, 0),
+            "last_tighten_at": _time.monotonic(),  # cooldown after restart
         }
         log.info("trailing_resumed", symbol=pos.symbol, pos_id=pos.id,
                  sl=sl_str, tp=tp_str, has_oco=bool(pos.oco_order_list_id),
@@ -456,6 +457,12 @@ async def _tighten_stale_position(pos, tracking):
         current = pos.current_price
         if not current or current <= 0:
             return
+
+        # Skip if price hasn't moved since last tighten
+        last_price = tracking.get("last_tighten_price")
+        if last_price and abs(current - last_price) / last_price < Decimal("0.001"):
+            return
+        tracking["last_tighten_price"] = current
 
         entry = pos.entry_price
         old_sl = tracking["auto_sl"]
@@ -914,7 +921,7 @@ async def _cap_sl_to_capital(entry, side, qty, sl, tp, min_rr):
         if loss_at_sl > max_loss:
             sl = entry - max_loss / qty
             risk = entry - sl
-            tp = max(tp, entry + risk * min_rr)
+            tp = min(tp, entry + risk * min_rr)
             log.info("trailing_capital_cap_sl", max_loss=f"{max_loss:.0f}",
                      capped_loss=f"{(entry - sl) * qty:.0f}")
     else:
@@ -922,7 +929,7 @@ async def _cap_sl_to_capital(entry, side, qty, sl, tp, min_rr):
         if loss_at_sl > max_loss:
             sl = entry + max_loss / qty
             risk = sl - entry
-            tp = min(tp, entry - risk * min_rr)
+            tp = max(tp, entry - risk * min_rr)
             log.info("trailing_capital_cap_sl", max_loss=f"{max_loss:.0f}",
                      capped_loss=f"{(sl - entry) * qty:.0f}")
     return sl, tp
