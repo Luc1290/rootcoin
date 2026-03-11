@@ -43,6 +43,7 @@ _DEF_TIGHTEN_AFTER = Decimal("1")  # hours before tightening stale/ranging posit
 _TIGHTEN_INTERVAL = 1800.0  # 30min between tighten re-evaluations
 _TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
 _TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key levels
+_DEF_FALLBACK_SL_PCT = Decimal("1")  # fallback SL distance % when no key levels
 
 # Timings
 _POLL_INTERVAL = 3.0
@@ -265,31 +266,24 @@ async def _handle_new_position(pos_id: int):
         return
 
     analysis = market_analyzer.get_analysis(pos.symbol)
-    if not analysis:
-        log.info("trailing_skip_no_analysis", symbol=pos.symbol)
-        return
+    key_levels = analysis.get("key_levels", []) if analysis else []
 
-    key_levels = analysis.get("key_levels", [])
-    if not key_levels:
-        log.info("trailing_skip_no_levels", symbol=pos.symbol)
-        return
+    sl_price, tp_price = _find_initial_sl_tp(key_levels, pos.entry_price, pos.side) if key_levels else (None, None)
 
-    sl_price, tp_price = _find_initial_sl_tp(key_levels, pos.entry_price, pos.side)
-    if not sl_price or not tp_price:
-        log.info("trailing_skip_no_sl_tp", symbol=pos.symbol)
-        return
-
-    # Check and adjust R:R
+    # Check and adjust R:R when we have level-based SL/TP
     min_rr = _settings.get("min_rr", _DEF_MIN_RR)
-    rr = _compute_rr(pos.entry_price, sl_price, tp_price, pos.side)
-    if rr < min_rr:
-        sl_price, tp_price = _adjust_for_rr(
-            key_levels, pos.entry_price, pos.side, min_rr,
-        )
-        if not sl_price or not tp_price:
-            log.info("trailing_skip_low_rr", symbol=pos.symbol, rr=str(rr))
-            return
+    if sl_price and tp_price:
         rr = _compute_rr(pos.entry_price, sl_price, tp_price, pos.side)
+        if rr < min_rr:
+            sl_price, tp_price = _adjust_for_rr(
+                key_levels, pos.entry_price, pos.side, min_rr,
+            )
+
+    # Fallback: percentage-based SL/TP when key levels insufficient
+    sl_price, tp_price = _ensure_sl_tp(
+        pos.entry_price, pos.side, sl_price, tp_price, min_rr,
+    )
+    rr = _compute_rr(pos.entry_price, sl_price, tp_price, pos.side)
 
     sl_price = round_price(pos.symbol, sl_price)
     tp_price = round_price(pos.symbol, tp_price)
@@ -333,15 +327,10 @@ async def _recover_naked_position(pos_id: int):
         gain_pct = (entry - current) / entry * 100
 
     analysis = market_analyzer.get_analysis(pos.symbol)
-    if not analysis:
-        log.warning("trailing_recovery_no_analysis", symbol=pos.symbol)
-        return
-
-    key_levels = analysis.get("key_levels", [])
-    if not key_levels:
-        return
+    key_levels = analysis.get("key_levels", []) if analysis else []
 
     activation = _settings.get("activation", _DEF_ACTIVATION)
+    min_rr = _settings.get("min_rr", _DEF_MIN_RR)
 
     if gain_pct >= activation:
         # Already in profit: compute trailing SL from current gain
@@ -368,18 +357,18 @@ async def _recover_naked_position(pos_id: int):
                  gain=f"{gain_pct:.2f}%", sl_pct=f"{sl_pct:.2f}%")
     else:
         # Below activation: place initial OCO from key levels
-        sl_price, tp_price = _find_initial_sl_tp(key_levels, entry, pos.side)
-        if not sl_price or not tp_price:
-            return
+        sl_price, tp_price = (None, None)
+        if key_levels:
+            sl_price, tp_price = _find_initial_sl_tp(key_levels, entry, pos.side)
+            if sl_price and tp_price:
+                rr = _compute_rr(entry, sl_price, tp_price, pos.side)
+                if rr < min_rr:
+                    sl_price, tp_price = _adjust_for_rr(
+                        key_levels, entry, pos.side, min_rr,
+                    )
 
-        min_rr = _settings.get("min_rr", _DEF_MIN_RR)
-        rr = _compute_rr(entry, sl_price, tp_price, pos.side)
-        if rr < min_rr:
-            sl_price, tp_price = _adjust_for_rr(
-                key_levels, entry, pos.side, min_rr,
-            )
-            if not sl_price or not tp_price:
-                return
+        # Fallback: percentage-based SL/TP when key levels insufficient
+        sl_price, tp_price = _ensure_sl_tp(entry, pos.side, sl_price, tp_price, min_rr)
 
         trailing_active = False
         last_step_pct = Decimal(0)
@@ -869,6 +858,17 @@ def _has_better_levels(symbol, current_price, side, current_sl, current_tp):
            (side == "SHORT" and tp < current_tp):
             return True
     return False
+
+
+def _ensure_sl_tp(entry, side, sl, tp, min_rr):
+    """Guarantee SL and TP are set, using percentage fallback if needed."""
+    if not sl:
+        pct = _DEF_FALLBACK_SL_PCT / 100
+        sl = entry * (1 - pct) if side == "LONG" else entry * (1 + pct)
+    if not tp:
+        risk = abs(entry - sl)
+        tp = entry + risk * min_rr if side == "LONG" else entry - risk * min_rr
+    return sl, tp
 
 
 def _find_initial_sl_tp(key_levels, entry_price, side):
