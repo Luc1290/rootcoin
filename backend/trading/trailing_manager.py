@@ -278,6 +278,7 @@ async def _position_monitor_loop():
                         continue
                     pos = active.get(pid)
                     if pos:
+                        tracking["moving"] = True
                         asyncio.create_task(_tighten_stale_position(pos, tracking))
 
         except asyncio.CancelledError:
@@ -708,6 +709,7 @@ async def _handle_price_update(msg: dict):
             continue
 
         is_breakeven = not tracking.get("trailing_active")
+        tracking["moving"] = True
         asyncio.create_task(_move_oco(
             pos, tracking, gain_pct, current_price, is_breakeven,
             tp_guard=tp_guard_triggered,
@@ -812,6 +814,7 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
 
         # Nothing changed: skip useless OCO replace
         if new_sl_price == tracking["auto_sl"] and new_tp == tracking["auto_tp"]:
+            tracking["last_step_pct"] = gain_pct
             return
 
         result = await order_manager.place_oco(pos, new_tp, new_sl_price, silent=True)
