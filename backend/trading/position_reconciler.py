@@ -15,6 +15,7 @@ from backend.core.models import Position, Trade
 log = structlog.get_logger()
 
 PERIODIC_RECONCILE_INTERVAL = 1800  # 30 min
+RESIDUAL_THRESHOLD_USD = Decimal("30")
 
 
 def _tracker():
@@ -99,6 +100,27 @@ async def _fix_closed_positions():
         await session.commit()
 
 
+def _is_residual(quantity: Decimal, price: Decimal) -> bool:
+    if not price or quantity <= 0:
+        return False
+    usd_value = quantity * price
+    from backend.trading.position_tracker import DUST_THRESHOLD_USD
+    return usd_value >= DUST_THRESHOLD_USD and usd_value < RESIDUAL_THRESHOLD_USD
+
+
+async def _notify_residual(symbol: str, quantity: Decimal, price: Decimal, market_type: str):
+    usd_value = quantity * price
+    msg = (
+        f"💤 Résidu détecté : {quantity} {symbol.replace('USDC', '')} "
+        f"(~${usd_value:.2f}) sur {market_type}\n"
+        f"Position non ouverte (< ${RESIDUAL_THRESHOLD_USD})"
+    )
+    log.info("residual_balance_skipped", symbol=symbol, qty=str(quantity),
+             usd_value=str(usd_value), market_type=market_type)
+    if telegram_notifier.is_positions_enabled():
+        asyncio.create_task(telegram_notifier.notify(msg))
+
+
 async def _reconcile_positions():
     tracker = _tracker()
     stables = settings.stablecoins_set
@@ -130,6 +152,9 @@ async def _reconcile_positions():
             price = prices.get(symbol)
             if price and tracker._is_dust(total, price):
                 continue
+            if price and _is_residual(total, price):
+                await _notify_residual(symbol, total, price, "SPOT")
+                continue
             found_keys.add((symbol, "SPOT"))
             await _reconcile_single(symbol, "LONG", total, "SPOT")
         fetched_market_types.add("SPOT")
@@ -157,6 +182,9 @@ async def _reconcile_positions():
                 price = prices.get(symbol)
                 if price and tracker._is_dust(total, price):
                     continue
+                if price and _is_residual(total, price):
+                    await _notify_residual(symbol, total, price, "CROSS_MARGIN")
+                    continue
                 found_keys.add((symbol, "CROSS_MARGIN"))
                 await _reconcile_single(symbol, "LONG", total, "CROSS_MARGIN")
         fetched_market_types.add("CROSS_MARGIN")
@@ -181,6 +209,9 @@ async def _reconcile_positions():
                 total = base_free + base_locked
                 price = prices.get(symbol)
                 if price and tracker._is_dust(total, price):
+                    continue
+                if price and _is_residual(total, price):
+                    await _notify_residual(symbol, total, price, "ISOLATED_MARGIN")
                     continue
                 found_keys.add((symbol, "ISOLATED_MARGIN"))
                 await _reconcile_single(symbol, "LONG", total, "ISOLATED_MARGIN")

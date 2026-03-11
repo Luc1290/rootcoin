@@ -98,6 +98,19 @@ def is_reconciled() -> bool:
     return _reconciled
 
 
+async def force_close(pos):
+    """Mark position as closed without placing any Binance order."""
+    pos.is_active = False
+    pos.quantity = Decimal("0")
+    pos.closed_at = _now()
+    pos.updated_at = _now()
+    await _save_position(pos)
+    if pos.id in _positions:
+        del _positions[pos.id]
+    clear_pnl_alerts(pos.id)
+    log.info("position_force_closed", symbol=pos.symbol, id=pos.id)
+
+
 # --- Helpers ---
 
 

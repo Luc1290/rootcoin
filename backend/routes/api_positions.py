@@ -384,6 +384,15 @@ async def close_position(position_id: int, body: CloseBody = CloseBody()):
         raise HTTPException(400, f"Binance: {e.message}")
 
 
+@router.post("/{position_id}/force-close")
+async def force_close_position(position_id: int):
+    """Mark position as closed in DB without placing any Binance order.
+    Useful for residual balances too small to sell."""
+    pos = _find_position(position_id)
+    await position_tracker.force_close(pos)
+    return {"status": "ok", "closed_id": position_id}
+
+
 @router.post("/{position_id}/secure")
 async def secure_position(position_id: int):
     try:
