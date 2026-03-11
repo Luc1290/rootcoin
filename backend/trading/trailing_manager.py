@@ -14,6 +14,7 @@ Settings (DB key -> default):
 
 import asyncio
 import time as _time
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
@@ -129,6 +130,7 @@ async def _resume_existing(positions):
             resumed_pct = (pos.entry_price - sl_decimal) / pos.entry_price * 100
         is_trailing = resumed_pct > _DEF_BREAKEVEN
 
+        age_secs = (datetime.now(timezone.utc) - pos.opened_at.replace(tzinfo=timezone.utc)).total_seconds()
         _tracked[pos.id] = {
             "auto_sl": sl_decimal,
             "auto_tp": Decimal(tp_str),
@@ -138,10 +140,11 @@ async def _resume_existing(positions):
             "moving": False,
             "last_move_at": 0.0,
             "last_step_pct": resumed_pct + _DEF_OFFSET if is_trailing else Decimal(0),
-            "initial_at": _time.monotonic(),
+            "initial_at": _time.monotonic() - max(age_secs, 0),
         }
         log.info("trailing_resumed", symbol=pos.symbol, pos_id=pos.id,
-                 sl=sl_str, tp=tp_str, has_oco=bool(pos.oco_order_list_id))
+                 sl=sl_str, tp=tp_str, has_oco=bool(pos.oco_order_list_id),
+                 age_hours=round(age_secs / 3600, 1))
 
 
 async def stop():

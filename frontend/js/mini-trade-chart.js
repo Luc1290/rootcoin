@@ -92,28 +92,6 @@ const MiniTradeChart = (() => {
 
         if (!data.length) return;
 
-        // Compute visible range including price lines
-        let minVal = Infinity, maxVal = -Infinity;
-        for (const d of data) { minVal = Math.min(minVal, d.value); maxVal = Math.max(maxVal, d.value); }
-        const linePrices = [entry.entryLine, entry.slLine, entry.tpLine, entry.retestLine]
-            .filter(Boolean).map(l => l.options().price);
-        for (const p of linePrices) { minVal = Math.min(minVal, p); maxVal = Math.max(maxVal, p); }
-
-        // Expand range by 5% padding
-        const range = maxVal - minVal || 1;
-        const paddedMin = minVal - range * 0.05;
-        const paddedMax = maxVal + range * 0.05;
-
-        // Set margins so all lines fit
-        const chartHeight = entry.el.clientHeight || 140;
-        const topMargin = (maxVal - paddedMin) > 0 ? (paddedMax - maxVal) / (paddedMax - paddedMin) : 0.05;
-        const bottomMargin = (paddedMax - paddedMin) > 0 ? (minVal - paddedMin) / (paddedMax - paddedMin) : 0.05;
-        entry.series.applyOptions({
-            autoscaleInfoProvider: () => ({
-                priceRange: { minValue: paddedMin, maxValue: paddedMax },
-            }),
-        });
-
         entry.series.setData(data);
         entry.lastTs = data[data.length - 1].time;
 

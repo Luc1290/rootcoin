@@ -27,16 +27,12 @@ const Charts = (() => {
             height: 120,
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-            rightPriceScale: { visible: false },
+            rightPriceScale: { visible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
             timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             handleScroll: false,
             handleScale: false,
         });
-
-        const _epVal = (entryInfo && entryInfo.entryPrice > 0) ? entryInfo.entryPrice : 0;
-        const _slVal = (entryInfo && entryInfo.slPrice > 0) ? entryInfo.slPrice : 0;
-        const _tpVal = (entryInfo && entryInfo.tpPrice > 0) ? entryInfo.tpPrice : 0;
 
         const series = chart.addAreaSeries({
             lineColor: '#3b82f6',
@@ -46,16 +42,6 @@ const Charts = (() => {
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
-            autoscaleInfoProvider: () => {
-                const e = _posCharts[positionId];
-                if (!e) return null;
-                const extras = [];
-                if (e._epPrice > 0) extras.push(e._epPrice);
-                if (e._slPrice > 0) extras.push(e._slPrice);
-                if (e._tpPrice > 0) extras.push(e._tpPrice);
-                if (!extras.length) return null;
-                return { priceRange: { minValue: Math.min(...extras), maxValue: Math.max(...extras) } };
-            },
         });
 
         // Entry price horizontal line (blue)
@@ -100,7 +86,7 @@ const Charts = (() => {
         });
         ro.observe(el);
 
-        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro, _epPrice: _epVal, _slPrice: _slVal, _tpPrice: _tpVal };
+        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro };
         _loadPriceHistory(positionId, symbol);
     }
 
@@ -109,9 +95,6 @@ const Charts = (() => {
         if (!entry) return;
         const sl = parseFloat(slPrice) || 0;
         const tp = parseFloat(tpPrice) || 0;
-
-        entry._slPrice = sl;
-        entry._tpPrice = tp;
 
         // Update or create SL line
         if (sl > 0) {
