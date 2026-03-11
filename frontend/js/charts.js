@@ -27,12 +27,19 @@ const Charts = (() => {
             height: 120,
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
-            rightPriceScale: { visible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
-            timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af', scaleMargins: { top: 0.08, bottom: 0.08 } },
+            timeScale: { visible: true, fixLeftEdge: true, fixRightEdge: true, borderColor: 'transparent', timeVisible: true, secondsVisible: false },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             handleScroll: false,
             handleScale: false,
         });
+
+        // Mutable price levels for autoscale to always include Entry/SL/TP
+        const priceLevels = {
+            entry: entryInfo && entryInfo.entryPrice > 0 ? entryInfo.entryPrice : 0,
+            sl: entryInfo && entryInfo.slPrice > 0 ? entryInfo.slPrice : 0,
+            tp: entryInfo && entryInfo.tpPrice > 0 ? entryInfo.tpPrice : 0,
+        };
 
         const series = chart.addAreaSeries({
             lineColor: '#3b82f6',
@@ -42,6 +49,17 @@ const Charts = (() => {
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
+            autoscaleInfoProvider: (original) => {
+                const res = original();
+                if (!res || !res.priceRange) return res;
+                const prices = [priceLevels.entry, priceLevels.sl, priceLevels.tp]
+                    .filter(p => p > 0 && isFinite(p));
+                for (const p of prices) {
+                    res.priceRange.minValue = Math.min(res.priceRange.minValue, p);
+                    res.priceRange.maxValue = Math.max(res.priceRange.maxValue, p);
+                }
+                return res;
+            },
         });
 
         // Entry price horizontal line (blue)
@@ -52,7 +70,8 @@ const Charts = (() => {
                 color: 'rgba(59, 130, 246, 0.5)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: false,
+                axisLabelVisible: true,
+                title: 'Entry',
             });
         }
 
@@ -64,7 +83,8 @@ const Charts = (() => {
                 color: 'rgba(239, 68, 68, 0.5)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: false,
+                axisLabelVisible: true,
+                title: 'SL',
             });
         }
 
@@ -76,7 +96,8 @@ const Charts = (() => {
                 color: 'rgba(34, 197, 94, 0.5)',
                 lineWidth: 1,
                 lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: false,
+                axisLabelVisible: true,
+                title: 'TP',
             });
         }
 
@@ -86,7 +107,7 @@ const Charts = (() => {
         });
         ro.observe(el);
 
-        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro };
+        _posCharts[positionId] = { chart, series, symbol, lastTs: 0, entryInfo: entryInfo || null, priceLine, slLine, tpLine, ro, priceLevels };
         _loadPriceHistory(positionId, symbol);
     }
 
@@ -95,6 +116,12 @@ const Charts = (() => {
         if (!entry) return;
         const sl = parseFloat(slPrice) || 0;
         const tp = parseFloat(tpPrice) || 0;
+
+        // Update autoscale price levels
+        if (entry.priceLevels) {
+            entry.priceLevels.sl = sl;
+            entry.priceLevels.tp = tp;
+        }
 
         // Update or create SL line
         if (sl > 0) {
@@ -106,7 +133,8 @@ const Charts = (() => {
                     color: 'rgba(239, 68, 68, 0.5)',
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
-                    axisLabelVisible: false,
+                    axisLabelVisible: true,
+                    title: 'SL',
                 });
             }
         } else if (entry.slLine) {
@@ -124,7 +152,8 @@ const Charts = (() => {
                     color: 'rgba(34, 197, 94, 0.5)',
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
-                    axisLabelVisible: false,
+                    axisLabelVisible: true,
+                    title: 'TP',
                 });
             }
         } else if (entry.tpLine) {

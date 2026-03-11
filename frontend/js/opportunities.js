@@ -145,7 +145,7 @@ const Opportunities = (() => {
             if (chartId) {
                 newCharts[o.id] = chartId;
 
-                if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction, lvl.entry);
+                if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction, lvl.entry, 0);
 
                 MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', _klineLimitForDetection(o.detected_at));
             }
@@ -360,7 +360,7 @@ const Opportunities = (() => {
                 });
                 if (chartId) {
                     newCharts[o.id] = chartId;
-                    if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction, lvl.entry);
+                    if (o.detected_at) MiniTradeChart.addMarker(chartId, o.detected_at, o.direction, lvl.entry, 0);
                     MiniTradeChart.fetchAndRender(chartId, o.symbol, '5m', _klineLimitForDetection(o.detected_at));
                 }
                 _containerCharts[cid] = newCharts;

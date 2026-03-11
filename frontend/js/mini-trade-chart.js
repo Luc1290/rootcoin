@@ -211,14 +211,17 @@ const MiniTradeChart = (() => {
         entry.timingEl = badge;
     }
 
-    function addMarker(chartId, timestamp, direction, price) {
+    function addMarker(chartId, timestamp, direction, price, size) {
         const entry = _charts[chartId];
         if (!entry) return;
         let ts = timestamp;
-        if (typeof ts === 'string') ts = Math.floor(new Date(ts.endsWith('Z') ? ts : ts + 'Z').getTime() / 1000);
+        if (typeof ts === 'string') {
+            const hastz = ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts);
+            ts = Math.floor(new Date(hastz ? ts : ts + 'Z').getTime() / 1000);
+        }
         else if (ts > 1e12) ts = Math.floor(ts / 1000);
         const p = price ? parseFloat(price) : null;
-        entry.pendingMarker = { time: ts, direction: direction || 'LONG', price: p };
+        entry.pendingMarker = { time: ts, direction: direction || 'LONG', price: p, size: size };
     }
 
     function _applyMarker(entry, data) {
@@ -245,7 +248,7 @@ const MiniTradeChart = (() => {
             position: isLong ? 'belowBar' : 'aboveBar',
             color: isLong ? '#22c55e' : '#ef4444',
             shape: isLong ? 'arrowUp' : 'arrowDown',
-            size: 1,
+            size: m.size != null ? m.size : 1,
         }]);
     }
 
