@@ -99,33 +99,36 @@ const Cockpit = (() => {
         if (hasPositions) {
             const openSign = totalPnl >= 0 ? '+' : '';
             openClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
-            let weightedPct = 0, totalCost = 0;
-            for (const p of _positions) {
-                const cost = (parseFloat(p.entry_price) || 0) * (parseFloat(p.quantity) || 0);
-                weightedPct += (parseFloat(p.pnl_pct) || 0) * cost;
-                totalCost += cost;
-            }
-            weightedPct = totalCost > 0 ? weightedPct / totalCost : 0;
-            openStr = `${openSign}$${Math.abs(totalPnl).toFixed(2)} (${weightedPct >= 0 ? '+' : ''}${weightedPct.toFixed(2)}%)`;
+            const capitalPct = (portfolioTotal && portfolioTotal > 0) ? totalPnl / portfolioTotal * 100 : 0;
+            openStr = `${openSign}$${Math.abs(totalPnl).toFixed(2)} (${capitalPct >= 0 ? '+' : ''}${capitalPct.toFixed(2)}%)`;
         }
 
         // Fast update path
         const totalSpan = el.querySelector('[data-field="total"]');
         if (totalSpan) {
             totalSpan.textContent = portfolioStr;
+            const daySep = el.querySelector('[data-field="day-sep"]');
             const dayEl = el.querySelector('[data-field="day"]');
             if (dayEl) {
                 const dayValEl = dayEl.querySelector('[data-field="day-value"]');
                 if (dayValEl) { dayValEl.textContent = dayValueStr; dayValEl.className = `${dayPnlClass}`; }
+                dayEl.classList.toggle('hidden', !dayValueStr);
+                if (daySep) daySep.classList.toggle('hidden', !dayValueStr);
             }
+            const openSep = el.querySelector('[data-field="open-sep"]');
+            const openLabel = el.querySelector('[data-field="open-label"]');
             const openEl = el.querySelector('[data-field="open"]');
             if (openEl) {
                 if (hasPositions) {
                     openEl.textContent = openStr;
                     openEl.className = `text-xs font-bold tabular-nums ${openClass}`;
                     openEl.classList.remove('hidden');
+                    if (openSep) openSep.classList.remove('hidden');
+                    if (openLabel) openLabel.classList.remove('hidden');
                 } else {
                     openEl.classList.add('hidden');
+                    if (openSep) openSep.classList.add('hidden');
+                    if (openLabel) openLabel.classList.add('hidden');
                 }
             }
             return;
@@ -135,8 +138,8 @@ const Cockpit = (() => {
         <div class="cockpit-card">
             <div class="flex items-center gap-3 justify-end flex-wrap">
                 <span class="text-xs font-bold tabular-nums" data-field="total">${portfolioStr}</span>
-                ${dayValueStr ? `<span class="cockpit-sep"></span><span class="text-xs tabular-nums" data-field="day"><span class="text-gray-300">Gains 24h </span><span class="${dayPnlClass}" data-field="day-value">${dayValueStr}</span></span>` : '<span data-field="day"></span>'}
-                ${hasPositions ? `<span class="cockpit-sep"></span><span class="text-xs text-gray-500">PnL ouvert </span><span class="text-xs font-bold tabular-nums ${openClass}" data-field="open">${openStr}</span>` : '<span data-field="open" class="hidden"></span>'}
+                <span class="cockpit-sep ${dayValueStr ? '' : 'hidden'}" data-field="day-sep"></span><span class="text-xs tabular-nums ${dayValueStr ? '' : 'hidden'}" data-field="day"><span class="text-gray-300">Gains 24h </span><span class="${dayPnlClass}" data-field="day-value">${dayValueStr}</span></span>
+                <span class="cockpit-sep ${hasPositions ? '' : 'hidden'}" data-field="open-sep"></span><span class="text-xs text-gray-500 ${hasPositions ? '' : 'hidden'}" data-field="open-label">PnL ouvert </span><span class="text-xs font-bold tabular-nums ${openClass} ${hasPositions ? '' : 'hidden'}" data-field="open">${openStr}</span>
             </div>
             <div id="cockpit-portfolio-chart" style="height:80px;width:100%;margin-top:8px"></div>
         </div>`;
