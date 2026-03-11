@@ -217,6 +217,8 @@ async def notify_position_closed(
     sign_g = "+" if realized_pnl > 0 else ""
     duration = _fmt_duration(opened_at, closed_at)
     fees = realized_pnl - net_pnl
+    capital = await _get_capital()
+    cap_str = _cap_pct(float(net_pnl), capital)
     msg = (
         f"{header}\n"
         f"\n"
@@ -224,7 +226,7 @@ async def notify_position_closed(
         f"\U0001f4b0 PnL brut : {sign_g}{_fp(realized_pnl)}\n"
         f"\U0001f4b8 Frais : -{_fp(abs(fees))}\n"
         f"{'=' * 20}\n"
-        f"<b>{'✅' if win else '❌'} PnL net : {sign}{_fp(net_pnl)} ({sign}{_fq(pnl_pct)}%)</b>\n"
+        f"<b>{'✅' if win else '❌'} PnL net : {sign}{_fp(net_pnl)}{cap_str}</b>\n"
         f"\u23f1 Duree : {duration}"
     )
     ok = await notify(msg, retries=2)
@@ -411,6 +413,8 @@ async def notify_trailing_moved(
     sign = "+" if gain_pct >= 0 else ""
     pnl_sign = "+" if pnl_usd >= 0 else ""
     base = symbol.replace("USDC", "").replace("USDT", "")
+    capital = await _get_capital()
+    cap_str = _cap_pct(pnl_usd, capital)
     if is_breakeven:
         header = f"\U0001f6e1\ufe0f <b>{symbol} {side} — Breakeven</b>"
         detail = "SL au breakeven, position protegee."
@@ -421,7 +425,7 @@ async def notify_trailing_moved(
         f"{header}\n"
         f"\n"
         f"{detail}\n"
-        f"\U0001f4b0 PnL : {pnl_sign}${pnl_usd:,.2f} ({sign}{float(gain_pct):.2f}%)\n"
+        f"\U0001f4b0 PnL : {pnl_sign}${pnl_usd:,.2f}{cap_str}\n"
         f"\U0001f4c8 Entree {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
         f"\U0001f4b5 Valeur : ${value_usd:,.2f} ({_fq(quantity)} {base})\n"
         f"\n"
@@ -759,6 +763,29 @@ async def _answer_callback(callback_id: str, text: str):
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
+
+async def _get_capital() -> Decimal:
+    from backend.core.models import Balance
+    from sqlalchemy import func, select
+    try:
+        async with async_session() as session:
+            latest_sub = select(func.max(Balance.snapshot_at)).scalar_subquery()
+            result = await session.execute(
+                select(func.sum(Balance.usd_value).label("total"))
+                .where(Balance.snapshot_at == latest_sub, Balance.usd_value.isnot(None))
+            )
+            return result.scalar() or Decimal(0)
+    except Exception:
+        return Decimal(0)
+
+
+def _cap_pct(pnl_usd: float, capital: Decimal) -> str:
+    if not capital or capital <= 0:
+        return ""
+    pct = pnl_usd / float(capital) * 100
+    sign = "+" if pct >= 0 else ""
+    return f" | {sign}{pct:.2f}% capital"
 
 
 def _fp(value: Decimal) -> str:

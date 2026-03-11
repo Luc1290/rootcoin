@@ -27,6 +27,14 @@ const PositionCards = (() => {
         return '<span class="stale-dot fresh" title="Prix live"></span>';
     }
 
+    function _pnlCapitalStr(pnl) {
+        const total = BalanceStore.getTotal();
+        if (!total) return '';
+        const pct = pnl / total * 100;
+        const sign = pct >= 0 ? '+' : '';
+        return ` | ${sign}${pct.toFixed(2)}% cap`;
+    }
+
     function buildCardHtml(p) {
         const pnl = parseFloat(p.pnl_usd) || 0;
         const pnlPct = parseFloat(p.pnl_pct) || 0;
@@ -72,7 +80,7 @@ const PositionCards = (() => {
                 <div>
                     <div class="metric-label mb-0.5">PnL net</div>
                     <div class="${pnlClass} font-bold tabular-nums" data-field="pnl">
-                        ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)
+                        ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%${_pnlCapitalStr(pnl)})
                     </div>
                     <div class="text-gray-600 text-xs tabular-nums" data-field="pnl-detail">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
                 </div>
@@ -207,7 +215,7 @@ const PositionCards = (() => {
         const pnlEl = f('pnl');
         if (pnlEl) {
             pnlEl.className = `${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'} font-bold tabular-nums`;
-            pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%)`;
+            pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%${_pnlCapitalStr(pnl)})`;
         }
 
         const detailEl = f('pnl-detail');

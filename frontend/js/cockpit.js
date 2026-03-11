@@ -88,8 +88,8 @@ const Cockpit = (() => {
         const dayPctStr = (portfolioTotal && portfolioTotal > 0 && _dayPnl !== null)
             ? `${dayTotal >= 0 ? '+' : ''}${(dayTotal / portfolioTotal * 100).toFixed(2)}%`
             : '';
-        const dayStr = _dayPnl !== null
-            ? `Gains 24h ${daySign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr ? ' (' + dayPctStr + ')' : ''}${_dayTrades > 0 ? '  ·  ' + _dayTrades + ' trade' + (_dayTrades > 1 ? 's' : '') : ''}`
+        const dayValueStr = _dayPnl !== null
+            ? `${daySign}$${Math.abs(dayTotal).toFixed(2)}${dayPctStr ? ' (' + dayPctStr + ')' : ''}${_dayTrades > 0 ? '  ·  ' + _dayTrades + ' trade' + (_dayTrades > 1 ? 's' : '') : ''}`
             : '';
 
         // PnL ouvert (only if positions)
@@ -114,15 +114,18 @@ const Cockpit = (() => {
         if (totalSpan) {
             totalSpan.textContent = portfolioStr;
             const dayEl = el.querySelector('[data-field="day"]');
-            if (dayEl) { dayEl.textContent = dayStr; dayEl.className = 'text-sm tabular-nums text-gray-300'; }
+            if (dayEl) {
+                const dayValEl = dayEl.querySelector('[data-field="day-value"]');
+                if (dayValEl) { dayValEl.textContent = dayValueStr; dayValEl.className = `${dayPnlClass}`; }
+            }
             const openEl = el.querySelector('[data-field="open"]');
             if (openEl) {
                 if (hasPositions) {
                     openEl.textContent = openStr;
-                    openEl.className = `text-sm font-bold tabular-nums ${openClass}`;
-                    openEl.parentElement.classList.remove('hidden');
+                    openEl.className = `text-xs font-bold tabular-nums ${openClass}`;
+                    openEl.classList.remove('hidden');
                 } else {
-                    openEl.parentElement.classList.add('hidden');
+                    openEl.classList.add('hidden');
                 }
             }
             return;
@@ -131,12 +134,9 @@ const Cockpit = (() => {
         el.innerHTML = `
         <div class="cockpit-card">
             <div class="flex items-center gap-3 justify-end flex-wrap">
-                <span class="text-lg font-bold tabular-nums" data-field="total">${portfolioStr}</span>
-                ${dayStr ? `<span class="cockpit-sep"></span><span class="text-sm tabular-nums text-gray-300" data-field="day">${dayStr}</span>` : '<span data-field="day"></span>'}
-            </div>
-            <div class="flex items-center gap-3 justify-end mt-1 ${hasPositions ? '' : 'hidden'}">
-                <span class="text-xs text-gray-500">PnL ouvert</span>
-                <span class="text-sm font-bold tabular-nums ${openClass}" data-field="open">${openStr}</span>
+                <span class="text-xs font-bold tabular-nums" data-field="total">${portfolioStr}</span>
+                ${dayValueStr ? `<span class="cockpit-sep"></span><span class="text-xs tabular-nums" data-field="day"><span class="text-gray-300">Gains 24h </span><span class="${dayPnlClass}" data-field="day-value">${dayValueStr}</span></span>` : '<span data-field="day"></span>'}
+                ${hasPositions ? `<span class="cockpit-sep"></span><span class="text-xs text-gray-500">PnL ouvert </span><span class="text-xs font-bold tabular-nums ${openClass}" data-field="open">${openStr}</span>` : '<span data-field="open" class="hidden"></span>'}
             </div>
             <div id="cockpit-portfolio-chart" style="height:80px;width:100%;margin-top:8px"></div>
         </div>`;

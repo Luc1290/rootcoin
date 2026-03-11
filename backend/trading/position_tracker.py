@@ -627,12 +627,15 @@ async def _handle_list_status(msg: dict):
 # --- Price updates & PnL threshold alerts ---
 
 _PNL_THRESHOLDS = [-5.0, -3.0, -2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0]
-_PNL_HYSTERESIS = 0.3  # must move 0.3% away from threshold before it can re-trigger
+_PNL_HYSTERESIS = 0.5  # must move 0.5% away from threshold before it can re-trigger
 _PNL_USD_THRESHOLDS = [-500.0, -200.0, 200.0, 500.0, 1000.0, 2000.0]
-_PNL_USD_HYSTERESIS = 50.0  # must move $50 away before re-trigger
+_PNL_USD_HYSTERESIS = 100.0  # must move $100 away before re-trigger
 _last_price_at: dict[str, float] = {}  # symbol -> epoch timestamp of last price update
 _pnl_armed: dict[tuple[int, float], bool] = {}  # (pos_id, threshold) -> armed (ready to fire)
 _pnl_usd_armed: dict[tuple[int, float], bool] = {}  # (pos_id, usd_threshold) -> armed
+_PNL_COOLDOWN = 900.0  # 15 min cooldown per (pos_id, threshold) even if re-armed
+_pnl_last_fire: dict[tuple[int, float], float] = {}  # (pos_id, threshold) -> epoch of last fire
+_pnl_usd_last_fire: dict[tuple[int, float], float] = {}  # same for USD thresholds
 
 
 async def _handle_price_update(msg: dict):
@@ -662,36 +665,40 @@ async def _handle_price_update(msg: dict):
 
 
 def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
+    now = _time.time()
     for t in _PNL_THRESHOLDS:
         key = (pos.id, t)
         crossed = (prev_pct < t <= cur_pct) or (prev_pct > t >= cur_pct)
 
         if crossed:
-            # Only fire if armed (or first time = not in dict yet)
             if _pnl_armed.get(key, True):
-                _pnl_armed[key] = False  # disarm until price moves away
-                _fire_and_forget(telegram_notifier.notify_pnl_threshold(
-                    pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
-                    pos.entry_price, pos.current_price, t,
-                ))
+                if now - _pnl_last_fire.get(key, 0.0) >= _PNL_COOLDOWN:
+                    _pnl_armed[key] = False
+                    _pnl_last_fire[key] = now
+                    _fire_and_forget(telegram_notifier.notify_pnl_threshold(
+                        pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
+                        pos.entry_price, pos.current_price, t,
+                    ))
         elif not _pnl_armed.get(key, True):
-            # Re-arm only when price moves far enough from threshold
             if abs(cur_pct - t) >= _PNL_HYSTERESIS:
                 _pnl_armed[key] = True
 
 
 def _check_pnl_usd_thresholds(pos: Position, prev_usd: float, cur_usd: float):
+    now = _time.time()
     for t in _PNL_USD_THRESHOLDS:
         key = (pos.id, t)
         crossed = (prev_usd < t <= cur_usd) or (prev_usd > t >= cur_usd)
 
         if crossed:
             if _pnl_usd_armed.get(key, True):
-                _pnl_usd_armed[key] = False
-                _fire_and_forget(telegram_notifier.notify_pnl_usd_threshold(
-                    pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
-                    pos.entry_price, pos.current_price, pos.quantity, t,
-                ))
+                if now - _pnl_usd_last_fire.get(key, 0.0) >= _PNL_COOLDOWN:
+                    _pnl_usd_armed[key] = False
+                    _pnl_usd_last_fire[key] = now
+                    _fire_and_forget(telegram_notifier.notify_pnl_usd_threshold(
+                        pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
+                        pos.entry_price, pos.current_price, pos.quantity, t,
+                    ))
         elif not _pnl_usd_armed.get(key, True):
             if abs(cur_usd - t) >= _PNL_USD_HYSTERESIS:
                 _pnl_usd_armed[key] = True
@@ -704,6 +711,12 @@ def clear_pnl_alerts(position_id: int):
     dead_usd = [k for k in _pnl_usd_armed if k[0] == position_id]
     for k in dead_usd:
         del _pnl_usd_armed[k]
+    dead_cd = [k for k in _pnl_last_fire if k[0] == position_id]
+    for k in dead_cd:
+        del _pnl_last_fire[k]
+    dead_cd_usd = [k for k in _pnl_usd_last_fire if k[0] == position_id]
+    for k in dead_cd_usd:
+        del _pnl_usd_last_fire[k]
 
 
 # --- Fill notification batching ---

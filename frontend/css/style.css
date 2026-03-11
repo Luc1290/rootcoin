@@ -959,11 +959,12 @@ select {
 }
 .cockpit-sep {
     display: inline-block;
-    width: 1px;
-    height: 20px;
-    background: rgba(255, 255, 255, 0.25);
+    width: 2px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.3);
     vertical-align: middle;
-    margin: 0 4px;
+    margin: 0 6px;
+    border-radius: 1px;
 }
 .cockpit-position {
     display: flex;
