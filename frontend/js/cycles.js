@@ -96,7 +96,10 @@ const Cycles = (() => {
             </div>
             <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
                 <span class="tabular-nums">$${notional} | fees $${fees.toFixed(2)}</span>
-                <span class="tabular-nums">${formatDate(c.opened_at)}${c.closed_at ? ' → ' + formatDate(c.closed_at) : ''}</span>
+                <div class="flex items-center gap-2">
+                    <span class="tabular-nums">${formatDate(c.opened_at)}${c.closed_at ? ' → ' + formatDate(c.closed_at) : ''}</span>
+                    ${!isOpen ? `<button onclick="event.stopPropagation();Cycles.deleteCycle(${c.id})" class="text-gray-600 hover:text-red-400 transition-colors" title="Supprimer ce cycle">&times;</button>` : ''}
+                </div>
             </div>
         </div>`;
     }
@@ -172,5 +175,21 @@ const Cycles = (() => {
         }
     }
 
-    return { load, startPolling, stopPolling };
+    async function deleteCycle(id) {
+        if (!confirm('Supprimer ce cycle ?')) return;
+        try {
+            const resp = await fetch(`/api/cycles/${id}`, { method: 'DELETE' });
+            if (resp.ok) {
+                App.toast('Cycle supprimé', 'success');
+                load();
+            } else {
+                const err = await resp.json();
+                App.toast(err.detail || 'Erreur', 'error');
+            }
+        } catch (e) {
+            App.toast('Erreur réseau', 'error');
+        }
+    }
+
+    return { load, startPolling, stopPolling, deleteCycle };
 })();
