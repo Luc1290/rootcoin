@@ -156,12 +156,13 @@ const Charts = (() => {
         }
         if (entry._markerTime != null) {
             const winning = _isWinning(entry, currentPrice);
+            const isLong = !entry.entryInfo || entry.entryInfo.side !== 'SHORT';
             entry.series.setMarkers([{
                 time: entry._markerTime,
-                position: 'belowBar',
+                position: isLong ? 'belowBar' : 'aboveBar',
                 color: _pnlColor(winning, 1),
-                shape: 'arrowUp',
-                text: 'Entry',
+                shape: isLong ? 'arrowUp' : 'arrowDown',
+                size: 1,
             }]);
         }
     }

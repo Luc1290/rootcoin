@@ -244,8 +244,8 @@ const MiniTradeChart = (() => {
             time: closest.time,
             position: isLong ? 'belowBar' : 'aboveBar',
             color: isLong ? '#22c55e' : '#ef4444',
-            shape: 'circle',
-            size: 0,
+            shape: isLong ? 'arrowUp' : 'arrowDown',
+            size: 1,
         }]);
     }
 
