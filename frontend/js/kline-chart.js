@@ -40,6 +40,7 @@ const KlineChart = (() => {
     let _alertPriceLines = [];
     let _cachedPositions = null;
     let _pendingOrders = [];
+    let _orderScalePrices = [];
     let _cachedAnalysis = null;
     let _lastCandleTime = null;
     let _liveData = null; // cached kline arrays for live indicator updates
@@ -199,7 +200,7 @@ const KlineChart = (() => {
             height: height,
             layout: { background: { color: C.bg }, textColor: C.text, fontSize: 10 },
             grid: { vertLines: { color: C.grid }, horzLines: { color: C.grid } },
-            rightPriceScale: { borderColor: C.border, minimumWidth: 88, scaleMargins: { top: 0.02, bottom: 0.05 } },
+            rightPriceScale: { borderColor: C.border, minimumWidth: 88, scaleMargins: { top: 0.08, bottom: 0.05 } },
             timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, visible: showTimeScale, rightOffset: 5, minBarSpacing: _isMobile() ? 3 : 0.5, lockVisibleTimeRangeOnResize: true },
             crosshair: {
                 mode: LightweightCharts.CrosshairMode.Normal,
@@ -224,6 +225,15 @@ const KlineChart = (() => {
             wickUpColor: C.wickUp, wickDownColor: C.wickDown,
             lastValueVisible: false,
             priceLineVisible: false,
+            autoscaleInfoProvider: (original) => {
+                const res = original();
+                if (!res || !res.priceRange || !_orderScalePrices.length) return res;
+                for (const p of _orderScalePrices) {
+                    res.priceRange.minValue = Math.min(res.priceRange.minValue, p);
+                    res.priceRange.maxValue = Math.max(res.priceRange.maxValue, p);
+                }
+                return res;
+            },
         });
 
         // Floating % label next to crosshair
@@ -917,18 +927,22 @@ const KlineChart = (() => {
     function _clearOrderLines() {
         _orderPriceLines.forEach(l => _candleSeries.removePriceLine(l));
         _orderPriceLines = [];
+        _orderScalePrices = [];
     }
 
     function _renderOrderLines() {
         _clearOrderLines();
+        _orderScalePrices = [];
         if (!_candleSeries || !_activeIndicators.has('orders')) return;
 
         if (_cachedPositions) {
             const pos = _cachedPositions.find(p => p.symbol === _symbol);
             if (pos) {
                 if (pos.sl_price) {
+                    const p = parseFloat(pos.sl_price);
+                    _orderScalePrices.push(p);
                     _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: parseFloat(pos.sl_price),
+                        price: p,
                         color: C.sell,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,
@@ -937,8 +951,10 @@ const KlineChart = (() => {
                     }));
                 }
                 if (pos.tp_price) {
+                    const p = parseFloat(pos.tp_price);
+                    _orderScalePrices.push(p);
                     _orderPriceLines.push(_candleSeries.createPriceLine({
-                        price: parseFloat(pos.tp_price),
+                        price: p,
                         color: C.buy,
                         lineWidth: 1,
                         lineStyle: LightweightCharts.LineStyle.Dashed,

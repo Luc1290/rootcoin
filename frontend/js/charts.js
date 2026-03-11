@@ -296,7 +296,7 @@ const Charts = (() => {
         });
         ro.observe(el);
 
-        loadPortfolioData(720);
+        loadPortfolioData(168);
     }
 
     async function loadPortfolioData(hours) {
@@ -341,7 +341,7 @@ const Charts = (() => {
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
             rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af', minimumWidth: 50 },
-            timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            timeScale: { visible: true, fixLeftEdge: true, fixRightEdge: true, borderColor: 'transparent', timeVisible: true, secondsVisible: false },
             crosshair: {
                 horzLine: { color: 'rgba(255,255,255,0.15)', style: LightweightCharts.LineStyle.Dotted, labelBackgroundColor: '#3d3836' },
                 vertLine: { visible: false },
@@ -370,7 +370,7 @@ const Charts = (() => {
 
     async function loadCockpitData() {
         try {
-            const resp = await fetch('/api/journal/equity?hours=48');
+            const resp = await fetch('/api/journal/equity?hours=24');
             const data = await resp.json();
             if (!_cockpitSeries) return;
 
@@ -416,7 +416,7 @@ const Charts = (() => {
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
             rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af' },
-            timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            timeScale: { visible: true, fixLeftEdge: true, fixRightEdge: true, borderColor: 'transparent', timeVisible: true, secondsVisible: false },
             handleScroll: false,
             handleScale: false,
         });

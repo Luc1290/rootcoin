@@ -24,11 +24,19 @@ const MiniTradeChart = (() => {
             layout: { background: { color: 'transparent' }, textColor: '#9ca3af', fontSize: 10 },
             grid: { vertLines: { visible: false }, horzLines: { visible: false } },
             rightPriceScale: { borderColor: 'transparent', textColor: '#9ca3af', scaleMargins: { top: 0.1, bottom: 0.1 }, autoScale: true },
-            timeScale: { visible: false, fixLeftEdge: true, fixRightEdge: true },
+            timeScale: { visible: true, fixLeftEdge: true, fixRightEdge: true, borderColor: 'transparent', timeVisible: true, secondsVisible: false },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
             handleScroll: false,
             handleScale: false,
         });
+
+        // Store price levels so autoscale includes Entry/SL/TP lines
+        const priceLevels = {
+            entry: opts.entryPrice ? parseFloat(opts.entryPrice) : 0,
+            sl: opts.slPrice ? parseFloat(opts.slPrice) : 0,
+            tp: opts.tpPrice ? parseFloat(opts.tpPrice) : 0,
+            retest: opts.retestPrice ? parseFloat(opts.retestPrice) : 0,
+        };
 
         const series = chart.addAreaSeries({
             lineColor: '#3b82f6',
@@ -38,6 +46,17 @@ const MiniTradeChart = (() => {
             priceLineVisible: false,
             lastValueVisible: false,
             crosshairMarkerVisible: false,
+            autoscaleInfoProvider: (original) => {
+                const res = original();
+                if (!res || !res.priceRange) return res;
+                const prices = [priceLevels.entry, priceLevels.sl, priceLevels.tp, priceLevels.retest]
+                    .filter(p => p > 0 && isFinite(p));
+                for (const p of prices) {
+                    res.priceRange.minValue = Math.min(res.priceRange.minValue, p);
+                    res.priceRange.maxValue = Math.max(res.priceRange.maxValue, p);
+                }
+                return res;
+            },
         });
 
         const ro = new ResizeObserver(entries => {
@@ -66,6 +85,7 @@ const MiniTradeChart = (() => {
             timingEl: null,
             lastTs: 0,
             pendingMarker: null,
+            priceLevels,
         };
 
         if (opts.entryPrice) _addLine(entry, 'entryLine', opts.entryPrice, C.entry, LightweightCharts.LineStyle.Solid);
@@ -116,12 +136,15 @@ const MiniTradeChart = (() => {
         if (!entry) return;
 
         if (levels.entryPrice) {
+            entry.priceLevels.entry = parseFloat(levels.entryPrice);
             _updateOrAddLine(entry, 'entryLine', parseFloat(levels.entryPrice), C.entry, LightweightCharts.LineStyle.Solid);
         }
         if (levels.slPrice) {
+            entry.priceLevels.sl = parseFloat(levels.slPrice);
             _updateOrAddLine(entry, 'slLine', parseFloat(levels.slPrice), C.sl, LightweightCharts.LineStyle.Dashed);
         }
         if (levels.tpPrice) {
+            entry.priceLevels.tp = parseFloat(levels.tpPrice);
             _updateOrAddLine(entry, 'tpLine', parseFloat(levels.tpPrice), C.tp, LightweightCharts.LineStyle.Dashed);
         }
     }
@@ -202,6 +225,12 @@ const MiniTradeChart = (() => {
         const m = entry.pendingMarker;
         if (!m || !data.length) return;
 
+        // Clean up previous hidden marker series if any
+        if (entry.markerSeries) {
+            entry.chart.removeSeries(entry.markerSeries);
+            entry.markerSeries = null;
+        }
+
         // Find the closest data point to the marker timestamp
         let closest = data[0];
         let bestDiff = Math.abs(data[0].time - m.time);
@@ -210,41 +239,20 @@ const MiniTradeChart = (() => {
             if (diff < bestDiff) { bestDiff = diff; closest = d; }
         }
 
-        // Use entry price for marker position if available
-        const markerPrice = m.price || closest.value;
-        const isLong = m.direction === 'LONG';
+        // Skip marker if detection is way before visible data range
+        if (data.length > 1 && m.time < data[0].time) {
+            const range = data[data.length - 1].time - data[0].time;
+            if (data[0].time - m.time > range * 0.15) return;
+        }
 
-        // Create a hidden line series at the entry price so the marker sits at the right Y
-        if (m.price && entry.markerSeries) {
-            entry.chart.removeSeries(entry.markerSeries);
-            entry.markerSeries = null;
-        }
-        if (m.price) {
-            const ms = entry.chart.addLineSeries({
-                color: 'transparent',
-                lineWidth: 0,
-                lastValueVisible: false,
-                priceLineVisible: false,
-                crosshairMarkerVisible: false,
-            });
-            ms.setData([{ time: closest.time, value: markerPrice }]);
-            ms.setMarkers([{
-                time: closest.time,
-                position: isLong ? 'belowBar' : 'aboveBar',
-                color: isLong ? '#22c55e' : '#ef4444',
-                shape: isLong ? 'arrowUp' : 'arrowDown',
-                size: 1,
-            }]);
-            entry.markerSeries = ms;
-        } else {
-            entry.series.setMarkers([{
-                time: closest.time,
-                position: isLong ? 'belowBar' : 'aboveBar',
-                color: isLong ? '#22c55e' : '#ef4444',
-                shape: isLong ? 'arrowUp' : 'arrowDown',
-                size: 1,
-            }]);
-        }
+        const isLong = m.direction === 'LONG';
+        entry.series.setMarkers([{
+            time: closest.time,
+            position: isLong ? 'belowBar' : 'aboveBar',
+            color: isLong ? '#22c55e' : '#ef4444',
+            shape: isLong ? 'arrowUp' : 'arrowDown',
+            size: 0,
+        }]);
     }
 
     function destroy(chartId) {
@@ -293,12 +301,14 @@ const MiniTradeChart = (() => {
     function _addLine(entry, key, price, color, style) {
         const p = parseFloat(price);
         if (!p || !isFinite(p)) return;
+        const showAxis = key !== 'retestLine';
         entry[key] = entry.series.createPriceLine({
             price: p,
             color,
             lineWidth: 1,
             lineStyle: style,
-            axisLabelVisible: false,
+            axisLabelVisible: showAxis,
+            title: showAxis ? (_lineLabels[key] || '') : '',
         });
         if (entry.showLineLabels && key !== 'retestLine') _addLineLabel(entry, key, p, color);
     }
