@@ -1,6 +1,10 @@
 """Smart OCO Trailing — auto-place OCO on new positions using key levels,
 then trail SL+TP up as profit grows.
 
+Capital-aware: reads portfolio total from balance snapshots to:
+  - Cap max loss per trade to 2.5% of capital
+  - Lock 50% of gain once it exceeds 0.8% of capital (fills the breakeven dead zone)
+
 Settings (DB key -> default):
   trailing_enabled    -> "1"
   trailing_activation -> "0.5"   (gain % for first move -> breakeven)
@@ -18,10 +22,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from backend.core.database import async_session
-from backend.core.models import Setting
+from backend.core.models import Balance, Setting
 from backend.exchange.symbol_filters import round_price
 from backend.exchange.ws_manager import EVENT_PRICE_UPDATE
 from backend.market import market_analyzer
@@ -46,6 +50,11 @@ _TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key l
 _DEF_FALLBACK_SL_PCT = Decimal("1")  # fallback SL distance % when no key levels
 _DEF_MAX_SL_PCT = Decimal("1")      # max SL distance % from entry (cap losses)
 
+# Capital-aware trailing
+_CAP_MAX_RISK_PCT = Decimal("2.5")   # max loss per trade as % of capital
+_CAP_LOCK_THRESHOLD = Decimal("0.8") # lock gains above this % of capital
+_CAP_LOCK_RATIO = Decimal("0.5")     # lock this fraction of gain above threshold
+
 # Timings
 _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
@@ -62,6 +71,9 @@ _naked_since: dict[int, float] = {}  # pos_id -> monotonic timestamp
 _settings: dict = {}
 _running = False
 _monitor_task: asyncio.Task | None = None
+_capital_cache: Decimal = Decimal(0)
+_capital_cache_at: float = 0.0
+_CAPITAL_CACHE_TTL = 60.0
 
 
 # ── Settings ─────────────────────────────────────────────────
@@ -83,6 +95,28 @@ async def _load_settings():
         "min_rr": Decimal(s.get("trailing_min_rr", str(_DEF_MIN_RR))),
         "tighten_after": Decimal(s.get("trailing_tighten_after", str(_DEF_TIGHTEN_AFTER))),
     }
+
+
+async def _get_capital() -> Decimal:
+    global _capital_cache, _capital_cache_at
+    now = _time.monotonic()
+    if _capital_cache > 0 and now - _capital_cache_at < _CAPITAL_CACHE_TTL:
+        return _capital_cache
+    try:
+        async with async_session() as session:
+            latest_sub = select(func.max(Balance.snapshot_at)).scalar_subquery()
+            result = await session.execute(
+                select(func.sum(Balance.usd_value).label("total"))
+                .where(Balance.snapshot_at == latest_sub, Balance.usd_value.isnot(None))
+            )
+            total = result.scalar() or Decimal(0)
+        if total > 0:
+            _capital_cache = total
+            _capital_cache_at = now
+        return _capital_cache
+    except Exception:
+        log.error("trailing_get_capital_failed", exc_info=True)
+        return _capital_cache
 
 
 # ── Lifecycle ────────────────────────────────────────────────
@@ -286,6 +320,12 @@ async def _handle_new_position(pos_id: int):
     sl_price, tp_price = _ensure_sl_tp(
         pos.entry_price, pos.side, sl_price, tp_price, min_rr,
     )
+
+    # Capital-aware: cap SL distance to max risk % of capital
+    sl_price, tp_price = await _cap_sl_to_capital(
+        pos.entry_price, pos.side, pos.quantity, sl_price, tp_price, min_rr,
+    )
+
     rr = _compute_rr(pos.entry_price, sl_price, tp_price, pos.side)
 
     sl_price = round_price(pos.symbol, sl_price)
@@ -374,6 +414,11 @@ async def _recover_naked_position(pos_id: int):
 
         # Fallback: percentage-based SL/TP when key levels insufficient
         sl_price, tp_price = _ensure_sl_tp(entry, pos.side, sl_price, tp_price, min_rr)
+
+        # Capital-aware: cap SL distance to max risk % of capital
+        sl_price, tp_price = await _cap_sl_to_capital(
+            entry, pos.side, pos.quantity, sl_price, tp_price, min_rr,
+        )
 
         trailing_active = False
         last_step_pct = Decimal(0)
@@ -694,6 +739,27 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
                 new_sl_price = (entry * qty + entry_fees + buffer) / (qty * (1 - exit_fee_rate))
             else:
                 new_sl_price = (entry * qty - entry_fees - buffer) / (qty * (1 + exit_fee_rate))
+
+            # Capital-aware floor: lock portion of gain when significant vs capital
+            capital = await _get_capital()
+            if capital > 0:
+                if pos.side == "LONG":
+                    gain_usd = (current_price - entry) * qty
+                else:
+                    gain_usd = (entry - current_price) * qty
+                threshold = capital * _CAP_LOCK_THRESHOLD / 100
+                if gain_usd > threshold:
+                    lock_usd = threshold + (gain_usd - threshold) * _CAP_LOCK_RATIO
+                    if pos.side == "LONG":
+                        cap_sl = entry + lock_usd / qty
+                    else:
+                        cap_sl = entry - lock_usd / qty
+                    if (pos.side == "LONG" and cap_sl > new_sl_price) or \
+                       (pos.side == "SHORT" and cap_sl < new_sl_price):
+                        new_sl_price = cap_sl
+                        log.info("trailing_capital_lock",
+                                 symbol=pos.symbol, gain_usd=f"{gain_usd:.0f}",
+                                 lock_usd=f"{lock_usd:.0f}", capital=f"{capital:.0f}")
         else:
             # Trailing: snap to nearest key level with min offset% distance
             new_sl_price = _find_trailing_sl_level(
@@ -830,6 +896,33 @@ async def _retry_oco_or_fallback_sl(pos, tracking):
             log.warning("trailing_fallback_sl", symbol=pos.symbol, sl=str(sl))
         except Exception:
             log.error("trailing_fallback_sl_failed", symbol=pos.symbol, exc_info=True)
+
+
+# ── Capital-aware helpers ─────────────────────────────────────
+
+async def _cap_sl_to_capital(entry, side, qty, sl, tp, min_rr):
+    """Cap SL distance so max loss doesn't exceed _CAP_MAX_RISK_PCT of capital."""
+    capital = await _get_capital()
+    if capital <= 0:
+        return sl, tp
+    max_loss = capital * _CAP_MAX_RISK_PCT / 100
+    if side == "LONG":
+        loss_at_sl = (entry - sl) * qty
+        if loss_at_sl > max_loss:
+            sl = entry - max_loss / qty
+            risk = entry - sl
+            tp = max(tp, entry + risk * min_rr)
+            log.info("trailing_capital_cap_sl", max_loss=f"{max_loss:.0f}",
+                     capped_loss=f"{(entry - sl) * qty:.0f}")
+    else:
+        loss_at_sl = (sl - entry) * qty
+        if loss_at_sl > max_loss:
+            sl = entry + max_loss / qty
+            risk = sl - entry
+            tp = min(tp, entry - risk * min_rr)
+            log.info("trailing_capital_cap_sl", max_loss=f"{max_loss:.0f}",
+                     capped_loss=f"{(sl - entry) * qty:.0f}")
+    return sl, tp
 
 
 # ── Level helpers ────────────────────────────────────────────
