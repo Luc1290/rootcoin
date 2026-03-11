@@ -1339,7 +1339,9 @@ async def confirm_pending(pos_id: int, source: str = "user") -> bool:
                  sl=str(sl), tp=str(tp), source=source)
         return True
     except Exception:
-        log.error("trailing_pending_confirm_failed", symbol=pos.symbol, exc_info=True)
+        log.warning("trailing_pending_confirm_failed", symbol=pos.symbol, exc_info=True)
+        # Stale levels — recalculate from current price immediately
+        asyncio.create_task(_recover_naked_position(pos_id))
         return False
 
 
@@ -1450,8 +1452,10 @@ async def set_mode(mode: str):
                     tracking["oco_list_id"] = str(result.get("orderListId", ""))
                     log.info("trailing_mode_auto_placed", symbol=pos.symbol)
                 except Exception:
-                    log.error("trailing_mode_auto_place_failed",
-                              symbol=pos.symbol, exc_info=True)
+                    log.warning("trailing_mode_auto_place_failed",
+                                symbol=pos.symbol, exc_info=True)
+                    # Stale levels — recalculate from current price immediately
+                    asyncio.create_task(_recover_naked_position(pid))
 
     log.info("trailing_mode_changed", old=old_mode, new=mode)
 
