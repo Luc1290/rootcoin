@@ -118,7 +118,7 @@ const PositionCards = (() => {
         const badges = [];
         const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id;
 
-        if (p.sl_order_id || (p.oco_order_list_id && p.sl_price)) {
+        if (p.sl_price && (p.sl_order_id || p.oco_order_list_id || p.pending_confirmation)) {
             const price = parseFloat(p.sl_price);
             const rawDist = _distancePct(p.sl_price, p.entry_price);
             const dist = rawDist !== null ? (p.side === 'SHORT' ? -rawDist : +rawDist) : null;
@@ -131,7 +131,7 @@ const PositionCards = (() => {
             const slBg = slInProfit ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400';
             badges.push(`<span class="badge ${slBg} tabular-nums">${label}</span>`);
         }
-        if (p.tp_order_id || (p.oco_order_list_id && p.tp_price)) {
+        if (p.tp_price && (p.tp_order_id || p.oco_order_list_id || p.pending_confirmation)) {
             const price = parseFloat(p.tp_price);
             const rawDist = _distancePct(p.tp_price, p.entry_price);
             const dist = rawDist !== null ? (p.side === 'SHORT' ? -rawDist : +rawDist) : null;
@@ -157,6 +157,13 @@ const PositionCards = (() => {
             badges.push('<span class="badge bg-red-900/50 text-red-400 animate-pulse">NAKED</span>');
         } else if (!p.trailing) {
             badges.push('<span class="badge bg-red-900/30 text-red-500">NO TRAIL</span>');
+        }
+
+        // Pending confirmation badge + buttons (manual mode)
+        if (p.pending_confirmation) {
+            badges.push('<span class="badge bg-amber-900/50 text-amber-400 animate-pulse">EN ATTENTE</span>');
+            badges.push(`<button class="badge bg-emerald-900/40 text-emerald-400 cursor-pointer hover:bg-emerald-800/50 transition-colors" onclick="event.stopPropagation();Positions.confirmPending(${p.id})">\u2713</button>`);
+            badges.push(`<button class="badge bg-red-900/40 text-red-400 cursor-pointer hover:bg-red-800/50 transition-colors" onclick="event.stopPropagation();Positions.rejectPending(${p.id})">\u2717</button>`);
         }
 
         return badges.join('');

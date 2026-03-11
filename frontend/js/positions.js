@@ -811,13 +811,69 @@ const Positions = (() => {
     }
 
     // Real-time updates
-    WS.on('positions_snapshot', render);
+    WS.on('positions_snapshot', (data, msg) => {
+        render(data);
+        if (msg && msg.trailing_mode) {
+            _trailingMode = msg.trailing_mode;
+            _updateModeToggle();
+        }
+    });
     BalanceStore.onChange(() => {
         if (currentPositions.length) {
             const total = currentPositions.reduce((s, p) => s + (parseFloat(p.pnl_usd) || 0), 0);
             _updateToolbarPortfolio(total);
         }
     });
+
+    // --- Trailing manual mode ---
+
+    async function confirmPending(id) {
+        await apiPost(`/api/settings/trailing/pending/${id}/confirm`, {}, 'Ordres places');
+    }
+
+    async function rejectPending(id) {
+        await apiPost(`/api/settings/trailing/pending/${id}/reject`, {}, 'Proposition refusee');
+    }
+
+    let _trailingMode = 'auto';
+
+    async function loadTrailingMode() {
+        try {
+            const resp = await fetch('/api/settings/trailing/mode');
+            const data = await resp.json();
+            _trailingMode = data.mode || 'auto';
+            _updateModeToggle();
+        } catch (e) { /* ignore */ }
+    }
+
+    async function toggleTrailingMode() {
+        const newMode = _trailingMode === 'auto' ? 'manual' : 'auto';
+        try {
+            const resp = await fetch('/api/settings/trailing/mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: newMode }),
+            });
+            if (!resp.ok) throw new Error('Failed');
+            _trailingMode = newMode;
+            _updateModeToggle();
+            App.toast('success', newMode === 'manual' ? 'Mode manuel active' : 'Mode auto reactive');
+        } catch (e) {
+            App.toast('error', 'Erreur changement mode');
+        }
+    }
+
+    function _updateModeToggle() {
+        const btn = document.getElementById('trailing-mode-btn');
+        if (!btn) return;
+        if (_trailingMode === 'manual') {
+            btn.textContent = 'MANUEL';
+            btn.className = 'px-3 py-1.5 text-xs font-bold rounded cursor-pointer transition-colors bg-amber-600 text-white hover:bg-amber-500';
+        } else {
+            btn.textContent = 'AUTO';
+            btn.className = 'px-3 py-1.5 text-xs font-bold rounded cursor-pointer transition-colors bg-emerald-600 text-white hover:bg-emerald-500';
+        }
+    }
 
     // Initial load via REST
     async function load() {
@@ -828,6 +884,7 @@ const Positions = (() => {
         } catch (e) {
             console.error('Failed to load positions', e);
         }
+        loadTrailingMode();
     }
 
     // Sort change listener
@@ -850,5 +907,6 @@ const Positions = (() => {
         confirmCancelOrders, submitCancelOrders, selectClosePct,
         _setMode, _updateRisk, _updateRR, _fillLevel, getActiveSymbols,
         showOpen, submitOpen, _setSide, _setAccount, _setAmount, _previewOpen, _pickSymbol,
+        confirmPending, rejectPending, toggleTrailingMode,
     };
 })();

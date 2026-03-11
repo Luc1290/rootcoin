@@ -75,6 +75,15 @@ def pos_to_dict(pos, order_prices=None) -> dict:
     else:
         trailing_status = None
 
+    # Virtual levels from trailing manager (manual mode: no Binance orders)
+    if trail_info:
+        if not prices.get("sl_price") and trail_info.get("auto_sl"):
+            prices.setdefault("sl_price", trail_info["auto_sl"])
+        if not prices.get("tp_price") and trail_info.get("auto_tp"):
+            prices.setdefault("tp_price", trail_info["auto_tp"])
+
+    pending = trail_info.get("pending_confirmation", False) if trail_info else False
+
     return {
         "id": pos.id,
         "symbol": pos.symbol,
@@ -96,4 +105,5 @@ def pos_to_dict(pos, order_prices=None) -> dict:
         "duration": duration,
         "price_age": price_age,
         "trailing": trailing_status,
+        "pending_confirmation": pending,
     }

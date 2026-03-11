@@ -19,6 +19,8 @@ _notify_levels: bool = True
 _notify_pnl: bool = True
 _http: httpx.AsyncClient | None = None
 _summary_task: asyncio.Task | None = None
+_callback_task: asyncio.Task | None = None
+_callback_offset: int = 0
 SUMMARY_INTERVAL = 4 * 3600  # 4 heures
 
 SETTING_KEY = "telegram_enabled"
@@ -30,7 +32,7 @@ _CATEGORY_KEYS = {SETTING_POSITIONS, SETTING_ORDERS, SETTING_LEVELS, SETTING_PNL
 
 
 async def start():
-    global _enabled, _notify_positions, _notify_orders, _notify_levels, _notify_pnl, _http, _summary_task
+    global _enabled, _notify_positions, _notify_orders, _notify_levels, _notify_pnl, _http, _summary_task, _callback_task
     _http = httpx.AsyncClient(timeout=10)
     _enabled = await _load_setting(SETTING_KEY, is_configured())
     _notify_positions = await _load_setting(SETTING_POSITIONS, True)
@@ -38,14 +40,18 @@ async def start():
     _notify_levels = await _load_setting(SETTING_LEVELS, True)
     _notify_pnl = await _load_setting(SETTING_PNL, True)
     _summary_task = asyncio.create_task(_periodic_summary_loop())
+    _callback_task = asyncio.create_task(_callback_polling_loop())
     log.info("telegram_notifier_started", configured=is_configured(), enabled=_enabled)
 
 
 async def stop():
-    global _http, _summary_task
+    global _http, _summary_task, _callback_task
     if _summary_task:
         _summary_task.cancel()
         _summary_task = None
+    if _callback_task:
+        _callback_task.cancel()
+        _callback_task = None
     if _http:
         await _http.aclose()
         _http = None
@@ -593,6 +599,163 @@ async def notify_level_reached(
         f"Prix : {_fp(price)}  (niveau {_fp(lp)}, ecart {dist:.2f}%)"
     )
     await notify(msg)
+
+
+# ── Pending order notifications (manual mode) ────────────────
+
+
+async def notify_pending_oco(
+    symbol: str, side: str, tp_price, sl_price,
+    qty, entry_price, pos_id: int,
+) -> int | None:
+    """Send OCO proposal with inline Confirm/Reject buttons. Returns message_id."""
+    if not is_orders_enabled() or not _http:
+        return None
+    tp_dist = _pct_distance(side, entry_price, tp_price)
+    sl_dist = _pct_distance(side, entry_price, sl_price)
+    tp_pnl = _pnl_usd_str(side, entry_price, tp_price, qty)
+    sl_pnl = _pnl_usd_str(side, entry_price, sl_price, qty)
+    msg = (
+        f"\u23f3 <b>{symbol} {side} — OCO en attente</b>\n"
+        f"\n"
+        f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist} \u2192 {tp_pnl})\n"
+        f"\u26d4 SL : {_fp(sl_price)} ({sl_dist} \u2192 {sl_pnl})\n"
+        f"\n"
+        f"\u23f1 Timeout : 2 min"
+    )
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "\u2705 Confirmer", "callback_data": f"trailing_confirm:{pos_id}"},
+            {"text": "\u274c Refuser", "callback_data": f"trailing_reject:{pos_id}"},
+        ]]
+    }
+    return await _send_with_buttons(msg, keyboard)
+
+
+async def edit_pending_status(message_id: int | None, status: str, source: str = ""):
+    """Edit a pending notification to show final status."""
+    if not message_id or not _http:
+        return
+    if status == "confirmed":
+        icon = "\u2705"
+        label = "Confirme"
+        if source == "timeout":
+            label = "Confirme (timeout 2min)"
+        elif source == "mode_switch":
+            label = "Confirme (passage auto)"
+        elif source == "telegram":
+            label = "Confirme via Telegram"
+        else:
+            label = "Confirme via dashboard"
+    elif status == "rejected":
+        icon = "\u274c"
+        label = "Refuse"
+    else:
+        return
+
+    url = f"{_BASE_URL.format(token=settings.telegram_bot_token.get_secret_value())}/editMessageReplyMarkup"
+    try:
+        await _http.post(url, json={
+            "chat_id": settings.telegram_chat_id.get_secret_value(),
+            "message_id": message_id,
+            "reply_markup": {"inline_keyboard": [[
+                {"text": f"{icon} {label}", "callback_data": "noop"},
+            ]]},
+        })
+    except Exception:
+        log.warning("telegram_edit_pending_failed", message_id=message_id)
+
+
+async def _send_with_buttons(message: str, reply_markup: dict) -> int | None:
+    """Send message with inline keyboard, return message_id."""
+    if not is_enabled() or not _http:
+        return None
+    url = f"{_BASE_URL.format(token=settings.telegram_bot_token.get_secret_value())}/sendMessage"
+    try:
+        resp = await _http.post(url, json={
+            "chat_id": settings.telegram_chat_id.get_secret_value(),
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+            "reply_markup": reply_markup,
+        })
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("result", {}).get("message_id")
+        log.warning("telegram_send_buttons_failed", status=resp.status_code)
+    except Exception:
+        log.warning("telegram_send_buttons_error", exc_info=True)
+    return None
+
+
+# ── Callback polling (for inline button responses) ───────────
+
+
+async def _callback_polling_loop():
+    """Long-poll Telegram for callback queries from inline buttons."""
+    global _callback_offset
+    while True:
+        try:
+            if not is_configured() or not _http:
+                await asyncio.sleep(10)
+                continue
+            url = f"{_BASE_URL.format(token=settings.telegram_bot_token.get_secret_value())}/getUpdates"
+            resp = await _http.post(url, json={
+                "offset": _callback_offset,
+                "timeout": 30,
+                "allowed_updates": ["callback_query"],
+            }, timeout=40)
+            if resp.status_code != 200:
+                await asyncio.sleep(5)
+                continue
+            data = resp.json()
+            for update in data.get("result", []):
+                _callback_offset = update["update_id"] + 1
+                cb = update.get("callback_query")
+                if cb:
+                    asyncio.create_task(_handle_callback(cb))
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.warning("telegram_callback_poll_error", exc_info=True)
+            await asyncio.sleep(5)
+
+
+async def _handle_callback(callback_query: dict):
+    """Handle inline button press from Telegram."""
+    data = callback_query.get("data", "")
+    callback_id = callback_query.get("id")
+
+    if data.startswith("trailing_confirm:"):
+        pos_id = int(data.split(":")[1])
+        from backend.trading import trailing_manager
+        ok = await trailing_manager.confirm_pending(pos_id, source="telegram")
+        text = "\u2705 Ordres places !" if ok else "\u26a0\ufe0f Aucun ordre en attente"
+        await _answer_callback(callback_id, text)
+    elif data.startswith("trailing_reject:"):
+        pos_id = int(data.split(":")[1])
+        from backend.trading import trailing_manager
+        ok = await trailing_manager.reject_pending(pos_id)
+        text = "\u274c Refuse" if ok else "\u26a0\ufe0f Aucun ordre en attente"
+        await _answer_callback(callback_id, text)
+    elif data == "noop":
+        await _answer_callback(callback_id, "")
+    else:
+        await _answer_callback(callback_id, "")
+
+
+async def _answer_callback(callback_id: str, text: str):
+    """Acknowledge a callback query."""
+    if not _http:
+        return
+    url = f"{_BASE_URL.format(token=settings.telegram_bot_token.get_secret_value())}/answerCallbackQuery"
+    try:
+        await _http.post(url, json={
+            "callback_query_id": callback_id,
+            "text": text,
+        })
+    except Exception:
+        pass
 
 
 # ── Helpers ──────────────────────────────────────────────────

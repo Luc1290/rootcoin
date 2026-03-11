@@ -50,6 +50,35 @@ async def put_setting(key: str, body: dict):
     return {"key": key, "value": str(value)}
 
 
+@router.get("/trailing/mode")
+async def get_trailing_mode():
+    return {"mode": trailing_manager.get_mode()}
+
+
+@router.post("/trailing/mode")
+async def set_trailing_mode(body: dict):
+    mode = body.get("mode", "auto")
+    await trailing_manager.set_mode(mode)
+    return {"mode": trailing_manager.get_mode()}
+
+
+@router.get("/trailing/pending")
+async def get_trailing_pending():
+    return trailing_manager.get_pending()
+
+
+@router.post("/trailing/pending/{pos_id}/confirm")
+async def confirm_trailing_pending(pos_id: int):
+    ok = await trailing_manager.confirm_pending(pos_id, source="dashboard")
+    return {"ok": ok}
+
+
+@router.post("/trailing/pending/{pos_id}/reject")
+async def reject_trailing_pending(pos_id: int):
+    ok = await trailing_manager.reject_pending(pos_id)
+    return {"ok": ok}
+
+
 @router.post("/telegram/toggle")
 async def toggle_telegram(body: dict):
     enabled = body.get("enabled", False)

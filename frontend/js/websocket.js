@@ -47,7 +47,7 @@ const WS = (() => {
                 const msg = JSON.parse(e.data);
                 const type = msg.type;
                 if (handlers[type]) {
-                    handlers[type].forEach(fn => fn(msg.data));
+                    handlers[type].forEach(fn => fn(msg.data, msg));
                 }
             } catch (err) {
                 console.error('WS parse error', err);

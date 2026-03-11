@@ -6,7 +6,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend.services import health_collector, log_buffer, news_tracker
 from backend.market import market_analyzer, opportunity_detector
-from backend.trading import position_tracker
+from backend.trading import position_tracker, trailing_manager
 from backend.exchange import ws_manager
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
 from backend.exchange.ws_manager import (
@@ -99,6 +99,7 @@ async def _broadcast_positions():
             await _broadcast({
                 "type": "positions_snapshot",
                 "data": [pos_to_dict(p, order_prices) for p in positions],
+                "trailing_mode": trailing_manager.get_mode(),
             })
         except asyncio.CancelledError:
             break
