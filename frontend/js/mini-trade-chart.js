@@ -239,18 +239,12 @@ const MiniTradeChart = (() => {
             if (diff < bestDiff) { bestDiff = diff; closest = d; }
         }
 
-        // Skip marker if detection is way before visible data range
-        if (data.length > 1 && m.time < data[0].time) {
-            const range = data[data.length - 1].time - data[0].time;
-            if (data[0].time - m.time > range * 0.15) return;
-        }
-
         const isLong = m.direction === 'LONG';
         entry.series.setMarkers([{
             time: closest.time,
             position: isLong ? 'belowBar' : 'aboveBar',
             color: isLong ? '#22c55e' : '#ef4444',
-            shape: isLong ? 'arrowUp' : 'arrowDown',
+            shape: 'circle',
             size: 0,
         }]);
     }
