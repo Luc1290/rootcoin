@@ -169,16 +169,26 @@ const Charts = (() => {
 
     async function _loadPriceHistory(positionId, symbol) {
         try {
-            // Dynamic interval: 1m for <24h, 5m for longer positions
+            // Dynamic interval: scale up to ensure entry is visible
             let interval = '1m', limit = 1440;
             const info = _posCharts[positionId] && _posCharts[positionId].entryInfo;
             if (info && info.openedAt) {
                 const ageMin = (Date.now() - new Date(info.openedAt + 'Z').getTime()) / 60000;
-                if (ageMin > 1380) { // >23h → switch to 5m
+                if (ageMin > 40000) {
+                    interval = '4h';
+                    limit = Math.max(120, Math.min(1000, Math.ceil((ageMin / 240) * 1.5) + 50));
+                } else if (ageMin > 10000) {
+                    interval = '1h';
+                    limit = Math.max(120, Math.min(1000, Math.ceil((ageMin / 60) * 1.5) + 50));
+                } else if (ageMin > 3000) {
+                    interval = '15m';
+                    limit = Math.max(120, Math.min(1000, Math.ceil((ageMin / 15) * 1.5) + 50));
+                } else if (ageMin > 1380) {
                     interval = '5m';
-                    limit = Math.max(60, Math.min(1440, Math.ceil(ageMin / 5 * 1.2) + 12));
+                    limit = Math.max(120, Math.min(1440, Math.ceil((ageMin / 5) * 1.5) + 50));
                 } else {
-                    limit = Math.max(60, Math.min(1440, Math.ceil(ageMin * 1.2) + 30));
+                    // Min 240 points for 1m interval (4h context)
+                    limit = Math.max(240, Math.min(1440, Math.ceil(ageMin * 1.5) + 60));
                 }
             }
             const resp = await fetch(`/api/klines/${symbol}?interval=${interval}&limit=${limit}&indicators=`);

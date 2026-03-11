@@ -249,15 +249,25 @@ const Cockpit = (() => {
                 _posChartIds[p.id] = chartId;
                 if (p.opened_at) MiniTradeChart.addMarker(chartId, p.opened_at, p.side || 'LONG', p.entry_price);
 
-                // Dynamic interval: 1m for <24h positions, 5m for longer
+                // Dynamic interval: scale up to ensure entry is visible within ~1000 candles max
                 let interval = '1m', lookback = 1440;
                 if (p.opened_at) {
                     const ageMin = (Date.now() - new Date(p.opened_at).getTime()) / 60000;
-                    if (ageMin > 1380) { // >23h → switch to 5m
+                    if (ageMin > 40000) { // > 27 days
+                        interval = '4h';
+                        lookback = Math.max(120, Math.min(1000, Math.ceil((ageMin / 240) * 1.5) + 50));
+                    } else if (ageMin > 10000) { // > 7 days
+                        interval = '1h';
+                        lookback = Math.max(120, Math.min(1000, Math.ceil((ageMin / 60) * 1.5) + 50));
+                    } else if (ageMin > 3000) { // > 2 days
+                        interval = '15m';
+                        lookback = Math.max(120, Math.min(1000, Math.ceil((ageMin / 15) * 1.5) + 50));
+                    } else if (ageMin > 1380) { // > 23h
                         interval = '5m';
-                        lookback = Math.max(60, Math.min(1440, Math.ceil(ageMin / 5 * 1.2) + 12));
+                        lookback = Math.max(120, Math.min(1440, Math.ceil((ageMin / 5) * 1.5) + 50));
                     } else {
-                        lookback = Math.max(60, Math.min(1440, Math.ceil(ageMin * 1.2) + 30));
+                        // For new positions, show at least 240 mins (4h) of context to keep arrows small
+                        lookback = Math.max(240, Math.min(1440, Math.ceil(ageMin * 1.5) + 60));
                     }
                 }
                 MiniTradeChart.fetchAndRender(chartId, p.symbol, interval, lookback);
