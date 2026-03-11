@@ -1,44 +1,42 @@
-# RootCoin Frontend
+# RootCoin Frontend - Client-Side Intelligence
 
-The frontend is a lightweight Single Page Application (SPA) designed for speed, responsiveness, and minimal overhead. It is built using **Vanilla JavaScript**, **Tailwind CSS**, and served directly by the Python backend.
+The RootCoin frontend is a performance-optimized Single Page Application (SPA) built with **Vanilla JavaScript** (ES6+). It translates raw WebSocket events from the backend into a high-fidelity trading dashboard.
 
-## Core Architecture
+## Architecture Highlights
 
-### 1. SPA Navigation (`app.js`)
-The application uses a custom tab-based navigation system. Each tab (Cockpit, Positions, Analysis, Heatmap, etc.) is a separate section in the `index.html` file, controlled by `app.js`. This approach eliminates page reloads and provides a smooth, application-like experience.
+### 1. Granular DOM Updates
+Unlike React, which re-renders components, RootCoin uses direct DOM manipulation in `positions.js` and `app.js` to update only the specific HTML elements (like a price or PnL percentage) that have changed. This ensures smooth performance even on low-end mobile devices during periods of high market volatility.
 
-### 2. Real-time Communication (`websocket.js`)
-RootCoin relies on a persistent WebSocket connection to the backend. The frontend subscribes to real-time events, ensuring the UI (prices, positions, orders, and charts) is always up-to-date without manual refreshes. It includes automatic reconnection logic and heartbeat monitoring.
+### 2. The WebSocket Dispatcher (`websocket.js`)
+The frontend's communication engine is built around a robust WebSocket client:
+- **Event-to-Module Mapping**: It routes incoming JSON messages (e.g., `price_update`, `position_snapshot`, `balance_change`) to their respective UI modules (`positions.js`, `kline-chart.js`, `cockpit.js`).
+- **Heartbeat & Recovery**: It maintains a constant heartbeat with the backend and includes automatic reconnection logic to ensure the dashboard never stays disconnected.
 
-### 3. Modular UI Components (`js/`)
-The JavaScript logic is divided into functional modules, each responsible for a specific part of the dashboard:
-- **`positions.js` & `position-cards.js`**: Build and manage real-time position cards with PnL updates and action modals.
-- **`kline-chart.js`**: A full-featured interactive candlestick chart using **TradingView's Lightweight Charts**, supporting 14 technical indicators.
-- **`charts.js` & `mini-trade-chart.js`**: Small, efficient sparkline charts used for watchlists and opportunity lists.
-- **`journal.js`**: Visualizes trading performance using an equity curve, a PnL calendar (GitHub-style), and a detailed trade timeline.
-- **`health.js`**: Provides real-time status monitoring for all 19+ backend modules and system metrics.
+### 3. Financial Charting Suite
+The dashboard features three levels of charting integration:
+- **Main Chart (`kline-chart.js`)**: A professional-grade implementation using **TradingView's Lightweight Charts**. It supports real-time candle streaming, multiple timeframe switching, 14+ technical indicators, and interactive drawing (like price alerts).
+- **Mini Sparklines (`charts.js`)**: Lightweight area charts used in the watchlist and cockpit to provide a 24h visual context for any symbol.
+- **Trade Overlays (`cycles.js`)**: Automatically draws entry and exit markers, entry price lines, and "trade duration" shaded areas directly onto the main charts based on trade history data.
 
-## Styling & Design
+### 4. The Performance Journal (`journal.js`)
+This module aggregates data from several API endpoints to build a comprehensive view of trading history:
+- **Equity Curve**: A multi-series chart showing portfolio value vs. cumulative PnL.
+- **PnL Heatmap**: A GitHub-style calendar grid visualization of daily profits and losses.
+- **Trade Timeline**: A rich, chronologically ordered feed of every trade, complete with its market context at the time of entry.
 
-- **Tailwind CSS**: The entire UI is styled using **Tailwind CSS v3**. It uses a dark-first theme optimized for night trading.
-- **Mobile-First**: Every button, card, and chart is designed to be touch-friendly, making the dashboard fully usable on smartphones and tablets.
-- **PWA Ready**: Includes a `manifest.json` and high-quality icons, allowing it to be installed on Android or iOS home screens as a standalone application.
+## Styling & Theme
 
-## Build Process
+RootCoin uses **Tailwind CSS v3** with a carefully crafted dark theme tailored for trading:
+- **Responsive Breakpoints**: Custom grid layouts for mobile (sm), tablet (md), and desktop (lg).
+- **Interactive Feedback**: Modal windows for order confirmation, sliding sidebars for logs, and real-time toast notifications for trade fills.
+- **Color Coding**: Consistent usage of "Binance-standard" colors (Success/Green for Long/Profit, Danger/Red for Short/Loss) across the entire UI.
 
-The frontend uses a **no-build** approach for JavaScript, meaning all JS files are loaded directly by the browser as ES modules.
+## Technical Stack Detail
 
-For CSS, the only requirement is to compile Tailwind:
-```bash
-npx tailwindcss -i css/input.css -o css/output.css --minify
-```
-
-## Tech Stack
-
-| Component | Library |
-|-----------|---------|
-| **Core** | Vanilla JS (ES6+) |
-| **Styling** | Tailwind CSS v3 |
-| **Charts** | Lightweight Charts (TradingView) |
-| **Icons** | Custom SVGs |
-| **Data Flow** | WebSocket + REST API |
+| Component | Library / Tech | Purpose |
+|-----------|----------------|---------|
+| **Core UI** | Vanilla JS / DOM API | High-performance, no-build SPA |
+| **Styling** | Tailwind CSS v3 | Rapid, utility-first styling |
+| **Charting** | Lightweight Charts 4.2.2 | Financial data visualization |
+| **Icons** | Inline SVG | Scalable, no external asset dependencies |
+| **Storage** | Browser LocalStorage | Persisting tab selection and chart preferences |
