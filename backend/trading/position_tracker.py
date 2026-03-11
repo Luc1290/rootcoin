@@ -17,7 +17,7 @@ from backend.exchange.ws_manager import EVENT_EXECUTION_REPORT, EVENT_LIST_STATU
 
 log = structlog.get_logger()
 
-DUST_THRESHOLD_USD = Decimal("5")
+DUST_THRESHOLD_USD = Decimal("0.5")
 MIN_MARGIN_LONG_USD = Decimal("50")
 SHORT_CLOSE_GRACE = 300
 RESIDUAL_SELL_THRESHOLD_USD = Decimal("15")
