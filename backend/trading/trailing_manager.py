@@ -38,12 +38,13 @@ _DEF_STEP = Decimal("0.15")
 _DEF_OFFSET = Decimal("0.5")
 _DEF_TP_GUARD = Decimal("0.3")
 _DEF_MIN_RR = Decimal("1.5")
-_MAX_SL_GAP = Decimal("0.7")  # max unprotected gain % before forcing SL advance
+_MAX_SL_GAP = Decimal("0.5")  # max unprotected gain % before forcing SL advance
 _DEF_TIGHTEN_AFTER = Decimal("1")  # hours before tightening stale/ranging positions
 _TIGHTEN_INTERVAL = 1800.0  # 30min between tighten re-evaluations
 _TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
 _TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key levels
 _DEF_FALLBACK_SL_PCT = Decimal("1")  # fallback SL distance % when no key levels
+_DEF_MAX_SL_PCT = Decimal("1")      # max SL distance % from entry (cap losses)
 
 # Timings
 _POLL_INTERVAL = 3.0
@@ -266,6 +267,8 @@ async def _handle_new_position(pos_id: int):
         return
 
     analysis = market_analyzer.get_analysis(pos.symbol)
+    if not analysis:
+        analysis = await market_analyzer.ensure_analysis(pos.symbol)
     key_levels = analysis.get("key_levels", []) if analysis else []
 
     sl_price, tp_price = _find_initial_sl_tp(key_levels, pos.entry_price, pos.side) if key_levels else (None, None)
@@ -327,6 +330,8 @@ async def _recover_naked_position(pos_id: int):
         gain_pct = (entry - current) / entry * 100
 
     analysis = market_analyzer.get_analysis(pos.symbol)
+    if not analysis:
+        analysis = await market_analyzer.ensure_analysis(pos.symbol)
     key_levels = analysis.get("key_levels", []) if analysis else []
 
     activation = _settings.get("activation", _DEF_ACTIVATION)
@@ -877,6 +882,7 @@ def _find_initial_sl_tp(key_levels, entry_price, side):
         return None, None
 
     min_dist = Decimal("0.8")  # skip levels < 0.8% away (covers fees + noise)
+    max_dist = _DEF_MAX_SL_PCT  # cap SL distance to limit losses
 
     if side == "LONG":
         sl = None
@@ -886,6 +892,11 @@ def _find_initial_sl_tp(key_levels, entry_price, side):
                 if dist >= min_dist:
                     sl = p
                     break
+        # Cap SL if level is too far
+        if sl:
+            dist = (entry_price - sl) / entry_price * 100
+            if dist > max_dist:
+                sl = entry_price * (1 - max_dist / 100)
         tp = None
         for p in prices:
             if p > entry_price:
@@ -901,6 +912,11 @@ def _find_initial_sl_tp(key_levels, entry_price, side):
                 if dist >= min_dist:
                     sl = p
                     break
+        # Cap SL if level is too far
+        if sl:
+            dist = (sl - entry_price) / entry_price * 100
+            if dist > max_dist:
+                sl = entry_price * (1 + max_dist / 100)
         tp = None
         for p in reversed(prices):
             if p < entry_price:

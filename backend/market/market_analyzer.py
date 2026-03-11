@@ -42,6 +42,25 @@ def get_analysis(symbol: str) -> dict | None:
     return _analysis_cache.get(symbol)
 
 
+async def ensure_analysis(symbol: str, timeout: float = 30.0) -> dict | None:
+    """Compute analysis on-demand if not cached. Returns cached or freshly computed."""
+    cached = _analysis_cache.get(symbol)
+    if cached:
+        return cached
+    try:
+        async with asyncio.timeout(timeout):
+            analysis = await _analyze_symbol(symbol)
+            if analysis:
+                _analysis_cache[symbol] = analysis
+            return analysis
+    except (TimeoutError, asyncio.TimeoutError):
+        log.warning("ensure_analysis_timeout", symbol=symbol, timeout=timeout)
+        return None
+    except Exception:
+        log.warning("ensure_analysis_failed", symbol=symbol, exc_info=True)
+        return None
+
+
 def get_all_analyses() -> dict:
     macro = macro_tracker.get_macro_data()
     whales = whale_tracker.get_whale_alerts()
