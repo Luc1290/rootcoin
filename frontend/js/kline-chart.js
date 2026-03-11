@@ -41,6 +41,7 @@ const KlineChart = (() => {
     let _cachedPositions = null;
     let _pendingOrders = [];
     let _orderScalePrices = [];
+    let _orderScaleForce = true;
     let _cachedAnalysis = null;
     let _lastCandleTime = null;
     let _liveData = null; // cached kline arrays for live indicator updates
@@ -227,7 +228,7 @@ const KlineChart = (() => {
             priceLineVisible: false,
             autoscaleInfoProvider: (original) => {
                 const res = original();
-                if (!res || !res.priceRange || !_orderScalePrices.length) return res;
+                if (!res || !res.priceRange || !_orderScaleForce || !_orderScalePrices.length) return res;
                 for (const p of _orderScalePrices) {
                     res.priceRange.minValue = Math.min(res.priceRange.minValue, p);
                     res.priceRange.maxValue = Math.max(res.priceRange.maxValue, p);
@@ -283,6 +284,7 @@ const KlineChart = (() => {
         });
 
         _mainChart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+            _orderScaleForce = false;
         });
 
         _maSeries = {};
@@ -556,6 +558,7 @@ const KlineChart = (() => {
     async function loadChart() {
         if (_loading) return;
         _loading = true;
+        _orderScaleForce = true;
         // Invalidate active cycles cache so position overlays refresh
         if (_cyclesCache.data?.some(c => c.is_active)) {
             _cyclesCache = { symbol: null, data: null };

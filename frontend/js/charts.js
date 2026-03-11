@@ -181,7 +181,8 @@ const Charts = (() => {
 
     function _updateEntryVisuals(entry, currentPrice) {
         if (entry.priceLine) {
-            entry.priceLine.applyOptions({ color: 'rgba(59, 130, 246, 0.5)' });
+            const winning = _isWinning(entry, currentPrice);
+            entry.priceLine.applyOptions({ color: _pnlColor(winning, 0.5) });
         }
         if (entry._markerTime != null) {
             const winning = _isWinning(entry, currentPrice);

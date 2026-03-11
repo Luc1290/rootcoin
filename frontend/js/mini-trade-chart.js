@@ -122,6 +122,10 @@ const MiniTradeChart = (() => {
 
         entry.chart.timeScale().fitContent();
 
+        // Color entry line + marker based on current PnL
+        const lastPrice = data[data.length - 1].value;
+        _updatePnlVisuals(entry, lastPrice);
+
         // Reposition line labels now that data + scale exist
         requestAnimationFrame(() => {
             if (entry.entryLine) _positionLineLabel(entry, 'entryLine', entry.entryLine.options().price);
@@ -160,7 +164,32 @@ const MiniTradeChart = (() => {
         try {
             entry.series.update({ time: t, value: v });
             if (t > entry.lastTs) entry.lastTs = t;
+            _updatePnlVisuals(entry, v);
         } catch (_) { /* chart not ready */ }
+    }
+
+    function _updatePnlVisuals(entry, currentPrice) {
+        const ep = entry.priceLevels && entry.priceLevels.entry;
+        if (!ep || !entry.side) return;
+        const winning = entry.side === 'LONG' ? currentPrice >= ep : currentPrice <= ep;
+        const color = winning ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)';
+
+        if (entry.entryLine) {
+            entry.entryLine.applyOptions({ color });
+        }
+
+        if (entry.pendingMarker) {
+            const m = entry.pendingMarker;
+            const isLong = m.direction === 'LONG';
+            const markerColor = winning ? '#22c55e' : '#ef4444';
+            const markers = entry.series.markers ? entry.series.markers() : [];
+            if (markers.length) {
+                entry.series.setMarkers([{
+                    ...markers[0],
+                    color: markerColor,
+                }]);
+            }
+        }
     }
 
     function addLabel(chartId, direction, strength) {
@@ -222,6 +251,7 @@ const MiniTradeChart = (() => {
         else if (ts > 1e12) ts = Math.floor(ts / 1000);
         const p = price ? parseFloat(price) : null;
         entry.pendingMarker = { time: ts, direction: direction || 'LONG', price: p, size: size };
+        entry.side = direction || 'LONG';
     }
 
     function _applyMarker(entry, data) {
