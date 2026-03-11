@@ -172,9 +172,7 @@ const MiniTradeChart = (() => {
         const winning = entry._pnlWinning;
         const color = winning ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)';
 
-        if (entry.entryLine) {
-            entry.entryLine.applyOptions({ color });
-        }
+        // Keep entry line blue — don't recolor with PnL
 
         if (entry.pendingMarker) {
             const markerColor = winning ? '#22c55e' : '#ef4444';
