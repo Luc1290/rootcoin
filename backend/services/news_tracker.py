@@ -115,9 +115,12 @@ async def _fetch_all():
     if en_items:
         await _translate_items(en_items)
 
-    _news_cache = all_items
-    _fetched_at = datetime.now(timezone.utc)
-    log.debug("news_refreshed", count=len(all_items))
+    if all_items:
+        _news_cache = all_items
+        _fetched_at = datetime.now(timezone.utc)
+        log.debug("news_refreshed", count=len(all_items))
+    else:
+        log.warning("news_fetch_empty", keeping_cached=len(_news_cache))
 
 
 async def _fetch_feed(session: aiohttp.ClientSession, name: str, feed: dict) -> list[dict]:

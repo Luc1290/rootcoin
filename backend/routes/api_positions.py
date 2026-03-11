@@ -294,7 +294,18 @@ async def open_position(body: OpenBody):
         else:
             kwargs["type"] = "MARKET"
 
-        result = await binance_client.place_margin_order(**kwargs)
+        try:
+            result = await binance_client.place_margin_order(**kwargs)
+        except BinanceAPIException as e:
+            if e.code == -3006:
+                log.warning("margin_buy_exceeded_fallback",
+                            symbol=symbol, side=order_side,
+                            msg="Retrying with NO_SIDE_EFFECT")
+                kwargs["sideEffectType"] = "NO_SIDE_EFFECT"
+                kwargs["newClientOrderId"] = f"rootcoin_open_{int(time.time() * 1000)}"
+                result = await binance_client.place_margin_order(**kwargs)
+            else:
+                raise
 
         return {
             "status": "ok",

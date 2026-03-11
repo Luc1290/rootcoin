@@ -131,7 +131,7 @@ const App = (() => {
         if (tab === 'trades') { Cycles.load(); Cycles.startPolling(); } else { Cycles.stopPolling(); }
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
-        if (tab === 'chart') { KlineChart.init(); KlineChart.selectActivePosition().then(() => KlineChart.loadChart()); Alerts.init(); Alerts.load(); }
+        if (tab === 'chart') { KlineChart.init(); KlineChart.selectActivePosition().then(() => KlineChart.loadChart()); Alerts.init(); Alerts.load(); } else { KlineChart.resetAutoSelect(); }
         if (tab === 'analysis') { Analysis.load(); }
         if (tab === 'heatmap') { Heatmap.init(); Heatmap.load(); Heatmap.startPolling(); } else { Heatmap.stopPolling(); }
         if (tab === 'journal') { Journal.init(); Journal.load(); }

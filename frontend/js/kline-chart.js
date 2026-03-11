@@ -103,6 +103,7 @@ const KlineChart = (() => {
         const sel = document.getElementById('chart-symbol');
         if (sel) sel.addEventListener('change', () => {
             _symbol = sel.value;
+            _userSelected = true;
             loadChart();
         });
 
@@ -132,12 +133,14 @@ const KlineChart = (() => {
         } catch (e) { /* ignore */ }
     }
 
+    let _userSelected = false; // true once user manually picked a symbol or first auto-select done
+
     async function selectActivePosition() {
+        if (_userSelected) return; // don't override user's manual choice
         try {
             const resp = await fetch('/api/positions');
             const positions = await resp.json();
             if (positions && positions.length > 0) {
-                // Sort by most recently opened so the latest position is selected
                 positions.sort((a, b) => (b.opened_at || '').localeCompare(a.opened_at || ''));
                 const preferred = positions[0].symbol;
                 if (_symbol !== preferred) {
@@ -146,6 +149,7 @@ const KlineChart = (() => {
                     if (sel) sel.value = _symbol;
                 }
             }
+            _userSelected = true; // first auto-select done, don't override again
             _cachedPositions = positions;
         } catch (e) { /* ignore */ }
     }
@@ -153,7 +157,8 @@ const KlineChart = (() => {
     function _updateSymbolSelect(symbols) {
         const sel = document.getElementById('chart-symbol');
         if (!sel) return;
-        const unique = [...new Set(symbols)];
+        // Always keep the current symbol in the list so user selection isn't lost
+        const unique = [...new Set([_symbol, ...symbols])];
         sel.innerHTML = unique.map(s =>
             `<option value="${s}" ${s === _symbol ? 'selected' : ''}>${s}</option>`
         ).join('');
@@ -1252,7 +1257,10 @@ const KlineChart = (() => {
         if (!data) return;
         const base = ['BTCUSDC', 'ETHUSDC', 'BNBUSDC'];
         const posSymbols = data.map(p => p.symbol);
-        _updateSymbolSelect([...new Set([...base, ...posSymbols])]);
+        // Preserve existing symbols in the dropdown so closing a position doesn't remove options
+        const sel = document.getElementById('chart-symbol');
+        const existing = sel ? [...sel.options].map(o => o.value) : [];
+        _updateSymbolSelect([...new Set([...base, ...existing, ...posSymbols])]);
         // Detect any change in active positions for current symbol → invalidate cycles cache
         const prev = _cachedPositions;
         const prevIds = prev ? prev.filter(p => p.symbol === _symbol && p.is_active).map(p => p.id).join(',') : '';
@@ -1312,5 +1320,7 @@ const KlineChart = (() => {
         }
     });
 
-    return { init, loadChart, selectActivePosition, renderAlertLines: _renderAlertLines };
+    function resetAutoSelect() { _userSelected = false; }
+
+    return { init, loadChart, selectActivePosition, resetAutoSelect, renderAlertLines: _renderAlertLines };
 })();

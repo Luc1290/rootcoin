@@ -183,7 +183,7 @@ const Cockpit = (() => {
             if (entryPrice) {
                 const dot = '<span style="color:#555;margin:0 2px">&middot;</span>';
                 const parts = [];
-                parts.push(`<span style="color:#c9956b">Entry <b>${Utils.fmtPriceCompact(entryPrice)}</b></span>`);
+                parts.push(`<span style="color:#3b82f6">Entry <b>${Utils.fmtPriceCompact(entryPrice)}</b></span>`);
                 if (slPrice) {
                     const rawDist = ((slPrice - entryPrice) / entryPrice * 100);
                     const dist = p.side === 'SHORT' ? -rawDist : rawDist;
@@ -591,7 +591,9 @@ const Cockpit = (() => {
             const pnl = c.realized_pnl_pct ? parseFloat(c.realized_pnl_pct) : null;
             const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
             const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
-            const pnlUsd = c.realized_pnl ? parseFloat(c.realized_pnl) : null;
+            const pnlUsd = c.realized_pnl != null && c.total_fees_usd != null
+                ? parseFloat(c.realized_pnl) - parseFloat(c.total_fees_usd)
+                : (c.realized_pnl != null ? parseFloat(c.realized_pnl) : null);
             const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : ''}$${Math.abs(pnlUsd).toFixed(0)}` : '';
             const dirIcon = c.side === 'LONG' ? '&#x2191;' : '&#x2193;';
             const dirClass = c.side === 'LONG' ? 'pnl-positive' : 'pnl-negative';

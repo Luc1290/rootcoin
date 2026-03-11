@@ -139,7 +139,7 @@ async def _notify_residual(symbol: str, quantity: Decimal, price: Decimal, marke
     msg = (
         f"💤 Résidu détecté : {quantity} {symbol.replace('USDC', '')} "
         f"(~${usd_value:.2f}) sur {market_type}\n"
-        f"Position non ouverte (< ${RESIDUAL_THRESHOLD_USD})"
+        f"Position non ouverte (&lt; ${RESIDUAL_THRESHOLD_USD})"
     )
     if telegram_notifier.is_positions_enabled():
         asyncio.create_task(telegram_notifier.notify(msg))

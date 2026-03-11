@@ -376,7 +376,7 @@ const Analysis = (() => {
         const wrColor = wr >= 55 ? 'pnl-positive' : wr >= 45 ? 'text-yellow-400' : 'pnl-negative';
         const pnlClass = totalPnl >= 0 ? 'pnl-positive' : 'pnl-negative';
 
-        const rows = history.slice(0, 8).map(h => {
+        const rows = history.map(h => {
             const sym = h.symbol.replace('USDC', '').replace('USDT', '');
             const isWin = h.outcome === 'tp1_hit' || h.outcome === 'tp2_hit';
             const isLoss = h.outcome === 'sl_hit';
@@ -429,7 +429,7 @@ const Analysis = (() => {
                 <span>Conf W ${confW}% / L ${confL}%</span>
             </div>
             ${calibration}
-            <div style="max-height:290px;overflow-y:auto">${rows}</div>
+            <div style="max-height:150px;overflow-y:auto">${rows}</div>
         </div>`;
     }
 
@@ -515,7 +515,7 @@ const Analysis = (() => {
                 <span class="font-bold ${totalPnlClass}">${totalUsdStr}</span>
                 <span class="text-gray-500" style="font-size:9px">moy W <span class="pnl-positive">+${avgWin.toFixed(2)}%</span> L <span class="pnl-negative">${avgLoss.toFixed(2)}%</span></span>
             </div>
-            <div style="max-height:290px;overflow-y:auto">${rows}</div>
+            <div style="max-height:150px;overflow-y:auto">${rows}</div>
         </div>`;
     }
 

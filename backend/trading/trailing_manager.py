@@ -9,7 +9,7 @@ Settings (DB key -> default):
   trailing_offset     -> "0.5"   (SL = gain - offset%)
   trailing_tp_guard   -> "0.3"   (% proximity to TP -> force move, works pre-activation)
   trailing_min_rr     -> "1.5"   (min R:R for initial OCO)
-  trailing_tighten_after -> "1"  (hours before tightening stale/ranging positions, 0=disabled)
+  trailing_tighten_after -> "1"  (hours before tightening stale/ranging OR trailing-stalled positions, 0=disabled)
 """
 
 import asyncio
@@ -42,6 +42,7 @@ _MAX_SL_GAP = Decimal("0.7")  # max unprotected gain % before forcing SL advance
 _DEF_TIGHTEN_AFTER = Decimal("1")  # hours before tightening stale/ranging positions
 _TIGHTEN_INTERVAL = 1800.0  # 30min between tighten re-evaluations
 _TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
+_TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key levels
 
 # Timings
 _POLL_INTERVAL = 3.0
@@ -216,18 +217,25 @@ async def _position_monitor_loop():
                     _naked_since.pop(pid)
                     asyncio.create_task(_recover_naked_position(pid))
 
-            # Tighten stale/ranging positions (below activation, open for a long time)
+            # Tighten stale/ranging positions OR trailing-stalled positions
             tighten_hours = float(_settings.get("tighten_after", _DEF_TIGHTEN_AFTER))
             if tighten_hours > 0:
                 tighten_secs = tighten_hours * 3600
                 now = _time.monotonic()
                 for pid, tracking in list(_tracked.items()):
-                    if tracking.get("trailing_active") or tracking.get("manual_override"):
+                    if tracking.get("manual_override"):
                         continue
                     if tracking.get("moving"):
                         continue
-                    initial_at = tracking.get("initial_at", now)
-                    if now - initial_at < tighten_secs:
+                    # Stall reference: last trail move for trailing-active,
+                    # initial OCO placement for pre-activation
+                    if tracking.get("trailing_active"):
+                        ref_time = tracking.get("last_move_at", 0.0)
+                        if not ref_time:
+                            continue
+                    else:
+                        ref_time = tracking.get("initial_at", now)
+                    if now - ref_time < tighten_secs:
                         continue
                     last_tighten = tracking.get("last_tighten_at", 0.0)
                     if last_tighten and now - last_tighten < _TIGHTEN_INTERVAL:
@@ -401,33 +409,67 @@ async def _recover_naked_position(pos_id: int):
 
 
 async def _tighten_stale_position(pos, tracking):
-    """Re-evaluate SL/TP for ranging positions using current key levels."""
+    """Re-evaluate SL/TP for stale positions — ranging or trailing-stalled."""
     tracking["last_tighten_at"] = _time.monotonic()
     tracking["moving"] = True
     try:
-        analysis = market_analyzer.get_analysis(pos.symbol)
-        if not analysis:
-            return
-        key_levels = analysis.get("key_levels", [])
-        if not key_levels:
-            return
-
         current = pos.current_price
         if not current or current <= 0:
             return
 
         entry = pos.entry_price
+        old_sl = tracking["auto_sl"]
+        old_tp = tracking["auto_tp"]
+        is_stalled = tracking.get("trailing_active", False)
 
-        # Find levels from current price perspective (not entry)
-        new_sl, new_tp = _find_initial_sl_tp(key_levels, current, pos.side)
-        if not new_sl or not new_tp:
+        analysis = market_analyzer.get_analysis(pos.symbol)
+        key_levels = analysis.get("key_levels", []) if analysis else []
+
+        new_sl = None
+        new_tp = None
+
+        if key_levels:
+            if is_stalled:
+                # Trailing-stalled: snap SL to nearest level, TP to next resistance
+                offset = _settings.get("offset", _DEF_OFFSET)
+                new_sl = _find_trailing_sl_level(
+                    key_levels, current, pos.side, min_dist_pct=offset,
+                )
+                new_tp = _find_next_resistance(key_levels, current, pos.side)
+            else:
+                # Pre-activation ranging: find levels around current price
+                new_sl, new_tp = _find_initial_sl_tp(key_levels, current, pos.side)
+
+        # Fallback: percentage-based gap reduction (no key levels or no match)
+        if not new_sl:
+            if pos.side == "LONG":
+                gap = current - old_sl
+            else:
+                gap = old_sl - current
+            if gap > 0:
+                reduction = gap * _TIGHTEN_GAP_REDUCTION
+                new_sl = old_sl + reduction if pos.side == "LONG" else old_sl - reduction
+
+        if not new_tp:
+            if pos.side == "LONG":
+                gap = old_tp - current
+            else:
+                gap = current - old_tp
+            if gap > 0:
+                reduction = gap * _TIGHTEN_GAP_REDUCTION
+                new_tp = old_tp - reduction if pos.side == "LONG" else old_tp + reduction
+
+        if not new_sl and not new_tp:
             return
+
+        new_sl = new_sl or old_sl
+        new_tp = new_tp or old_tp
 
         # TP must be in profit territory
         if pos.side == "LONG" and new_tp <= entry:
-            new_tp = tracking["auto_tp"]
+            new_tp = old_tp
         if pos.side == "SHORT" and new_tp >= entry:
-            new_tp = tracking["auto_tp"]
+            new_tp = old_tp
 
         # Check R:R from entry (relaxed threshold)
         rr = _compute_rr(entry, new_sl, new_tp, pos.side)
@@ -435,9 +477,6 @@ async def _tighten_stale_position(pos, tracking):
             return
 
         # Only tighten — never widen
-        old_sl = tracking["auto_sl"]
-        old_tp = tracking["auto_tp"]
-
         if pos.side == "LONG":
             sl_tighter = new_sl > old_sl
             tp_tighter = new_tp < old_tp
@@ -474,14 +513,18 @@ async def _tighten_stale_position(pos, tracking):
             gain_pct = (entry - current) / entry * 100
         sign = "+" if gain_pct >= 0 else ""
 
+        reason = "stagnation" if is_stalled else "range"
         log.info("trailing_tightened", symbol=pos.symbol,
                  old_sl=str(old_sl), new_sl=str(final_sl),
-                 old_tp=str(old_tp), new_tp=str(final_tp))
+                 old_tp=str(old_tp), new_tp=str(final_tp),
+                 reason=reason)
 
         sl_changed = f"SL : {old_sl} \u2192 {final_sl}" if sl_tighter else f"SL : {final_sl} (inchang\u00e9)"
         tp_changed = f"TP : {old_tp} \u2192 {final_tp}" if tp_tighter else f"TP : {final_tp} (inchang\u00e9)"
+        emoji = "\u23f3" if is_stalled else "\U0001f527"
+        label = "trail en pause" if is_stalled else "range"
         asyncio.create_task(telegram_notifier.notify(
-            f"\U0001f527 <b>{pos.symbol} {pos.side}</b> \u2014 SL/TP resserr\u00e9s (range)\n"
+            f"{emoji} <b>{pos.symbol} {pos.side}</b> \u2014 SL/TP resserr\u00e9s ({label})\n"
             f"{sl_changed}\n{tp_changed}\n"
             f"Gain : {sign}{gain_pct:.2f}%\n"
             f"Le trailing reprendra si le prix progresse."
@@ -681,11 +724,23 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
                 return
             new_sl_price = current_auto_sl
 
-        # --- Compute TP from key levels ---
+        # --- Compute TP ---
         new_tp = tracking["auto_tp"]
         candidate = _find_next_resistance(key_levels, current_price, pos.side)
         if candidate:
             new_tp = candidate
+        else:
+            # No resistance found: push TP to maintain R:R from current price
+            risk = abs(current_price - new_sl_price)
+            min_rr = _settings.get("min_rr", _DEF_MIN_RR)
+            if pos.side == "LONG":
+                fallback_tp = current_price + risk * min_rr
+            else:
+                fallback_tp = current_price - risk * min_rr
+            # Only push forward, never backward
+            if (pos.side == "LONG" and fallback_tp > new_tp) or \
+               (pos.side == "SHORT" and fallback_tp < new_tp):
+                new_tp = fallback_tp
 
         # Re-fetch position for fresh state
         pos = _get_pos(pos.id)

@@ -156,7 +156,8 @@ const MiniTradeChart = (() => {
         const entry = _charts[chartId];
         if (!entry) return;
 
-        const t = typeof candle.time === 'number' ? candle.time : Math.floor(new Date(candle.time + 'Z').getTime() / 1000);
+        let t = typeof candle.time === 'number' ? candle.time : Math.floor(new Date(candle.time + 'Z').getTime() / 1000);
+        if (t > 1e10) t = Math.floor(t / 1000); // ms → s
         const v = parseFloat(candle.close);
         if (!isFinite(t) || !isFinite(v) || v <= 0) return;
 
@@ -332,14 +333,13 @@ const MiniTradeChart = (() => {
     function _addLine(entry, key, price, color, style) {
         const p = parseFloat(price);
         if (!p || !isFinite(p)) return;
-        const showAxis = key !== 'retestLine';
         entry[key] = entry.series.createPriceLine({
             price: p,
             color,
             lineWidth: 1,
             lineStyle: style,
-            axisLabelVisible: showAxis,
-            title: showAxis ? (_lineLabels[key] || '') : '',
+            axisLabelVisible: key !== 'retestLine',
+            title: '',
         });
         if (entry.showLineLabels && key !== 'retestLine') _addLineLabel(entry, key, p, color);
     }
