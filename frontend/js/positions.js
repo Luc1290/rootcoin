@@ -602,11 +602,13 @@ const Positions = (() => {
     // --- Open position modal ---
 
     let _openSide = 'LONG';
+    let _openAccount = 'MARGIN'; // SPOT or MARGIN
     let _openPreview = null;
     let _openAmount = null; // null = MAX
 
     function showOpen() {
         _openSide = 'LONG';
+        _openAccount = 'MARGIN';
         _openPreview = null;
         _openAmount = null;
         showModal('Ouvrir une position', `
@@ -619,6 +621,12 @@ const Positions = (() => {
                         class="flex-1 rounded px-3 py-2 text-sm uppercase min-w-0"
                         oninput="Positions._previewOpen()" autocomplete="off">
                 </div>
+            </div>
+            <div class="flex gap-1 mb-2" id="open-account-toggle">
+                <button type="button" class="open-account-btn flex-1 text-sm py-2 rounded font-medium bg-stone-700"
+                    data-account="SPOT" onclick="Positions._setAccount('SPOT')">Spot</button>
+                <button type="button" class="open-account-btn active flex-1 text-sm py-2 rounded font-medium bg-blue-600"
+                    data-account="MARGIN" onclick="Positions._setAccount('MARGIN')">Margin x5</button>
             </div>
             <div class="flex gap-1 mb-3" id="open-side-toggle">
                 <button type="button" class="open-side-btn active flex-1 text-sm py-2 rounded font-medium bg-emerald-600"
@@ -658,7 +666,37 @@ const Positions = (() => {
         }
     }
 
+    function _setAccount(account) {
+        _openAccount = account;
+        const toggle = document.getElementById('open-account-toggle');
+        if (toggle) {
+            toggle.querySelectorAll('.open-account-btn').forEach(btn => {
+                const active = btn.dataset.account === account;
+                btn.classList.toggle('active', active);
+                btn.className = `open-account-btn flex-1 text-sm py-2 rounded font-medium ${
+                    active ? 'bg-blue-600 text-white' : 'bg-stone-700 text-gray-300'
+                }`;
+            });
+        }
+        // Spot: force LONG, disable SHORT
+        const shortBtn = document.querySelector('.open-side-btn[data-side="SHORT"]');
+        if (shortBtn) {
+            if (account === 'SPOT') {
+                shortBtn.disabled = true;
+                shortBtn.style.opacity = '0.3';
+                shortBtn.style.pointerEvents = 'none';
+                if (_openSide === 'SHORT') _setSide('LONG');
+            } else {
+                shortBtn.disabled = false;
+                shortBtn.style.opacity = '';
+                shortBtn.style.pointerEvents = '';
+            }
+        }
+        _previewOpen();
+    }
+
     function _setSide(side) {
+        if (_openAccount === 'SPOT' && side === 'SHORT') return;
         _openSide = side;
         const toggle = document.getElementById('open-side-toggle');
         if (!toggle) return;
@@ -708,7 +746,7 @@ const Positions = (() => {
 
         previewEl.innerHTML = '<span class="text-gray-500">Chargement...</span>';
         try {
-            const resp = await fetch(`/api/positions/open/preview?symbol=${encodeURIComponent(symbol)}`);
+            const resp = await fetch(`/api/positions/open/preview?symbol=${encodeURIComponent(symbol)}&account_type=${_openAccount}`);
             if (!resp.ok) {
                 const err = await resp.json();
                 throw new Error(err.detail || 'Erreur');
@@ -719,19 +757,23 @@ const Positions = (() => {
             const priceInput = document.getElementById('open-price');
             const usePrice = priceInput && priceInput.value ? priceInput.value : data.current_price;
             const usdcFree = parseFloat(data.usdc_free);
+            const leverage = parseFloat(data.leverage);
             const pctValue = _openAmount ? parseInt(_openAmount) : 100;
             const effectiveAmount = usdcFree * pctValue / 100;
-            const notional = effectiveAmount * 5 * 0.98;
+            const notional = effectiveAmount * leverage * 0.98;
             const qty = notional / parseFloat(usePrice);
             const amountLabel = _openAmount ? `$${effectiveAmount.toFixed(2)} (${pctValue}%)` : `$${usdcFree.toFixed(2)} (MAX)`;
+            const isSpot = _openAccount === 'SPOT';
+            const balanceLabel = isSpot ? 'USDC dispo (spot)' : 'USDC dispo (cross)';
+            const notionalLabel = isSpot ? 'Notionnel' : `Notionnel (x${leverage} × 0.98)`;
 
             previewEl.innerHTML = `
                 <div class="space-y-1">
-                    <div class="flex justify-between"><span class="text-gray-500">USDC dispo (cross)</span><span class="text-white font-medium">$${usdcFree.toFixed(2)}</span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">${balanceLabel}</span><span class="text-white font-medium">$${usdcFree.toFixed(2)}</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">Montant utilise</span><span class="text-blue-400 font-medium">${amountLabel}</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">Prix courant</span><span class="text-white font-medium">${Utils.fmtPrice(parseFloat(data.current_price))}</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">Leverage</span><span class="text-white font-medium">x${data.leverage}</span></div>
-                    <div class="flex justify-between"><span class="text-gray-500">Notionnel (x5 × 0.98)</span><span class="text-blue-400 font-medium">$${notional.toFixed(2)}</span></div>
+                    ${isSpot ? '' : `<div class="flex justify-between"><span class="text-gray-500">Leverage</span><span class="text-white font-medium">x${leverage}</span></div>`}
+                    <div class="flex justify-between"><span class="text-gray-500">${notionalLabel}</span><span class="text-blue-400 font-medium">$${notional.toFixed(2)}</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">Quantite</span><span class="text-emerald-400 font-medium">${qty.toFixed(6)}</span></div>
                 </div>
             `;
@@ -751,7 +793,7 @@ const Positions = (() => {
         const symbol = symbolInput.value.trim().toUpperCase();
         if (!symbol) return;
 
-        const body = { symbol, side: _openSide };
+        const body = { symbol, side: _openSide, account_type: _openAccount };
         if (priceInput && priceInput.value) {
             body.price = priceInput.value;
         }
@@ -763,7 +805,8 @@ const Positions = (() => {
 
         const pctLabel = _openAmount ? `${_openAmount}%` : 'MAX';
         const typeLabel = body.price ? 'LIMIT' : 'MARKET';
-        await apiPost('/api/positions/open', body, `${_openSide} ${symbol} ${typeLabel} ${pctLabel} place`);
+        const accountLabel = _openAccount === 'SPOT' ? 'SPOT' : 'MARGIN';
+        await apiPost('/api/positions/open', body, `${accountLabel} ${_openSide} ${symbol} ${typeLabel} ${pctLabel} place`);
     }
 
     // Real-time updates
@@ -805,6 +848,6 @@ const Positions = (() => {
         submitSL, submitTP, submitOCO, submitClose, submitSecure, hideModal,
         confirmCancelOrders, submitCancelOrders, selectClosePct,
         _setMode, _updateRisk, _updateRR, _fillLevel, getActiveSymbols,
-        showOpen, submitOpen, _setSide, _setAmount, _previewOpen, _pickSymbol,
+        showOpen, submitOpen, _setSide, _setAccount, _setAmount, _previewOpen, _pickSymbol,
     };
 })();

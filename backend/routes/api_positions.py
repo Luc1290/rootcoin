@@ -46,6 +46,7 @@ class OpenBody(BaseModel):
     side: str  # LONG or SHORT
     price: str | None = None  # None = MARKET
     amount_usdc: str | None = None  # None = full balance
+    account_type: str = "MARGIN"  # SPOT or MARGIN
 
 
 @router.get("")
@@ -57,10 +58,40 @@ async def list_positions():
 
 
 @router.get("/open/preview")
-async def open_preview(symbol: str = Query(...)):
+async def open_preview(
+    symbol: str = Query(...),
+    account_type: str = Query("MARGIN"),
+):
     symbol = symbol.upper()
+    account_type = account_type.upper()
+
     try:
         client = await binance_client.get_client()
+        ticker = await client.get_symbol_ticker(symbol=symbol)
+        current_price = Decimal(ticker["price"])
+
+        if account_type == "SPOT":
+            spot_balances = await binance_client.get_spot_balances()
+            usdc_free = Decimal("0")
+            for a in spot_balances:
+                if a["asset"] == "USDC":
+                    usdc_free = Decimal(a["free"])
+                    break
+
+            notional = usdc_free * OPEN_SAFETY
+            max_qty = round_quantity(symbol, notional / current_price)
+
+            return {
+                "symbol": symbol,
+                "usdc_free": str(usdc_free),
+                "current_price": str(current_price),
+                "max_qty": str(max_qty),
+                "notional": str(round(notional, 2)),
+                "leverage": "1",
+                "account_type": "SPOT",
+            }
+
+        # MARGIN (default)
         cross_assets = await binance_client.get_cross_margin_balances()
         usdc_free = Decimal("0")
         for a in cross_assets:
@@ -68,12 +99,8 @@ async def open_preview(symbol: str = Query(...)):
                 usdc_free = Decimal(a["free"])
                 break
 
-        ticker = await client.get_symbol_ticker(symbol=symbol)
-        current_price = Decimal(ticker["price"])
-
         naive_notional = usdc_free * OPEN_LEVERAGE * OPEN_SAFETY
 
-        # Query max borrow for both sides to show accurate limits
         base_asset = symbol.replace("USDC", "").replace("USDT", "")
         max_borrow_usdc = Decimal("0")
         max_borrow_base = Decimal("0")
@@ -100,6 +127,7 @@ async def open_preview(symbol: str = Query(...)):
             "max_qty": str(max_qty),
             "notional": str(round(notional, 2)),
             "leverage": str(OPEN_LEVERAGE),
+            "account_type": "MARGIN",
         }
     except BinanceAPIException as e:
         raise HTTPException(400, f"Binance: {e.message}")
@@ -111,18 +139,15 @@ async def open_preview(symbol: str = Query(...)):
 async def open_position(body: OpenBody):
     symbol = body.symbol.upper()
     side = body.side.upper()
+    account_type = (body.account_type or "MARGIN").upper()
+
     if side not in ("LONG", "SHORT"):
         raise HTTPException(400, "side must be LONG or SHORT")
+    if account_type == "SPOT" and side == "SHORT":
+        raise HTTPException(400, "SHORT non disponible en spot")
 
     try:
         client = await binance_client.get_client()
-
-        cross_assets = await binance_client.get_cross_margin_balances()
-        usdc_free = Decimal("0")
-        for a in cross_assets:
-            if a["asset"] == "USDC":
-                usdc_free = Decimal(a["free"])
-                break
 
         if body.price:
             price = Decimal(body.price)
@@ -130,8 +155,66 @@ async def open_position(body: OpenBody):
             ticker = await client.get_symbol_ticker(symbol=symbol)
             price = Decimal(ticker["price"])
 
-        # Clear residual margin debt before opening
-        # SHORT borrows base asset (BTC), LONG borrows quote (USDC)
+        # ── SPOT ──────────────────────────────────────────────
+        if account_type == "SPOT":
+            spot_balances = await binance_client.get_spot_balances()
+            usdc_free = Decimal("0")
+            for a in spot_balances:
+                if a["asset"] == "USDC":
+                    usdc_free = Decimal(a["free"])
+                    break
+
+            if body.amount_usdc:
+                user_amount = Decimal(body.amount_usdc)
+                if user_amount <= 0:
+                    raise HTTPException(400, "amount_usdc must be > 0")
+                if user_amount > usdc_free:
+                    raise HTTPException(400, f"Montant ({user_amount}) > USDC spot ({usdc_free})")
+                notional = user_amount * OPEN_SAFETY
+            else:
+                notional = usdc_free * OPEN_SAFETY
+
+            qty = round_quantity(symbol, notional / price)
+            if body.price:
+                price = round_price(symbol, price)
+            validate_order(symbol, qty, price)
+
+            cid = f"rootcoin_spot_{int(time.time() * 1000)}"
+            kwargs = dict(
+                symbol=symbol,
+                side="BUY",
+                quantity=str(qty),
+                newClientOrderId=cid,
+            )
+            if body.price:
+                kwargs["type"] = "LIMIT"
+                kwargs["price"] = str(price)
+                kwargs["timeInForce"] = "GTC"
+            else:
+                kwargs["type"] = "MARKET"
+
+            log.info("open_spot", symbol=symbol, notional=str(notional), qty=str(qty))
+            result = await binance_client.place_order(**kwargs)
+
+            return {
+                "status": "ok",
+                "order_id": str(result["orderId"]),
+                "symbol": symbol,
+                "side": "LONG",
+                "qty": str(qty),
+                "price": str(price),
+                "type": kwargs["type"],
+                "account_type": "SPOT",
+            }
+
+        # ── MARGIN (existing logic) ──────────────────────────
+        cross_assets = await binance_client.get_cross_margin_balances()
+        usdc_free = Decimal("0")
+        for a in cross_assets:
+            if a["asset"] == "USDC":
+                usdc_free = Decimal(a["free"])
+                break
+
         base_asset = symbol.replace("USDC", "").replace("USDT", "")
         debt_asset = base_asset if side == "SHORT" else "USDC"
         for a in cross_assets:
@@ -158,12 +241,10 @@ async def open_position(body: OpenBody):
                             f"(borrowed={borrowed}, free={free}). "
                             f"Rembourser manuellement sur Binance avant d'ouvrir.",
                         )
-                    # Refresh USDC free after repay (may have changed)
                     if debt_asset == "USDC" and repay_amount > 0:
                         usdc_free = free - repay_amount
                 break
 
-        # Query Binance max borrow to cap quantity
         borrow_asset = base_asset if side == "SHORT" else "USDC"
         max_borrow_info = await client.get_max_margin_loan(asset=borrow_asset)
         max_borrow = Decimal(str(max_borrow_info.get("amount", "0")))
@@ -223,6 +304,7 @@ async def open_position(body: OpenBody):
             "qty": str(qty),
             "price": str(price),
             "type": kwargs["type"],
+            "account_type": "MARGIN",
         }
     except (ValueError, InvalidOperation) as e:
         raise HTTPException(400, str(e))
