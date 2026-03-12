@@ -538,6 +538,9 @@ async def _reduce_or_close(
             _fire_and_forget(
                 _sell_margin_residual(position.symbol, position.market_type, position.side)
             )
+            _fire_and_forget(
+                _check_borrowed_after_close(position.symbol, position.market_type)
+            )
     else:
         position.quantity = new_qty
         position.updated_at = _now()
@@ -622,6 +625,60 @@ async def _sell_margin_residual(symbol: str, market_type: str, side: str = "LONG
                         side=side, attempt=attempt, exc_info=True)
 
     log.error("margin_residual_cleanup_exhausted", symbol=symbol, side=side)
+
+
+BORROWED_ALERT_THRESHOLD = Decimal("10")
+
+
+async def _check_borrowed_after_close(symbol: str, market_type: str):
+    """Check for orphaned borrowed quote after margin position close and notify."""
+    await asyncio.sleep(5)  # wait for settlement
+    try:
+        quote_asset = "USDC" if symbol.endswith("USDC") else "USDT"
+
+        if market_type == "CROSS_MARGIN":
+            balances = await binance_client.get_cross_margin_balances()
+            bal = next((b for b in balances if b["asset"] == quote_asset), None)
+            if not bal:
+                return
+            borrowed = Decimal(bal.get("borrowed", "0"))
+            interest = Decimal(bal.get("interest", "0"))
+        else:
+            pairs = await binance_client.get_isolated_margin_balances()
+            pair = next((p for p in pairs if p.get("symbol") == symbol), None)
+            if not pair:
+                return
+            quote_info = pair.get("quoteAsset", {})
+            borrowed = Decimal(quote_info.get("borrowed", "0"))
+            interest = Decimal(quote_info.get("interest", "0"))
+
+        if borrowed <= BORROWED_ALERT_THRESHOLD:
+            return
+
+        # Check how much active margin positions justify
+        expected_borrowed = Decimal("0")
+        for pos in _positions.values():
+            if pos.is_active and pos.market_type == market_type and pos.side == "LONG":
+                expected_borrowed += pos.quantity * (pos.current_price or pos.entry_price)
+
+        orphaned = borrowed - expected_borrowed
+        if orphaned <= BORROWED_ALERT_THRESHOLD:
+            return
+
+        log.warning("orphaned_borrowed_detected", symbol=symbol,
+                    total_borrowed=str(borrowed), expected=str(expected_borrowed),
+                    orphaned=str(orphaned), interest=str(interest))
+
+        msg = (
+            f"\u26a0\ufe0f Emprunt r\u00e9siduel d\u00e9tect\u00e9 apr\u00e8s fermeture {symbol}\n"
+            f"Emprunt\u00e9 : {borrowed:.2f} {quote_asset}\n"
+            f"Attendu (positions actives) : ~{expected_borrowed:.0f} {quote_asset}\n"
+            f"Exc\u00e9dent : ~{orphaned:.0f} {quote_asset}\n"
+            f"Penser \u00e0 rembourser manuellement si non justifi\u00e9"
+        )
+        await telegram_notifier.notify(msg)
+    except Exception:
+        log.warning("borrowed_check_failed", symbol=symbol, exc_info=True)
 
 
 async def _handle_list_status(msg: dict):
