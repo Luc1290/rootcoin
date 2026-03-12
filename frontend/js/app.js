@@ -47,8 +47,14 @@ const App = (() => {
             activeTab = urlTab;
         }
 
-        // Apply initial tab
-        switchTab(activeTab);
+        // Apply initial tab (replace, don't push — first load)
+        switchTab(activeTab, true);
+
+        // Browser back/forward (mouse side buttons, keyboard, etc.)
+        window.addEventListener('popstate', (e) => {
+            const tab = e.state?.tab || 'cockpit';
+            if (validTabs.includes(tab)) switchTab(tab, true);
+        });
 
         // Initial data load
         _initialLoad();
@@ -113,7 +119,8 @@ const App = (() => {
         }
     }
 
-    function switchTab(tab) {
+    function switchTab(tab, replace) {
+        if (!replace && tab === activeTab) return;
         activeTab = tab;
         document.querySelectorAll('.tab-btn').forEach(b => {
             b.classList.toggle('active', b.dataset.tab === tab);
@@ -124,7 +131,11 @@ const App = (() => {
         // Update URL without reload
         const url = new URL(window.location);
         url.searchParams.set('tab', tab);
-        history.replaceState(null, '', url);
+        if (replace) {
+            history.replaceState({ tab }, '', url);
+        } else {
+            history.pushState({ tab }, '', url);
+        }
 
         // Load data on tab switch
         if (tab === 'cockpit') Cockpit.load();

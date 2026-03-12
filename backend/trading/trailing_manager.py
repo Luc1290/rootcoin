@@ -75,12 +75,13 @@ _CONFIRMED_MOVE_INTERVAL = 5.0  # confirmed mode: same interval, SL-only is ligh
 _TP_GUARD_INTERVAL = 1.5        # near-zero cooldown: orders are free, only debounce rapid oscillations
 _RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes
 _OVERRIDE_REMINDER = 7200.0  # remind user after 2h of manual control
-_CONFIRM_DELAY = 3.0       # confirmed mode: seconds TP must be stable before placing on Binance
+_CONFIRM_DELAY = 3.0       # confirmed mode: seconds TP must be stable before confirming in tracking
 
 # State
 _tracked: dict[int, dict] = {}
 _known_ids: set[int] = set()
 _naked_since: dict[int, float] = {}  # pos_id -> monotonic timestamp
+_oco_cancel_expected: set[int] = set()  # pos_ids whose OCO cancel should not trigger recovery
 _settings: dict = {}
 _running = False
 _monitor_task: asyncio.Task | None = None
@@ -217,6 +218,7 @@ async def stop():
     _tracked.clear()
     _known_ids.clear()
     _naked_since.clear()
+    _oco_cancel_expected.clear()
     log.info("trailing_manager_stopped")
 
 
@@ -269,9 +271,14 @@ async def _position_monitor_loop():
                         asyncio.create_task(_send_override_reminder(pos, tracking))
 
             # Detect naked positions (no SL/TP/OCO) and recover after grace period — skip in manual mode
+            # In confirmed mode, SL-only is the expected state (TP is internal)
+            is_confirmed = _settings.get("mode", "auto") == "confirmed"
             if not is_manual:
                 for pid, pos in active.items():
-                    has_orders = pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id
+                    if is_confirmed:
+                        has_orders = pos.sl_order_id or pos.oco_order_list_id
+                    else:
+                        has_orders = pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id
                     if has_orders:
                         _naked_since.pop(pid, None)
                     elif pid not in _naked_since:
@@ -838,7 +845,7 @@ async def _handle_price_update(msg: dict):
             tp_guard=tp_guard_triggered,
         ))
 
-    # ── Confirmed mode: promote TP candidates to full OCO after delay ──
+    # ── Confirmed mode: confirm TP candidates in tracking after delay (SL stays alone on Binance) ──
     if _settings.get("mode", "auto") == "confirmed":
         for pos_id, tracking in list(_tracked.items()):
             if tracking.get("moving"):
@@ -852,7 +859,7 @@ async def _handle_price_update(msg: dict):
             pos = _get_pos(pos_id)
             if not pos or pos.symbol != symbol:
                 continue
-            # TP confirmed — upgrade SL to full OCO
+            # TP confirmed — update tracking (no Binance order, SL stays)
             tracking.pop("candidate_tp", None)
             tracking.pop("candidate_tp_at", None)
             tracking["moving"] = True
@@ -860,14 +867,11 @@ async def _handle_price_update(msg: dict):
 
 
 async def _promote_tp_to_oco(pos, tracking, tp_price):
-    """Confirmed mode: replace SL-only with full OCO now that TP is stable."""
+    """Confirmed mode: TP confirmed after delay — update tracking only, SL stays alone on Binance."""
     try:
         sl_price = tracking["auto_sl"]
-        result = await order_manager.place_oco(pos, tp_price, sl_price, silent=True)
-        oco_id = str(result.get("orderListId", ""))
         tracking.update({
             "auto_tp": tp_price,
-            "oco_list_id": oco_id,
             "last_move_at": _time.monotonic(),
         })
         log.info("confirmed_tp_promoted", symbol=pos.symbol,
@@ -1238,6 +1242,9 @@ def notify_oco_done(pos_id: int):
     instead of waiting for poll + naked grace (~18s)."""
     if not _running:
         return
+    if pos_id in _oco_cancel_expected:
+        _oco_cancel_expected.discard(pos_id)
+        return
     tracking = _tracked.get(pos_id)
     if tracking and tracking.get("manual_override"):
         return
@@ -1409,6 +1416,7 @@ async def set_mode(mode: str):
             tp = tracking.get("auto_tp")
             if sl and pos.oco_order_list_id:
                 try:
+                    _oco_cancel_expected.add(pid)
                     await order_manager.place_stop_loss(pos, sl)
                     tracking["oco_list_id"] = None
                     if tp:
@@ -1454,7 +1462,7 @@ async def set_mode(mode: str):
         ),
         "confirmed": (
             "\u2705 <b>Trailing \u2014 Mode CONFIRMED activ\u00e9</b>\n"
-            "SL pos\u00e9 imm\u00e9diatement, TP uniquement apr\u00e8s 3s de stabilit\u00e9.\n"
+            "SL pos\u00e9 sur Binance, TP suivi en interne uniquement.\n"
             "Optimis\u00e9 pour \u00e9viter les TP touch\u00e9s pendant les pumps rapides."
         ),
         "auto": (
