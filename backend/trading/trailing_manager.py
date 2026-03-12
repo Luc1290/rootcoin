@@ -26,6 +26,8 @@ from sqlalchemy import func, select
 
 from backend.core.database import async_session
 from backend.core.models import Balance, Setting
+from binance.exceptions import BinanceAPIException
+
 from backend.exchange.symbol_filters import round_price
 from backend.exchange.ws_manager import EVENT_PRICE_UPDATE
 from backend.market import market_analyzer
@@ -59,10 +61,12 @@ _CAP_LOCK_RATIO = Decimal("0.5")     # lock this fraction of gain above threshol
 _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
 _NAKED_GRACE = 15.0     # seconds before re-placing OCO on unprotected position
-_MIN_MOVE_INTERVAL = 60.0  # minimum seconds between consecutive trailing moves
-_TP_GUARD_INTERVAL = 1.5   # near-zero cooldown: orders are free, only debounce rapid oscillations
+_MIN_MOVE_INTERVAL = 5.0        # minimum seconds between consecutive trailing moves
+_CONFIRMED_MOVE_INTERVAL = 5.0  # confirmed mode: same interval, SL-only is lightweight
+_TP_GUARD_INTERVAL = 1.5        # near-zero cooldown: orders are free, only debounce rapid oscillations
 _RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes
 _OVERRIDE_REMINDER = 7200.0  # remind user after 2h of manual control
+_CONFIRM_DELAY = 3.0       # confirmed mode: seconds TP must be stable before placing on Binance
 
 # State
 _tracked: dict[int, dict] = {}
@@ -126,7 +130,7 @@ async def _get_capital() -> Decimal:
 async def start():
     global _running, _monitor_task
     await _load_settings()
-    _settings["mode"] = "auto"
+    _settings.setdefault("mode", "confirmed")
     if not _settings.get("enabled", True):
         log.info("trailing_manager_disabled")
         return
@@ -302,14 +306,35 @@ async def _position_monitor_loop():
             log.error("trailing_monitor_error", exc_info=True)
 
 
-async def _execute_oco(pos, tp_price, sl_price, *, silent=True, is_breakeven=False):
-    """Place OCO on Binance (auto) or create pending proposal (manual).
+async def _execute_oco(pos, tp_price, sl_price, *, silent=True, is_breakeven=False,
+                       tracking=None):
+    """Place OCO on Binance (auto), SL-only (confirmed), or pending proposal (manual).
     Returns oco_list_id string or None."""
-    if _settings.get("mode", "auto") == "manual":
+    mode = _settings.get("mode", "auto")
+    if mode == "manual":
         await _create_pending(pos, sl_price, tp_price, is_breakeven)
         return None
+    if mode == "confirmed" and tracking is not None:
+        return await _execute_confirmed(pos, tp_price, sl_price, tracking)
     result = await order_manager.place_oco(pos, tp_price, sl_price, silent=silent)
     return str(result.get("orderListId", ""))
+
+
+async def _execute_confirmed(pos, tp_price, sl_price, tracking):
+    """Confirmed mode: place SL immediately, store TP as candidate.
+    A separate tick will promote to full OCO after _CONFIRM_DELAY."""
+    # Place SL-only on Binance (cancel existing orders first)
+    await order_manager.place_stop_loss(pos, sl_price)
+    # Store TP candidate — will be confirmed by _check_tp_candidate
+    old_candidate_tp = tracking.get("candidate_tp")
+    if old_candidate_tp != tp_price:
+        tracking["candidate_tp"] = tp_price
+        tracking["candidate_tp_at"] = _time.monotonic()
+    elif "candidate_tp_at" not in tracking:
+        tracking["candidate_tp_at"] = _time.monotonic()
+    log.info("confirmed_sl_placed", symbol=pos.symbol,
+             sl=str(sl_price), candidate_tp=str(tp_price))
+    return None
 
 
 async def _create_pending(pos, sl, tp, is_breakeven):
@@ -388,11 +413,11 @@ async def _handle_new_position(pos_id: int):
     tp_price = round_price(pos.symbol, tp_price)
 
     try:
-        oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False)
-        _tracked[pos.id] = {
+        # Create tracking first so confirmed mode can store candidate TP
+        new_tracking = {
             "auto_sl": sl_price,
             "auto_tp": tp_price,
-            "oco_list_id": oco_id,
+            "oco_list_id": None,
             "trailing_active": False,
             "manual_override": False,
             "moving": False,
@@ -400,10 +425,43 @@ async def _handle_new_position(pos_id: int):
             "last_step_pct": Decimal(0),
             "initial_at": _time.monotonic(),
         }
+        oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False,
+                                    tracking=new_tracking)
+        new_tracking["oco_list_id"] = oco_id
+        _tracked[pos.id] = new_tracking
         log.info("trailing_initial_oco", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price), rr=f"{rr:.1f}")
+    except (BinanceAPIException, ValueError) as exc:
+        log.error("trailing_initial_oco_failed", symbol=pos.symbol, error=str(exc))
+        # Price already past SL at open → emergency close
+        current = pos.current_price
+        if current and current > 0:
+            past_sl = (pos.side == "LONG" and current <= sl_price) or \
+                      (pos.side == "SHORT" and current >= sl_price)
+            if past_sl:
+                await _emergency_close(pos, reason="initial_oco_price_past_sl")
     except Exception:
         log.error("trailing_initial_oco_failed", symbol=pos.symbol, exc_info=True)
+
+
+async def _emergency_close(pos, *, reason: str = ""):
+    """Last-resort market close when OCO is impossible (price past SL)."""
+    try:
+        log.warning("emergency_close_triggered", symbol=pos.symbol,
+                     side=pos.side, reason=reason)
+        await order_manager.close_position(pos)
+        _tracked.pop(pos.id, None)
+        asyncio.create_task(telegram_notifier.notify(
+            f"🚨 EMERGENCY CLOSE {pos.symbol} ({pos.side})\n"
+            f"Raison: {reason}\n"
+            f"Le prix a dépassé le SL — position fermée au marché.",
+        ))
+    except Exception:
+        log.error("emergency_close_failed", symbol=pos.symbol, exc_info=True)
+        asyncio.create_task(telegram_notifier.notify(
+            f"🚨 ÉCHEC EMERGENCY CLOSE {pos.symbol}\n"
+            f"Impossible de fermer la position. Action manuelle requise!",
+        ))
 
 
 async def _recover_naked_position(pos_id: int):
@@ -416,7 +474,18 @@ async def _recover_naked_position(pos_id: int):
 
     current = pos.current_price
     if not current or current <= 0:
-        return
+        # WS price missing — fetch from REST API + re-subscribe symbol
+        from backend.exchange import binance_client, ws_manager
+        await ws_manager.subscribe_symbol(pos.symbol)
+        current = await binance_client.get_ticker_price(pos.symbol)
+        if current:
+            pos.current_price = current
+            log.info("trailing_price_fetched_rest", symbol=pos.symbol, price=str(current))
+        else:
+            # No price at all — emergency close (MARKET order doesn't need price)
+            log.warning("trailing_no_price_emergency", symbol=pos.symbol)
+            await _emergency_close(pos, reason="no_price_available")
+            return
 
     entry = pos.entry_price
     if pos.side == "LONG":
@@ -481,12 +550,23 @@ async def _recover_naked_position(pos_id: int):
     sl_price = round_price(pos.symbol, sl_price)
     tp_price = round_price(pos.symbol, tp_price)
 
+    # Pre-check: if price already blew past SL, emergency close instead of OCO
+    if pos.side == "LONG" and current <= sl_price:
+        log.warning("trailing_price_past_sl", symbol=pos.symbol,
+                     current=str(current), sl=str(sl_price), gain=f"{gain_pct:.2f}%")
+        await _emergency_close(pos, reason="price_past_sl")
+        return
+    if pos.side == "SHORT" and current >= sl_price:
+        log.warning("trailing_price_past_sl", symbol=pos.symbol,
+                     current=str(current), sl=str(sl_price), gain=f"{gain_pct:.2f}%")
+        await _emergency_close(pos, reason="price_past_sl")
+        return
+
     try:
-        oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False)
-        _tracked[pos.id] = {
+        new_tracking = {
             "auto_sl": sl_price,
             "auto_tp": tp_price,
-            "oco_list_id": oco_id,
+            "oco_list_id": None,
             "trailing_active": trailing_active,
             "manual_override": False,
             "moving": False,
@@ -494,9 +574,17 @@ async def _recover_naked_position(pos_id: int):
             "last_step_pct": last_step_pct,
             "initial_at": _time.monotonic(),
         }
+        oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False,
+                                    tracking=new_tracking)
+        new_tracking["oco_list_id"] = oco_id
+        _tracked[pos.id] = new_tracking
         log.info("trailing_naked_recovery", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price),
                  trailing=trailing_active, gain=f"{gain_pct:.2f}%")
+    except (BinanceAPIException, ValueError) as exc:
+        log.error("trailing_naked_recovery_failed", symbol=pos.symbol,
+                  error=str(exc), gain=f"{gain_pct:.2f}%")
+        await _emergency_close(pos, reason="oco_failed")
     except Exception:
         log.error("trailing_naked_recovery_failed", symbol=pos.symbol, exc_info=True)
 
@@ -596,7 +684,8 @@ async def _tighten_stale_position(pos, tracking):
         if not pos:
             return
 
-        oco_id = await _execute_oco(pos, final_tp, final_sl, is_breakeven=False)
+        oco_id = await _execute_oco(pos, final_tp, final_sl, is_breakeven=False,
+                                    tracking=tracking)
 
         tracking.update({
             "auto_sl": final_sl,
@@ -761,9 +850,14 @@ async def _handle_price_update(msg: dict):
             tracking.pop("override_reminded", None)
             log.info("trailing_resuming", symbol=pos.symbol, gain=f"{gain_pct:.2f}%")
 
-        # Rate-limit: shorter for TP guard (urgent)
+        # Rate-limit: TP guard < confirmed < auto
         last_move = tracking.get("last_move_at", 0.0)
-        rate_limit = _TP_GUARD_INTERVAL if tp_guard_triggered else _MIN_MOVE_INTERVAL
+        if tp_guard_triggered:
+            rate_limit = _TP_GUARD_INTERVAL
+        elif _settings.get("mode", "auto") == "confirmed":
+            rate_limit = _CONFIRMED_MOVE_INTERVAL
+        else:
+            rate_limit = _MIN_MOVE_INTERVAL
         if last_move and _time.monotonic() - last_move < rate_limit:
             continue
 
@@ -773,6 +867,51 @@ async def _handle_price_update(msg: dict):
             pos, tracking, gain_pct, current_price, is_breakeven,
             tp_guard=tp_guard_triggered,
         ))
+
+    # ── Confirmed mode: promote TP candidates to full OCO after delay ──
+    if _settings.get("mode", "auto") == "confirmed":
+        for pos_id, tracking in list(_tracked.items()):
+            if tracking.get("moving"):
+                continue
+            candidate_tp = tracking.get("candidate_tp")
+            candidate_at = tracking.get("candidate_tp_at")
+            if not candidate_tp or not candidate_at:
+                continue
+            if _time.monotonic() - candidate_at < _CONFIRM_DELAY:
+                continue
+            pos = _get_pos(pos_id)
+            if not pos or pos.symbol != symbol:
+                continue
+            # TP confirmed — upgrade SL to full OCO
+            tracking.pop("candidate_tp", None)
+            tracking.pop("candidate_tp_at", None)
+            tracking["moving"] = True
+            asyncio.create_task(_promote_tp_to_oco(pos, tracking, candidate_tp))
+
+
+async def _promote_tp_to_oco(pos, tracking, tp_price):
+    """Confirmed mode: replace SL-only with full OCO now that TP is stable."""
+    try:
+        sl_price = tracking["auto_sl"]
+        result = await order_manager.place_oco(pos, tp_price, sl_price, silent=True)
+        oco_id = str(result.get("orderListId", ""))
+        tracking.update({
+            "auto_tp": tp_price,
+            "oco_list_id": oco_id,
+            "last_move_at": _time.monotonic(),
+        })
+        log.info("confirmed_tp_promoted", symbol=pos.symbol,
+                 sl=str(sl_price), tp=str(tp_price))
+        asyncio.create_task(telegram_notifier.notify_trailing_moved(
+            pos.symbol, pos.side, sl_price, tp_price,
+            pos.entry_price, pos.current_price or pos.entry_price,
+            pos.quantity, tracking.get("last_step_pct", Decimal(0)),
+            is_breakeven=False,
+        ))
+    except Exception:
+        log.error("confirmed_tp_promote_failed", symbol=pos.symbol, exc_info=True)
+    finally:
+        tracking["moving"] = False
 
 
 async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, tp_guard=False):
@@ -876,11 +1015,15 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
             tracking["last_step_pct"] = gain_pct
             return
 
-        oco_id = await _execute_oco(pos, new_tp, new_sl_price, is_breakeven=is_breakeven)
+        is_confirmed = _settings.get("mode", "auto") == "confirmed"
+        oco_id = await _execute_oco(pos, new_tp, new_sl_price, is_breakeven=is_breakeven,
+                                    tracking=tracking)
 
         tracking.update({
             "auto_sl": new_sl_price,
-            "auto_tp": new_tp,
+            # In confirmed mode, auto_tp stays at last confirmed TP (on Binance).
+            # The new TP is stored as candidate_tp by _execute_confirmed.
+            "auto_tp": tracking.get("auto_tp") if is_confirmed else new_tp,
             "oco_list_id": oco_id,
             "trailing_active": True,
             "manual_override": False,
@@ -890,7 +1033,8 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
 
         sl_source = "level" if not is_breakeven else "breakeven"
         log.info("trailing_oco_moved", symbol=pos.symbol,
-                 sl=str(new_sl_price), tp=str(new_tp), source=sl_source)
+                 sl=str(new_sl_price), tp=str(new_tp), source=sl_source,
+                 confirmed_candidate=is_confirmed)
 
         if _settings.get("mode", "auto") == "auto":
             asyncio.create_task(telegram_notifier.notify_trailing_moved(
@@ -1424,8 +1568,8 @@ async def _recalculate_levels(pos, tracking):
 
 
 async def set_mode(mode: str):
-    """Switch between auto and manual mode with transition logic."""
-    if mode not in ("auto", "manual"):
+    """Switch between auto, manual, and confirmed mode with transition logic."""
+    if mode not in ("auto", "manual", "confirmed"):
         return
 
     old_mode = _settings.get("mode", "auto")
@@ -1459,13 +1603,34 @@ async def set_mode(mode: str):
                 except Exception:
                     log.error("trailing_mode_cancel_failed",
                               symbol=pos.symbol, exc_info=True)
+    elif mode == "confirmed":
+        # Transition to confirmed: replace OCOs with SL-only, store TP as candidate
+        for pid, tracking in _tracked.items():
+            pos = _get_pos(pid)
+            if not pos:
+                continue
+            sl = tracking.get("auto_sl")
+            tp = tracking.get("auto_tp")
+            if sl and pos.oco_order_list_id:
+                try:
+                    await order_manager.place_stop_loss(pos, sl)
+                    tracking["oco_list_id"] = None
+                    if tp:
+                        tracking["candidate_tp"] = tp
+                        tracking["candidate_tp_at"] = _time.monotonic()
+                    log.info("trailing_mode_confirmed_downgrade", symbol=pos.symbol)
+                except Exception:
+                    log.warning("trailing_mode_confirmed_failed",
+                                symbol=pos.symbol, exc_info=True)
     else:  # switching to auto
         # Confirm all pending proposals
         for pid in list(_pending.keys()):
             await confirm_pending(pid, source="mode_switch")
 
-        # Place orders for tracked positions that have no Binance orders
+        # Clear candidates and place full OCOs
         for pid, tracking in _tracked.items():
+            tracking.pop("candidate_tp", None)
+            tracking.pop("candidate_tp_at", None)
             if tracking.get("oco_list_id"):
                 continue
             pos = _get_pos(pid)
@@ -1485,14 +1650,22 @@ async def set_mode(mode: str):
     log.info("trailing_mode_changed", old=old_mode, new=mode)
 
     # Notify via Telegram
-    if mode == "manual":
-        await telegram_notifier.notify(
+    _MODE_MESSAGES = {
+        "manual": (
             "\U0001f6d1 <b>Trailing \u2014 Mode MANUEL activ\u00e9</b>\n"
             "Les ordres ne seront plus pos\u00e9s automatiquement.\n"
             "Confirme chaque proposition depuis Telegram ou le dashboard."
-        )
-    else:
-        await telegram_notifier.notify(
+        ),
+        "confirmed": (
+            "\u2705 <b>Trailing \u2014 Mode CONFIRMED activ\u00e9</b>\n"
+            "SL pos\u00e9 imm\u00e9diatement, TP uniquement apr\u00e8s 3s de stabilit\u00e9.\n"
+            "Optimis\u00e9 pour \u00e9viter les TP touch\u00e9s pendant les pumps rapides."
+        ),
+        "auto": (
             "\u2705 <b>Trailing \u2014 Mode AUTO r\u00e9activ\u00e9</b>\n"
             "Les ordres sont pos\u00e9s automatiquement sur Binance."
-        )
+        ),
+    }
+    msg = _MODE_MESSAGES.get(mode, "")
+    if msg:
+        await telegram_notifier.notify(msg)

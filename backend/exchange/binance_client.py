@@ -90,6 +90,20 @@ async def get_margin_open_orders(symbol: str | None = None, is_isolated: bool = 
         raise
 
 
+async def get_ticker_price(symbol: str) -> Decimal | None:
+    """Fetch current price via REST API (fallback when WS price is stale)."""
+    from decimal import Decimal
+    client = await get_client()
+    try:
+        ticker = await client.get_symbol_ticker(symbol=symbol)
+        price_str = ticker.get("price", "0")
+        price = Decimal(price_str)
+        return price if price > 0 else None
+    except Exception:
+        log.warning("ticker_price_failed", symbol=symbol, exc_info=True)
+        return None
+
+
 async def get_my_trades(symbol: str, limit: int = 500) -> list[dict]:
     client = await get_client()
     try:

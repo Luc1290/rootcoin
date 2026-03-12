@@ -281,7 +281,7 @@ def _detect_rejection_wicks(
             if lower_wick < WICK_RATIO * body:
                 continue
             for lp in levels:
-                if lp > min(o, c):  # level must be below body (it's a support)
+                if lp <= 0 or lp > min(o, c):  # level must be below body (it's a support)
                     continue
                 if abs(l - lp) / lp <= LEVEL_TOLERANCE:
                     ratio = lower_wick / body
@@ -293,7 +293,7 @@ def _detect_rejection_wicks(
             if upper_wick < WICK_RATIO * body:
                 continue
             for lp in levels:
-                if lp < max(o, c):
+                if lp <= 0 or lp < max(o, c):
                     continue
                 if abs(h - lp) / lp <= LEVEL_TOLERANCE:
                     ratio = upper_wick / body
@@ -406,7 +406,9 @@ def _extract_level_prices(key_levels: list[dict]) -> list[float]:
         if level.get("type") == "current":
             continue
         try:
-            prices.append(float(level["price"]))
+            p = float(level["price"])
+            if p > 0:
+                prices.append(p)
         except (ValueError, KeyError, TypeError):
             continue
     return prices

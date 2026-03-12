@@ -107,7 +107,7 @@ const Heatmap = (() => {
             moverRow = document.createElement('div');
             moverRow.className = 'heatmap-movers-row';
             moverRow.innerHTML = `
-                <div class="text-xs text-purple-400 font-semibold mb-1.5 mt-3">\u26A1 Top Movers (amplitude 24h)</div>
+                <div class="text-xs text-purple-400 font-semibold mb-1.5 mt-3">\u26A1 Top Movers (amplitude 12h)</div>
                 <div class="flex gap-1.5 overflow-x-auto pb-1">${moverAssets.map(a => _tileHtml(a)).join('')}</div>`;
             const after = gainerRow ? gainerRow.nextSibling : grid.nextSibling;
             parent.insertBefore(moverRow, after);
@@ -118,7 +118,7 @@ const Heatmap = (() => {
         const change = parseFloat(asset.change_24h);
         const bgColor = _changeColor(change);
         const textColor = Math.abs(change) > 3 ? '#fff' : (Math.abs(change) > 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)');
-        const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+        const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}% ${_currentWindow}`;
         const price = Utils.fmtPrice(asset.price);
         const isGainer = asset.top_gainer;
         const isMover = asset.top_mover;

@@ -136,7 +136,7 @@ const Cockpit = (() => {
 
         el.innerHTML = `
         <div class="cockpit-card">
-            <div class="flex items-center gap-3 justify-end flex-wrap">
+            <div class="flex flex-col sm:flex-row items-end sm:items-center gap-1 sm:gap-3 justify-end">
                 <span class="text-xs font-bold tabular-nums" data-field="total">${portfolioStr}</span>
                 <span class="cockpit-sep ${dayValueStr ? '' : 'hidden'}" data-field="day-sep"></span><span class="text-xs tabular-nums ${dayValueStr ? '' : 'hidden'}" data-field="day"><span class="text-gray-300">Gains 24h </span><span class="${dayPnlClass}" data-field="day-value">${dayValueStr}</span></span>
                 <span class="cockpit-sep ${hasPositions ? '' : 'hidden'}" data-field="open-sep"></span><span class="text-xs text-gray-500 ${hasPositions ? '' : 'hidden'}" data-field="open-label">PnL ouvert </span><span class="text-xs font-bold tabular-nums ${openClass} ${hasPositions ? '' : 'hidden'}" data-field="open">${openStr}</span>
@@ -613,12 +613,15 @@ const Cockpit = (() => {
         const rows = _recentCycles.slice(0, 10).map(c => {
             const sym = c.symbol.replace('USDC', '');
             const pnl = c.realized_pnl_pct ? parseFloat(c.realized_pnl_pct) : null;
-            const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}%` : '--';
+            const pnlStr = pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(1)}% pos` : '--';
             const pnlClass = pnl !== null ? (pnl >= 0 ? 'pnl-positive' : 'pnl-negative') : 'text-gray-500';
             const pnlUsd = c.realized_pnl != null && c.total_fees_usd != null
                 ? parseFloat(c.realized_pnl) - parseFloat(c.total_fees_usd)
                 : (c.realized_pnl != null ? parseFloat(c.realized_pnl) : null);
             const pnlUsdStr = pnlUsd !== null ? `${pnlUsd >= 0 ? '+' : ''}$${Math.abs(pnlUsd).toFixed(0)}` : '';
+            const total = BalanceStore.getTotal();
+            const soldePct = pnlUsd !== null && total ? pnlUsd / total * 100 : null;
+            const soldeStr = soldePct !== null ? `${soldePct >= 0 ? '+' : ''}${soldePct.toFixed(2)}% solde` : '';
             const dirIcon = c.side === 'LONG' ? '&#x2191;' : '&#x2193;';
             const dirClass = c.side === 'LONG' ? 'pnl-positive' : 'pnl-negative';
             const ago = c.closed_at ? Utils.timeAgoShort(c.closed_at) : '';
@@ -628,6 +631,7 @@ const Cockpit = (() => {
                 <span class="${dirClass}">${dirIcon}</span>
                 <span class="text-gray-300 font-semibold">${sym}</span>
                 <span class="font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
+                ${soldeStr ? `<span class="tabular-nums ${pnlClass}" style="font-size:10px">${soldeStr}</span>` : ''}
                 ${pnlUsdStr ? `<span class="tabular-nums ${pnlClass}" style="font-size:10px">${pnlUsdStr}</span>` : ''}
                 <span class="text-gray-500">&middot; ${dur || ago}</span>
             </div>`;

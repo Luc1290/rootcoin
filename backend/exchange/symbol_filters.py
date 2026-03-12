@@ -92,7 +92,11 @@ def round_price(symbol: str, price: Decimal) -> Decimal:
 
 def get_max_market_qty(symbol: str) -> Decimal | None:
     f = _filters.get(symbol, {})
-    return f.get("market_max_qty")
+    market = f.get("market_max_qty")
+    lot = f.get("max_qty")
+    if market and lot:
+        return min(market, lot)
+    return market or lot
 
 
 def validate_order(symbol: str, qty: Decimal, price: Decimal):

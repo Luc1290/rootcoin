@@ -15,7 +15,7 @@ const Cycles = (() => {
         if (!total) return '';
         const pct = pnl / total * 100;
         const sign = pct >= 0 ? '+' : '';
-        return ` | ${sign}${pct.toFixed(2)}% solde`;
+        return `${sign}${pct.toFixed(2)}% solde`;
     }
 
     function formatDate(iso) {
@@ -79,7 +79,7 @@ const Cycles = (() => {
                     ${statusBadge}
                 </div>
             </div>
-            <div class="grid grid-cols-4 gap-2 text-sm">
+            <div class="grid grid-cols-5 gap-2 text-sm">
                 <div>
                     <div class="metric-label mb-0.5">Entry</div>
                     <div class="font-medium tabular-nums">${formatPrice(entry)}</div>
@@ -89,21 +89,26 @@ const Cycles = (() => {
                     <div class="font-medium tabular-nums">${priceValue}</div>
                 </div>
                 <div>
-                    <div class="metric-label mb-0.5">Brut</div>
+                    <div class="metric-label mb-0.5">PnL brut</div>
                     <div class="${grossPnl !== null ? (grossPnl >= 0 ? 'pnl-positive' : 'pnl-negative') : pnlClass} font-medium tabular-nums">
                         ${grossPnl !== null ? `${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)}` : '--'}
                     </div>
                 </div>
                 <div>
-                    <div class="metric-label mb-0.5">Net</div>
+                    <div class="metric-label mb-0.5">Frais</div>
+                    <div class="text-yellow-500 font-medium tabular-nums">-$${fees.toFixed(2)}</div>
+                </div>
+                <div>
+                    <div class="metric-label mb-0.5">PnL net</div>
                     <div class="${pnlClass} font-bold tabular-nums">
                         ${pnlSign}$${pnlValue.toFixed(2)}
                     </div>
-                    <div class="text-gray-600 text-xs tabular-nums">${pctSign}${pnlPct.toFixed(2)}% position${_capStr(pnlValue)}</div>
+                    <div class="text-gray-600 text-xs tabular-nums">${pctSign}${pnlPct.toFixed(2)}% position</div>
+                    <div class="text-gray-600 text-xs tabular-nums">${_capStr(pnlValue)}</div>
                 </div>
             </div>
             <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
-                <span class="tabular-nums">$${notional} | fees $${fees.toFixed(2)}</span>
+                <span class="tabular-nums">Nominal $${notional}</span>
                 <div class="flex items-center gap-2">
                     <span class="tabular-nums">${formatDate(c.opened_at)}${c.closed_at ? ' → ' + formatDate(c.closed_at) : ''}</span>
                     ${!isOpen ? `<button onclick="event.stopPropagation();Cycles.deleteCycle(${c.id})" class="text-gray-600 hover:text-red-400 transition-colors" title="Supprimer ce cycle">&times;</button>` : ''}

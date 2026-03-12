@@ -846,8 +846,11 @@ const Positions = (() => {
         } catch (e) { /* ignore */ }
     }
 
+    const _MODE_CYCLE = ['auto', 'confirmed', 'manual'];
+
     async function toggleTrailingMode() {
-        const newMode = _trailingMode === 'auto' ? 'manual' : 'auto';
+        const idx = _MODE_CYCLE.indexOf(_trailingMode);
+        const newMode = _MODE_CYCLE[(idx + 1) % _MODE_CYCLE.length];
         try {
             const resp = await fetch('/api/settings/trailing/mode', {
                 method: 'POST',
@@ -857,7 +860,8 @@ const Positions = (() => {
             if (!resp.ok) throw new Error('Failed');
             _trailingMode = newMode;
             _updateModeToggle();
-            App.toast('success', newMode === 'manual' ? 'Mode manuel active' : 'Mode auto reactive');
+            const labels = { auto: 'Mode auto reactive', confirmed: 'Mode confirmed active', manual: 'Mode manuel active' };
+            App.toast('success', labels[newMode]);
         } catch (e) {
             App.toast('error', 'Erreur changement mode');
         }
@@ -866,13 +870,14 @@ const Positions = (() => {
     function _updateModeToggle() {
         const btn = document.getElementById('trailing-mode-btn');
         if (!btn) return;
-        if (_trailingMode === 'manual') {
-            btn.textContent = 'MANUEL';
-            btn.className = 'px-3 py-1.5 text-xs font-bold rounded cursor-pointer transition-colors bg-amber-600 text-white hover:bg-amber-500';
-        } else {
-            btn.textContent = 'AUTO';
-            btn.className = 'px-3 py-1.5 text-xs font-bold rounded cursor-pointer transition-colors bg-emerald-600 text-white hover:bg-emerald-500';
-        }
+        const styles = {
+            manual: { text: 'MANUEL', cls: 'bg-amber-600 text-white hover:bg-amber-500' },
+            confirmed: { text: 'CONFIRMED', cls: 'bg-blue-600 text-white hover:bg-blue-500' },
+            auto: { text: 'AUTO', cls: 'bg-emerald-600 text-white hover:bg-emerald-500' },
+        };
+        const s = styles[_trailingMode] || styles.auto;
+        btn.textContent = s.text;
+        btn.className = `px-3 py-1.5 text-xs font-bold rounded cursor-pointer transition-colors ${s.cls}`;
     }
 
     // Initial load via REST

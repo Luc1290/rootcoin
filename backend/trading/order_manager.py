@@ -6,6 +6,8 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select, update
 
+from binance.exceptions import BinanceAPIException
+
 from backend.exchange import binance_client
 from backend.services import telegram_notifier
 from backend.core.database import async_session
@@ -268,46 +270,89 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal, *, sile
     return result
 
 
+def _build_chunks(symbol: str, total_qty: Decimal, max_qty: Decimal) -> list[Decimal]:
+    chunks: list[Decimal] = []
+    remaining = total_qty
+    while remaining > 0:
+        chunk = round_quantity(symbol, min(remaining, max_qty))
+        if chunk <= 0:
+            break
+        chunks.append(chunk)
+        remaining = round_quantity(symbol, remaining - chunk)
+    return chunks
+
+
+# Binance error codes related to quantity limits
+_QTY_ERROR_CODES = {-1013, -3084, -2010}
+
+
+async def _place_single_market(
+    pos: Position, place_fn, side: str, chunk_qty: Decimal,
+    id_tag: str, db_purpose: str,
+) -> tuple[dict, str]:
+    """Place one MARKET order and save to DB."""
+    kwargs = dict(
+        symbol=pos.symbol, side=side, type="MARKET",
+        quantity=str(chunk_qty),
+        newClientOrderId=_client_order_id(id_tag, pos.id),
+    )
+    if _is_margin(pos):
+        if _is_isolated(pos):
+            kwargs["isIsolated"] = "TRUE"
+        kwargs["sideEffectType"] = "AUTO_REPAY"
+    result = await place_fn(**kwargs)
+    order_id = str(result["orderId"])
+    await _save_order(
+        binance_order_id=order_id, symbol=pos.symbol, side=side,
+        order_type="MARKET", status="NEW", quantity=chunk_qty,
+        market_type=pos.market_type, purpose=db_purpose, position_id=pos.id,
+    )
+    return result, order_id
+
+
+_MAX_RECHUNK_ATTEMPTS = 4  # /10 each time → max division by 10_000
+
+
 async def _place_market_chunked(
     pos: Position, side: str, total_qty: Decimal,
     id_tag: str, db_purpose: str,
 ) -> tuple[dict, str]:
-    """Place MARKET order(s), splitting into chunks if qty exceeds MARKET_LOT_SIZE."""
+    """Place MARKET order(s), splitting into chunks if qty exceeds MARKET_LOT_SIZE.
+    Auto-retries with progressively smaller chunks if Binance rejects for quantity."""
+    place_fn = binance_client.place_margin_order if _is_margin(pos) else binance_client.place_order
+
     max_market = get_max_market_qty(pos.symbol)
     if max_market and total_qty > max_market:
-        chunks: list[Decimal] = []
-        remaining = total_qty
-        while remaining > 0:
-            chunk = round_quantity(pos.symbol, min(remaining, max_market))
-            if chunk <= 0:
-                break
-            chunks.append(chunk)
-            remaining = round_quantity(pos.symbol, remaining - chunk)
+        chunks = _build_chunks(pos.symbol, total_qty, max_market)
         log.info("market_order_chunked", symbol=pos.symbol, total=str(total_qty),
                  chunks=len(chunks), max_market=str(max_market))
     else:
         chunks = [total_qty]
 
-    last_result = None
-    last_order_id = ""
-    for chunk_qty in chunks:
-        kwargs = dict(
-            symbol=pos.symbol, side=side, type="MARKET",
-            quantity=str(chunk_qty),
-            newClientOrderId=_client_order_id(id_tag, pos.id),
-        )
-        if _is_margin(pos):
-            if _is_isolated(pos):
-                kwargs["isIsolated"] = "TRUE"
-            kwargs["sideEffectType"] = "AUTO_REPAY"
-            last_result = await binance_client.place_margin_order(**kwargs)
-        else:
-            last_result = await binance_client.place_order(**kwargs)
-        last_order_id = str(last_result["orderId"])
-        await _save_order(
-            binance_order_id=last_order_id, symbol=pos.symbol, side=side,
-            order_type="MARKET", status="NEW", quantity=chunk_qty,
-            market_type=pos.market_type, purpose=db_purpose, position_id=pos.id,
+    # Try placing the first chunk — if qty rejected, halve and retry
+    for attempt in range(_MAX_RECHUNK_ATTEMPTS + 1):
+        try:
+            last_result, last_order_id = await _place_single_market(
+                pos, place_fn, side, chunks[0], id_tag, db_purpose,
+            )
+            break
+        except BinanceAPIException as exc:
+            if exc.code not in _QTY_ERROR_CODES or attempt == _MAX_RECHUNK_ATTEMPTS:
+                raise
+            # Shrink chunks: divide max by 10 each attempt
+            divisor = 10 ** (attempt + 1)
+            fallback_max = round_quantity(pos.symbol, total_qty / divisor)
+            if fallback_max <= 0:
+                raise
+            chunks = _build_chunks(pos.symbol, total_qty, fallback_max)
+            log.warning("market_order_rechunk", symbol=pos.symbol, attempt=attempt + 1,
+                        fallback_max=str(fallback_max), chunks=len(chunks),
+                        error=exc.message)
+
+    # Place remaining chunks (first one already done)
+    for chunk_qty in chunks[1:]:
+        last_result, last_order_id = await _place_single_market(
+            pos, place_fn, side, chunk_qty, id_tag, db_purpose,
         )
 
     return last_result, last_order_id

@@ -143,8 +143,36 @@ async def _fetch_tickers(window: str = "4h"):
     for g in gainers[:TOP_GAINERS_MAX]:
         g["is_top_gainer"] = True
 
-    # Find top movers by amplitude (high volatility) not already listed
+    # Fetch 12h rolling window for potential movers to get recent amplitude
     listed_symbols = top_symbols | {a["symbol"] for a in gainers[:TOP_GAINERS_MAX]}
+    potential_mover_syms = [
+        c["symbol"] for c in candidates
+        if c["symbol"] not in listed_symbols
+        and c["amplitude"] >= TOP_MOVER_AMPLITUDE_THRESHOLD
+        and c["volume"] >= TOP_MOVER_MIN_VOLUME
+    ]
+    if potential_mover_syms:
+        syms_param = "[" + ",".join(f'"{s}"' for s in potential_mover_syms) + "]"
+        url_12h = f"{BINANCE_TICKER_URL}?windowSize=12h&symbols={syms_param}"
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as s12:
+                async with s12.get(url_12h) as r12:
+                    if r12.status == 200:
+                        tickers_12h = await r12.json()
+                        cand_by_sym = {c["symbol"]: c for c in candidates}
+                        for t12 in tickers_12h:
+                            try:
+                                high = Decimal(t12["highPrice"])
+                                low = Decimal(t12["lowPrice"])
+                                amp = ((high - low) / low * 100) if low > 0 else Decimal("0")
+                                if t12["symbol"] in cand_by_sym:
+                                    cand_by_sym[t12["symbol"]]["amplitude"] = amp
+                            except Exception:
+                                pass
+        except Exception:
+            log.warning("heatmap_12h_amplitude_fetch_failed", exc_info=True)
+
+    # Find top movers by 12h amplitude (high volatility) not already listed
     movers = [
         c for c in candidates
         if c["symbol"] not in listed_symbols
