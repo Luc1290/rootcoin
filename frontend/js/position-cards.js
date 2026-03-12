@@ -80,7 +80,7 @@ const PositionCards = (() => {
                 <div>
                     <div class="metric-label mb-0.5">PnL net</div>
                     <div class="${pnlClass} font-bold tabular-nums" data-field="pnl">
-                        ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%${_pnlCapitalStr(pnl)})
+                        ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% position${_pnlCapitalStr(pnl)})
                     </div>
                     <div class="text-gray-600 text-xs tabular-nums" data-field="pnl-detail">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
                 </div>
@@ -215,7 +215,7 @@ const PositionCards = (() => {
         const pnlEl = f('pnl');
         if (pnlEl) {
             pnlEl.className = `${pnl >= 0 ? 'pnl-positive' : 'pnl-negative'} font-bold tabular-nums`;
-            pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}%${_pnlCapitalStr(pnl)})`;
+            pnlEl.textContent = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(2)}% position${_pnlCapitalStr(pnl)})`;
         }
 
         const detailEl = f('pnl-detail');

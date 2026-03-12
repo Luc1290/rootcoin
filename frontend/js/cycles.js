@@ -99,7 +99,7 @@ const Cycles = (() => {
                     <div class="${pnlClass} font-bold tabular-nums">
                         ${pnlSign}$${pnlValue.toFixed(2)}
                     </div>
-                    <div class="text-gray-600 text-xs tabular-nums">${pctSign}${pnlPct.toFixed(2)}%${_capStr(pnlValue)}</div>
+                    <div class="text-gray-600 text-xs tabular-nums">${pctSign}${pnlPct.toFixed(2)}% position${_capStr(pnlValue)}</div>
                 </div>
             </div>
             <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
