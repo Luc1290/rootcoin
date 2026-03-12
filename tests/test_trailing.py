@@ -50,7 +50,7 @@ FAKE_LEVELS = [
 
 def test_find_initial_sl_tp():
     """Test SL/TP selection from key levels."""
-    from backend.trading.trailing_manager import _find_initial_sl_tp, _compute_rr
+    from backend.trading.trailing_levels import find_initial_sl_tp as _find_initial_sl_tp, compute_rr as _compute_rr
 
     print("=" * 60)
     print("TEST 1: Initial SL/TP from key levels")
@@ -96,7 +96,7 @@ def test_find_initial_sl_tp():
 
 def test_adjust_for_rr():
     """Test R:R adjustment."""
-    from backend.trading.trailing_manager import _adjust_for_rr, _compute_rr
+    from backend.trading.trailing_levels import adjust_for_rr as _adjust_for_rr, compute_rr as _compute_rr
 
     print("\n" + "=" * 60)
     print("TEST 2: R:R adjustment")
@@ -120,7 +120,7 @@ def test_adjust_for_rr():
 
 def test_find_next_resistance():
     """Test finding next resistance above current price."""
-    from backend.trading.trailing_manager import _find_next_resistance
+    from backend.trading.trailing_levels import find_next_resistance as _find_next_resistance
 
     print("\n" + "=" * 60)
     print("TEST 3: Next resistance lookup")
@@ -142,8 +142,10 @@ def test_find_next_resistance():
 
 def test_trailing_simulation():
     """Simulate price movement with step-based trailing."""
-    from backend.trading.trailing_manager import (
-        _find_initial_sl_tp, _compute_rr, _find_next_resistance,
+    from backend.trading.trailing_levels import (
+        find_initial_sl_tp as _find_initial_sl_tp,
+        compute_rr as _compute_rr,
+        find_next_resistance as _find_next_resistance,
     )
 
     print("\n" + "=" * 60)
@@ -242,8 +244,10 @@ def test_trailing_simulation():
 
 def test_trailing_short():
     """Simulate SHORT trailing with step-based logic."""
-    from backend.trading.trailing_manager import (
-        _find_initial_sl_tp, _compute_rr, _find_next_resistance,
+    from backend.trading.trailing_levels import (
+        find_initial_sl_tp as _find_initial_sl_tp,
+        compute_rr as _compute_rr,
+        find_next_resistance as _find_next_resistance,
     )
 
     print("\n" + "=" * 60)

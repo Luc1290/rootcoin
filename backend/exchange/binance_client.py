@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import structlog
 from binance import AsyncClient
 from binance.exceptions import BinanceAPIException

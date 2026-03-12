@@ -34,6 +34,17 @@ from backend.market import market_analyzer
 from backend.routes.position_helpers import fetch_order_prices
 from backend.services import telegram_notifier
 from backend.trading import order_manager, position_tracker
+from backend.trading.trailing_levels import (
+    gain_pct as _gain_pct,
+    sl_protection_pct as _sl_protection_pct,
+    compute_rr as _compute_rr,
+    find_initial_sl_tp as _find_initial_sl_tp,
+    adjust_for_rr as _adjust_for_rr,
+    ensure_sl_tp as _ensure_sl_tp,
+    find_trailing_sl_level as _find_trailing_sl_level,
+    find_next_resistance as _find_next_resistance,
+    compute_initial_levels as _compute_initial_levels,
+)
 
 log = structlog.get_logger()
 
@@ -49,8 +60,6 @@ _DEF_TIGHTEN_AFTER = Decimal("1")  # hours before tightening stale/ranging posit
 _TIGHTEN_INTERVAL = 1800.0  # 30min between tighten re-evaluations
 _TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
 _TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key levels
-_DEF_FALLBACK_SL_PCT = Decimal("1")  # fallback SL distance % when no key levels
-_DEF_MAX_SL_PCT = Decimal("1")      # max SL distance % from entry (cap losses)
 
 # Capital-aware trailing
 _CAP_MAX_RISK_PCT = Decimal("2.5")   # max loss per trade as % of capital
@@ -386,20 +395,9 @@ async def _handle_new_position(pos_id: int):
         analysis = await market_analyzer.ensure_analysis(pos.symbol)
     key_levels = analysis.get("key_levels", []) if analysis else []
 
-    sl_price, tp_price = _find_initial_sl_tp(key_levels, pos.entry_price, pos.side) if key_levels else (None, None)
-
-    # Check and adjust R:R when we have level-based SL/TP
     min_rr = _settings.get("min_rr", _DEF_MIN_RR)
-    if sl_price and tp_price:
-        rr = _compute_rr(pos.entry_price, sl_price, tp_price, pos.side)
-        if rr < min_rr:
-            sl_price, tp_price = _adjust_for_rr(
-                key_levels, pos.entry_price, pos.side, min_rr,
-            )
-
-    # Fallback: percentage-based SL/TP when key levels insufficient
-    sl_price, tp_price = _ensure_sl_tp(
-        pos.entry_price, pos.side, sl_price, tp_price, min_rr,
+    sl_price, tp_price = _compute_initial_levels(
+        key_levels, pos.entry_price, pos.side, min_rr,
     )
 
     # Capital-aware: cap SL distance to max risk % of capital
@@ -488,10 +486,7 @@ async def _recover_naked_position(pos_id: int):
             return
 
     entry = pos.entry_price
-    if pos.side == "LONG":
-        gain_pct = (current - entry) / entry * 100
-    else:
-        gain_pct = (entry - current) / entry * 100
+    gain_pct = _gain_pct(pos.side, entry, current)
 
     analysis = market_analyzer.get_analysis(pos.symbol)
     if not analysis:
@@ -526,18 +521,9 @@ async def _recover_naked_position(pos_id: int):
                  gain=f"{gain_pct:.2f}%", sl_pct=f"{sl_pct:.2f}%")
     else:
         # Below activation: place initial OCO from key levels
-        sl_price, tp_price = (None, None)
-        if key_levels:
-            sl_price, tp_price = _find_initial_sl_tp(key_levels, entry, pos.side)
-            if sl_price and tp_price:
-                rr = _compute_rr(entry, sl_price, tp_price, pos.side)
-                if rr < min_rr:
-                    sl_price, tp_price = _adjust_for_rr(
-                        key_levels, entry, pos.side, min_rr,
-                    )
-
-        # Fallback: percentage-based SL/TP when key levels insufficient
-        sl_price, tp_price = _ensure_sl_tp(entry, pos.side, sl_price, tp_price, min_rr)
+        sl_price, tp_price = _compute_initial_levels(
+            key_levels, entry, pos.side, min_rr,
+        )
 
         # Capital-aware: cap SL distance to max risk % of capital
         sl_price, tp_price = await _cap_sl_to_capital(
@@ -694,10 +680,7 @@ async def _tighten_stale_position(pos, tracking):
             "last_move_at": _time.monotonic(),
         })
 
-        if pos.side == "LONG":
-            gain_pct = (current - entry) / entry * 100
-        else:
-            gain_pct = (entry - current) / entry * 100
+        gain_pct = _gain_pct(pos.side, entry, current)
         sign = "+" if gain_pct >= 0 else ""
 
         reason = "stagnation" if is_stalled else "range"
@@ -724,16 +707,6 @@ async def _tighten_stale_position(pos, tracking):
         tracking["moving"] = False
 
 
-def _sl_protection_pct(side: str, entry: Decimal, auto_sl: Decimal) -> Decimal:
-    """Return the SL protection as a gain % relative to entry."""
-    if not auto_sl or entry <= 0:
-        return Decimal(0)
-    if side == "LONG":
-        return (auto_sl - entry) / entry * 100
-    else:
-        return (entry - auto_sl) / entry * 100
-
-
 # ── Price handler (trailing logic) ───────────────────────────
 
 async def _handle_price_update(msg: dict):
@@ -757,10 +730,7 @@ async def _handle_price_update(msg: dict):
             continue
 
         entry = pos.entry_price
-        if pos.side == "LONG":
-            gain_pct = (current_price - entry) / entry * 100
-        else:
-            gain_pct = (entry - current_price) / entry * 100
+        gain_pct = _gain_pct(pos.side, entry, current_price)
 
         activation = _settings.get("activation", _DEF_ACTIVATION)
         tp_guard_triggered = False
@@ -1064,11 +1034,10 @@ async def _retry_oco_or_fallback_sl(pos, tracking):
 
         # Recalculate SL from current gain
         offset = _settings.get("offset", _DEF_OFFSET)
+        gain_pct = _gain_pct(pos.side, entry, current)
         if pos.side == "LONG":
-            gain_pct = (current - entry) / entry * 100
             sl = round_price(pos.symbol, entry * (1 + (gain_pct - offset) / 100))
         else:
-            gain_pct = (entry - current) / entry * 100
             sl = round_price(pos.symbol, entry * (1 - (gain_pct - offset) / 100))
 
         # Find fresh TP
@@ -1131,19 +1100,6 @@ async def _cap_sl_to_capital(entry, side, qty, sl, tp, min_rr):
     return sl, tp
 
 
-# ── Level helpers ────────────────────────────────────────────
-
-def _parse_levels(key_levels: list) -> list[Decimal]:
-    result = []
-    for l in key_levels:
-        try:
-            result.append(Decimal(str(l["price"])))
-        except (KeyError, ValueError, TypeError):
-            continue
-    result.sort()
-    return result
-
-
 def _has_better_levels(symbol, current_price, side, current_sl, current_tp):
     """Check if key levels offer a better SL or TP than current (in-memory, fast)."""
     analysis = market_analyzer.get_analysis(symbol)
@@ -1164,157 +1120,6 @@ def _has_better_levels(symbol, current_price, side, current_sl, current_tp):
     return False
 
 
-def _ensure_sl_tp(entry, side, sl, tp, min_rr):
-    """Guarantee SL and TP are set, using percentage fallback if needed."""
-    if not sl:
-        pct = _DEF_FALLBACK_SL_PCT / 100
-        sl = entry * (1 - pct) if side == "LONG" else entry * (1 + pct)
-    if not tp:
-        risk = abs(entry - sl)
-        tp = entry + risk * min_rr if side == "LONG" else entry - risk * min_rr
-    return sl, tp
-
-
-def _find_initial_sl_tp(key_levels, entry_price, side):
-    prices = _parse_levels(key_levels)
-    if not prices:
-        return None, None
-
-    min_dist = Decimal("0.8")  # skip levels < 0.8% away (covers fees + noise)
-    max_dist = _DEF_MAX_SL_PCT  # cap SL distance to limit losses
-
-    if side == "LONG":
-        sl = None
-        for p in reversed(prices):
-            if p < entry_price:
-                dist = (entry_price - p) / entry_price * 100
-                if dist >= min_dist:
-                    sl = p
-                    break
-        # Cap SL if level is too far
-        if sl:
-            dist = (entry_price - sl) / entry_price * 100
-            if dist > max_dist:
-                sl = entry_price * (1 - max_dist / 100)
-        tp = None
-        for p in prices:
-            if p > entry_price:
-                dist = (p - entry_price) / entry_price * 100
-                if dist >= min_dist:
-                    tp = p
-                    break
-    else:
-        sl = None
-        for p in prices:
-            if p > entry_price:
-                dist = (p - entry_price) / entry_price * 100
-                if dist >= min_dist:
-                    sl = p
-                    break
-        # Cap SL if level is too far
-        if sl:
-            dist = (sl - entry_price) / entry_price * 100
-            if dist > max_dist:
-                sl = entry_price * (1 + max_dist / 100)
-        tp = None
-        for p in reversed(prices):
-            if p < entry_price:
-                dist = (entry_price - p) / entry_price * 100
-                if dist >= min_dist:
-                    tp = p
-                    break
-
-    return sl, tp
-
-
-def _adjust_for_rr(key_levels, entry_price, side, min_rr):
-    prices = _parse_levels(key_levels)
-    min_dist = Decimal("0.8")
-
-    if side == "LONG":
-        below = [p for p in prices
-                 if p < entry_price and (entry_price - p) / entry_price * 100 >= min_dist]
-        above = [p for p in prices
-                 if p > entry_price and (p - entry_price) / entry_price * 100 >= min_dist]
-        for sl in reversed(below):
-            risk = entry_price - sl
-            for tp in above:
-                reward = tp - entry_price
-                if risk > 0 and reward / risk >= min_rr:
-                    return sl, tp
-    else:
-        above = [p for p in prices
-                 if p > entry_price and (p - entry_price) / entry_price * 100 >= min_dist]
-        below = [p for p in prices
-                 if p < entry_price and (entry_price - p) / entry_price * 100 >= min_dist]
-        for sl in above:
-            risk = sl - entry_price
-            for tp in reversed(below):
-                reward = entry_price - tp
-                if risk > 0 and reward / risk >= min_rr:
-                    return sl, tp
-
-    return None, None
-
-
-def _find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=Decimal("0.8")):
-    """Find nearest key level for trailing SL.
-
-    SHORT: resistance ABOVE current_price (stop buy triggers there on bounce).
-    LONG: support BELOW current_price (stop sell triggers there on pullback).
-    """
-    prices = _parse_levels(key_levels)
-    if not prices:
-        return None
-
-    if side == "SHORT":
-        for p in prices:
-            if p <= current_price:
-                continue
-            dist = (p - current_price) / current_price * 100
-            if dist >= min_dist_pct:
-                return p
-    else:
-        for p in reversed(prices):
-            if p >= current_price:
-                continue
-            dist = (current_price - p) / current_price * 100
-            if dist >= min_dist_pct:
-                return p
-    return None
-
-
-def _find_next_resistance(key_levels, current_price, side):
-    prices = _parse_levels(key_levels)
-    min_dist = Decimal("0.5")
-
-    if side == "LONG":
-        for p in prices:
-            if p > current_price:
-                dist = (p - current_price) / current_price * 100
-                if dist >= min_dist:
-                    return p
-    else:
-        for p in reversed(prices):
-            if p < current_price:
-                dist = (current_price - p) / current_price * 100
-                if dist >= min_dist:
-                    return p
-    return None
-
-
-def _compute_rr(entry, sl, tp, side):
-    if side == "LONG":
-        risk = entry - sl
-        reward = tp - entry
-    else:
-        risk = sl - entry
-        reward = entry - tp
-    if risk <= 0:
-        return Decimal(0)
-    return reward / risk
-
-
 async def _send_override_reminder(pos, tracking):
     """Send Telegram reminder that trailing is paused on this position."""
     try:
@@ -1331,10 +1136,7 @@ async def _send_override_reminder(pos, tracking):
 
         entry = pos.entry_price
         current = pos.current_price or entry
-        if pos.side == "LONG":
-            gain_pct = (current - entry) / entry * 100
-        else:
-            gain_pct = (entry - current) / entry * 100
+        gain_pct = _gain_pct(pos.side, entry, current)
         sign = "+" if gain_pct >= 0 else ""
 
         msg = (
@@ -1423,10 +1225,7 @@ async def resume_after_secure(pos_id: int):
         return
 
     entry = pos.entry_price
-    if pos.side == "LONG":
-        gain_pct = (current - entry) / entry * 100
-    else:
-        gain_pct = (entry - current) / entry * 100
+    gain_pct = _gain_pct(pos.side, entry, current)
 
     if gain_pct >= _settings.get("breakeven", _DEF_BREAKEVEN):
         await _move_oco(pos, tracking, gain_pct, current, is_breakeven=False)
@@ -1543,10 +1342,7 @@ async def _recalculate_levels(pos, tracking):
     key_levels = analysis.get("key_levels", []) if analysis else []
     offset = _settings.get("offset", _DEF_OFFSET)
 
-    if pos.side == "LONG":
-        gain_pct = (current - entry) / entry * 100
-    else:
-        gain_pct = (entry - current) / entry * 100
+    gain_pct = _gain_pct(pos.side, entry, current)
 
     # Recalculate SL
     new_sl = _find_trailing_sl_level(key_levels, current, pos.side, min_dist_pct=offset)
