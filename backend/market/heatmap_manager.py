@@ -18,6 +18,8 @@ VALID_WINDOWS = ("15m", "1h", "4h", "24h")
 WINDOW_TO_BINANCE = {"24h": "1d"}  # Binance accepts 1d not 24h
 TOP_GAINER_THRESHOLD = Decimal("6")  # 24h change % to qualify as top gainer
 TOP_GAINERS_MAX = 10
+TOP_MOVER_AMPLITUDE_THRESHOLD = Decimal("12")  # (high-low)/low % to qualify as top mover
+TOP_MOVERS_MAX = 10
 
 _heatmap_cache: dict[str, dict] = {}
 _active_window: str = "4h"
@@ -65,8 +67,9 @@ def get_heatmap_data(limit: int | None = None, window: str = "4h") -> dict:
     cache = _heatmap_cache.get(window, {})
     all_assets = cache.get("assets", [])
     gainers = [a for a in all_assets if a.get("top_gainer")]
-    volume_based = [a for a in all_assets if not a.get("top_gainer")]
-    assets = gainers + volume_based[:top_n]
+    movers = [a for a in all_assets if a.get("top_mover")]
+    volume_based = [a for a in all_assets if not a.get("top_gainer") and not a.get("top_mover")]
+    assets = gainers + movers + volume_based[:top_n]
     fetched = cache.get("fetched_at")
     is_stale = True
     if fetched:
@@ -112,11 +115,15 @@ async def _fetch_tickers(window: str = "4h"):
         try:
             volume = Decimal(t["quoteVolume"])
             change_pct_24h = Decimal(t["priceChangePercent"])
+            high = Decimal(t["highPrice"])
+            low = Decimal(t["lowPrice"])
+            amplitude = ((high - low) / low * 100) if low > 0 else Decimal("0")
         except Exception:
             continue
         candidates.append({
             "symbol": symbol, "base_asset": base,
             "volume": volume, "change_pct_24h": change_pct_24h,
+            "amplitude": amplitude,
         })
 
     # Sort by volume, keep top N
@@ -134,7 +141,18 @@ async def _fetch_tickers(window: str = "4h"):
     gainers.sort(key=lambda a: a["change_pct_24h"], reverse=True)
     for g in gainers[:TOP_GAINERS_MAX]:
         g["is_top_gainer"] = True
-    top = gainers[:TOP_GAINERS_MAX] + top_by_volume
+
+    # Find top movers by amplitude (high volatility) not already listed
+    listed_symbols = top_symbols | {a["symbol"] for a in gainers[:TOP_GAINERS_MAX]}
+    movers = [
+        c for c in candidates
+        if c["symbol"] not in listed_symbols and c["amplitude"] >= TOP_MOVER_AMPLITUDE_THRESHOLD
+    ]
+    movers.sort(key=lambda a: a["amplitude"], reverse=True)
+    for m in movers[:TOP_MOVERS_MAX]:
+        m["is_top_mover"] = True
+
+    top = movers[:TOP_MOVERS_MAX] + gainers[:TOP_GAINERS_MAX] + top_by_volume
 
     # Step 2: fetch rolling window for these symbols
     symbols_list = [a["symbol"] for a in top]
@@ -171,6 +189,8 @@ async def _fetch_tickers(window: str = "4h"):
             "change_24h": data["change"],
             "volume_24h": str(round(a["volume"], 0)),
             "top_gainer": a.get("is_top_gainer", False),
+            "top_mover": a.get("is_top_mover", False),
+            "amplitude": str(round(a.get("amplitude", Decimal("0")), 2)),
             "change_24h_pct": str(round(a["change_pct_24h"], 2)),
         })
 

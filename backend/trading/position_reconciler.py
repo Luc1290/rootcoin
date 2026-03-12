@@ -271,6 +271,7 @@ async def _reconcile_positions():
             await tracker._save_position(pos)
             del tracker._positions[pos.id]
             tracker.clear_pnl_alerts(pos.id)
+            await tracker._maybe_unsubscribe_symbol(pos.symbol)
             log.info("position_closed_stale", symbol=pos.symbol, market_type=pos.market_type,
                      exit_price=str(exit_price), net_pnl=str(net_pnl))
             asyncio.create_task(telegram_notifier.notify_position_closed_reconciled(

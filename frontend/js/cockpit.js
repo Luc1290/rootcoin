@@ -499,6 +499,7 @@ const Cockpit = (() => {
         el.innerHTML = `
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">${macroHtml}${whaleHtml}${cyclesHtml}${trackHtml}</div>
             ${newsHtml}`;
+        _bindWhaleFilter();
     }
 
     const _cryptoImpact = {
@@ -561,29 +562,49 @@ const Cockpit = (() => {
         </details>`;
     }
 
+    let _whaleFilter = 'ALL';
+
     function _buildWhaleCard() {
         const alerts = _analysis && _analysis.whale_alerts ? _analysis.whale_alerts : [];
         if (!alerts.length) return '';
 
-        const rows = alerts.slice(0, 10).map(w => {
-            const sym = w.symbol.replace('USDC', '');
+        const symbols = [...new Set(alerts.map(w => w.symbol.replace('USDC', '').replace('USDT', '')))].sort();
+        const options = symbols.map(s => `<option value="${s}"${_whaleFilter === s ? ' selected' : ''}>${s}</option>`).join('');
+
+        const filtered = _whaleFilter === 'ALL' ? alerts
+            : alerts.filter(w => w.symbol.replace('USDC', '').replace('USDT', '') === _whaleFilter);
+
+        const rows = filtered.map(w => {
+            const sym = w.symbol.replace('USDC', '').replace('USDT', '');
             const qty = Utils.fmtQuoteQty(w.quote_qty);
             const price = Utils.fmtPriceCompact(w.price);
             const ago = Utils.timeAgoShort(w.timestamp);
             const isBuy = w.side === 'BUY';
             const sideClass = isBuy ? 'side-long' : 'side-short';
-            const label = isBuy ? 'Achat' : 'Vente';
-            return `<div class="flex items-center gap-1.5 py-0.5 text-xs leading-tight">
-                <span class="cockpit-side ${sideClass}">${label}</span>
-                <span class="text-gray-300"><b>${qty}</b> ${sym} @ ${price}</span>
-                <span class="text-gray-500">&middot; ${ago}</span>
+            const label = isBuy ? 'Achat massif' : 'Vente massive';
+            return `<div class="flex items-center gap-1.5 py-1.5">
+                    <span class="text-xs">\uD83D\uDC0B</span>
+                    <span class="cockpit-side ${sideClass}">${label}</span>
+                    <span class="text-xs text-gray-300"><b>${qty}</b> de ${sym} \u00e0 ${price}</span>
+                    <span class="text-xs text-gray-500">&middot; ${ago}</span>
             </div>`;
         }).join('');
 
         return `<div class="cockpit-card cockpit-whale-card">
-            <div class="text-xs text-gray-500 mb-1">Whales</div>
-            ${rows}
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs text-gray-500">Whales</span>
+                <select id="cockpit-whale-filter" class="bg-gray-800 text-xs text-gray-300 border border-gray-600 rounded px-1 py-0.5">
+                    <option value="ALL"${_whaleFilter === 'ALL' ? ' selected' : ''}>Tous</option>
+                    ${options}
+                </select>
+            </div>
+            <div style="max-height:280px;overflow-y:auto">${rows}</div>
         </div>`;
+    }
+
+    function _bindWhaleFilter() {
+        const sel = document.getElementById('cockpit-whale-filter');
+        if (sel) sel.onchange = () => { _whaleFilter = sel.value; _renderContext(); };
     }
 
     function _buildCyclesCard() {

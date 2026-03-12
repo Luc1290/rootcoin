@@ -108,6 +108,7 @@ async def force_close(pos):
     if pos.id in _positions:
         del _positions[pos.id]
     clear_pnl_alerts(pos.id)
+    await _maybe_unsubscribe_symbol(pos.symbol)
     log.info("position_force_closed", symbol=pos.symbol, id=pos.id)
 
 
@@ -170,6 +171,17 @@ async def _commission_to_usd(commission: Decimal, commission_asset: str, fill_pr
         pass
     log.warning("commission_conversion_failed", asset=commission_asset, amount=str(commission))
     return Decimal("0")
+
+
+async def _maybe_unsubscribe_symbol(symbol: str):
+    """Unsubscribe from symbol streams if no active position and not in watchlist."""
+    if symbol in settings.watchlist:
+        return
+    for pos in _positions.values():
+        if pos.symbol == symbol and pos.is_active:
+            return
+    await ws_manager.unsubscribe_symbol_fully(symbol)
+    log.info("symbol_auto_unsubscribed", symbol=symbol)
 
 
 def _is_dust(quantity: Decimal, price: Decimal) -> bool:
@@ -518,6 +530,7 @@ async def _reduce_or_close(
             log.warning("close_snapshot_failed", position_id=position.id, exc_info=True)
         _positions.pop(position.id, None)
         clear_pnl_alerts(position.id)
+        _fire_and_forget(_maybe_unsubscribe_symbol(position.symbol))
 
         if position.side == "SHORT" and position.market_type != "SPOT":
             _recent_short_closes[position.symbol] = _time.monotonic()

@@ -52,14 +52,18 @@ const Heatmap = (() => {
         }
 
         // Summary stats
-        const volumeAssets = _data.assets.filter(a => !a.top_gainer);
+        const volumeAssets = _data.assets.filter(a => !a.top_gainer && !a.top_mover);
         const gainerAssets = _data.assets.filter(a => a.top_gainer);
+        const moverAssets = _data.assets.filter(a => a.top_mover);
         const changes = volumeAssets.map(a => parseFloat(a.change_24h));
         const avgChange = changes.length ? changes.reduce((s, v) => s + v, 0) / changes.length : 0;
         const positive = changes.filter(c => c > 0).length;
         const negative = changes.filter(c => c < 0).length;
         const gainerInfo = gainerAssets.length
             ? `<span class="text-yellow-400">\u{1F525} ${gainerAssets.length} pump${gainerAssets.length > 1 ? 's' : ''} 24h</span>`
+            : '';
+        const moverInfo = moverAssets.length
+            ? `<span class="text-purple-400">\u26A1 ${moverAssets.length} volatile${moverAssets.length > 1 ? 's' : ''}</span>`
             : '';
 
         let summaryHtml = `
@@ -68,6 +72,7 @@ const Heatmap = (() => {
             <span class="pnl-positive">${positive} en hausse</span>
             <span class="pnl-negative">${negative} en baisse</span>
             ${gainerInfo}
+            ${moverInfo}
         </div>`;
 
         // Build tiles (volume assets only in main grid)
@@ -94,6 +99,19 @@ const Heatmap = (() => {
                 <div class="flex gap-1.5 overflow-x-auto pb-1">${gainerAssets.map(a => _tileHtml(a)).join('')}</div>`;
             parent.insertBefore(gainerRow, grid.nextSibling);
         }
+
+        // Top movers row (high amplitude)
+        let moverRow = parent.querySelector('.heatmap-movers-row');
+        if (moverRow) moverRow.remove();
+        if (moverAssets.length) {
+            moverRow = document.createElement('div');
+            moverRow.className = 'heatmap-movers-row';
+            moverRow.innerHTML = `
+                <div class="text-xs text-purple-400 font-semibold mb-1.5 mt-3">\u26A1 Top Movers (amplitude 24h)</div>
+                <div class="flex gap-1.5 overflow-x-auto pb-1">${moverAssets.map(a => _tileHtml(a)).join('')}</div>`;
+            const after = gainerRow ? gainerRow.nextSibling : grid.nextSibling;
+            parent.insertBefore(moverRow, after);
+        }
     }
 
     function _tileHtml(asset) {
@@ -103,18 +121,24 @@ const Heatmap = (() => {
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
         const price = Utils.fmtPrice(asset.price);
         const isGainer = asset.top_gainer;
-        const gainerClass = isGainer ? ' heatmap-top-gainer' : '';
-        const gainerBadge = isGainer ? `<span class="heatmap-gainer-badge">\u{1F525}</span>` : '';
+        const isMover = asset.top_mover;
+        const specialClass = isGainer ? ' heatmap-top-gainer' : (isMover ? ' heatmap-top-mover' : '');
+        const badge = isGainer ? `<span class="heatmap-gainer-badge">\u{1F525}</span>`
+            : (isMover ? `<span class="heatmap-gainer-badge">\u26A1</span>` : '');
         const change24h = isGainer ? parseFloat(asset.change_24h_pct) : null;
-        const subtitle = isGainer && change24h !== null
-            ? `<div class="text-xs opacity-50" style="color:${textColor}">24h: +${change24h.toFixed(0)}%</div>`
-            : '';
+        const amplitude = isMover && asset.amplitude ? parseFloat(asset.amplitude) : null;
+        let subtitle = '';
+        if (isGainer && change24h !== null)
+            subtitle = `<div class="text-xs opacity-50" style="color:${textColor}">24h: +${change24h.toFixed(0)}%</div>`;
+        else if (isMover && amplitude !== null)
+            subtitle = `<div class="text-xs opacity-50" style="color:${textColor}">range: ${amplitude.toFixed(0)}%</div>`;
 
         const base = asset.base_asset;
+        const titleExtra = isGainer ? ' — Top Gainer 24h' : (isMover ? ` — Amplitude ${amplitude?.toFixed(0)}%` : '');
         const tradeUrl = `https://www.binance.com/en/trade/${base}_USDC?_from=markets&type=cross`;
         return `
-        <a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-tile${gainerClass}" style="background:${bgColor};text-decoration:none;display:block" title="${asset.symbol} — ${price}${isGainer ? ' — Top Gainer 24h' : ''}">
-            <div class="font-bold text-sm" style="color:${textColor}">${gainerBadge}${base}</div>
+        <a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-tile${specialClass}" style="background:${bgColor};text-decoration:none;display:block" title="${asset.symbol} — ${price}${titleExtra}">
+            <div class="font-bold text-sm" style="color:${textColor}">${badge}${base}</div>
             <div class="text-xs tabular-nums font-semibold" style="color:${textColor}">${changeStr}</div>
             <div class="text-xs tabular-nums opacity-60" style="color:${textColor}">${price}</div>
             ${subtitle}

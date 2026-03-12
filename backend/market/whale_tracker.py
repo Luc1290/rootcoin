@@ -14,7 +14,7 @@ from backend.exchange.binance_client import get_client
 log = structlog.get_logger()
 
 BINANCE_WS_URL = "wss://stream.binance.com:9443"
-MAX_ALERTS = 50
+MAX_ALERTS = 200
 MAX_BACKOFF = 60
 STABLE_CONNECTION_RESET = 300
 BACKFILL_LIMIT = 1000

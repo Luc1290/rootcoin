@@ -117,6 +117,15 @@ class WSManager:
             except Exception:
                 log.warning("price_stream_unsubscribe_failed", symbol=symbol)
 
+    async def unsubscribe_symbol_fully(self, symbol: str):
+        """Unsubscribe from ticker + all kline streams for a symbol."""
+        await self.unsubscribe_symbol(symbol)
+        prefix = f"{symbol.lower()}@kline_"
+        kline_streams = [s for s in self._subscribed_klines if s.startswith(prefix)]
+        for stream in kline_streams:
+            interval = stream.split("_", 1)[1]
+            await self.unsubscribe_kline(symbol, interval)
+
     # --- Dynamic kline subscription ---
 
     async def subscribe_kline(self, symbol: str, interval: str):
@@ -394,6 +403,7 @@ _manager = WSManager()
 on = _manager.on
 subscribe_symbol = _manager.subscribe_symbol
 unsubscribe_symbol = _manager.unsubscribe_symbol
+unsubscribe_symbol_fully = _manager.unsubscribe_symbol_fully
 subscribe_kline = _manager.subscribe_kline
 unsubscribe_kline = _manager.unsubscribe_kline
 
