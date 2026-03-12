@@ -19,6 +19,7 @@ WINDOW_TO_BINANCE = {"24h": "1d"}  # Binance accepts 1d not 24h
 TOP_GAINER_THRESHOLD = Decimal("6")  # 24h change % to qualify as top gainer
 TOP_GAINERS_MAX = 10
 TOP_MOVER_AMPLITUDE_THRESHOLD = Decimal("12")  # (high-low)/low % to qualify as top mover
+TOP_MOVER_MIN_VOLUME = Decimal("50000")  # min 50k USDC 24h volume to qualify
 TOP_MOVERS_MAX = 10
 
 _heatmap_cache: dict[str, dict] = {}
@@ -146,7 +147,9 @@ async def _fetch_tickers(window: str = "4h"):
     listed_symbols = top_symbols | {a["symbol"] for a in gainers[:TOP_GAINERS_MAX]}
     movers = [
         c for c in candidates
-        if c["symbol"] not in listed_symbols and c["amplitude"] >= TOP_MOVER_AMPLITUDE_THRESHOLD
+        if c["symbol"] not in listed_symbols
+        and c["amplitude"] >= TOP_MOVER_AMPLITUDE_THRESHOLD
+        and c["volume"] >= TOP_MOVER_MIN_VOLUME
     ]
     movers.sort(key=lambda a: a["amplitude"], reverse=True)
     for m in movers[:TOP_MOVERS_MAX]:
