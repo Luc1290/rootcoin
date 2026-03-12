@@ -302,6 +302,28 @@ async def _position_monitor_loop():
                         _naked_since.pop(pid)
                         asyncio.create_task(_recover_naked_position(pid))
 
+            # Detect price past SL — SL limit triggered but not filled (flash crash)
+            if not is_manual:
+                for pid, pos in active.items():
+                    if not pos.current_price or pos.current_price <= 0:
+                        continue
+                    tracking = _tracked.get(pid)
+                    if not tracking:
+                        continue
+                    sl = tracking.get("auto_sl")
+                    if not sl:
+                        continue
+                    has_sl = pos.sl_order_id or pos.oco_order_list_id
+                    if not has_sl:
+                        continue
+                    past_sl = (pos.side == "LONG" and pos.current_price <= sl) or \
+                              (pos.side == "SHORT" and pos.current_price >= sl)
+                    if past_sl:
+                        log.warning("trailing_price_past_sl_active",
+                                    symbol=pos.symbol, current=str(pos.current_price),
+                                    sl=str(sl), side=pos.side)
+                        asyncio.create_task(_emergency_close(pos, reason="price_past_sl_unfilled"))
+
             # Tighten stale/ranging positions OR trailing-stalled positions
             tighten_hours = float(_settings.get("tighten_after", _DEF_TIGHTEN_AFTER))
             if tighten_hours > 0:
