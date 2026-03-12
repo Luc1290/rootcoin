@@ -10,6 +10,14 @@ const Cycles = (() => {
         return p.toFixed(6);
     }
 
+    function _capStr(pnl) {
+        const total = BalanceStore.getTotal();
+        if (!total) return '';
+        const pct = pnl / total * 100;
+        const sign = pct >= 0 ? '+' : '';
+        return ` | ${sign}${pct.toFixed(2)}% solde`;
+    }
+
     function formatDate(iso) {
         if (!iso) return '';
         const d = new Date(iso);
@@ -91,7 +99,7 @@ const Cycles = (() => {
                     <div class="${pnlClass} font-bold tabular-nums">
                         ${pnlSign}$${pnlValue.toFixed(2)}
                     </div>
-                    <div class="text-gray-600 text-xs tabular-nums">${pctSign}${pnlPct.toFixed(2)}%</div>
+                    <div class="text-gray-600 text-xs tabular-nums">${pctSign}${pnlPct.toFixed(2)}%${_capStr(pnlValue)}</div>
                 </div>
             </div>
             <div class="flex items-center justify-between mt-2 text-xs text-gray-500">

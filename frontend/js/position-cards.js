@@ -32,7 +32,7 @@ const PositionCards = (() => {
         if (!total) return '';
         const pct = pnl / total * 100;
         const sign = pct >= 0 ? '+' : '';
-        return ` | ${sign}${pct.toFixed(2)}% cap`;
+        return ` | ${sign}${pct.toFixed(2)}% solde`;
     }
 
     function buildCardHtml(p) {

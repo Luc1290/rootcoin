@@ -128,7 +128,7 @@ const App = (() => {
 
         // Load data on tab switch
         if (tab === 'cockpit') Cockpit.load();
-        if (tab === 'trades') { Cycles.load(); Cycles.startPolling(); } else { Cycles.stopPolling(); }
+        if (tab === 'trades') { BalanceStore.load(); Cycles.load(); Cycles.startPolling(); } else { Cycles.stopPolling(); }
         if (tab === 'fills') Trades.load();
         if (tab === 'balances') Balances.load();
         if (tab === 'chart') { KlineChart.init(); KlineChart.selectActivePosition().then(() => KlineChart.loadChart()); Alerts.init(); Alerts.load(); } else { KlineChart.resetAutoSelect(); }
