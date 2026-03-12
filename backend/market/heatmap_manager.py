@@ -185,6 +185,8 @@ async def _fetch_tickers(window: str = "4h"):
         data = change_map.get(a["symbol"])
         if not data:
             continue
+        if not data["price"] or Decimal(data["price"]) <= 0:
+            continue
         assets.append({
             "symbol": a["symbol"],
             "base_asset": a["base_asset"],
