@@ -685,13 +685,18 @@ async def _handle_list_status(msg: dict):
     list_status = msg.get("l", "")
     order_list_id = str(msg.get("g", ""))
     if list_status == "ALL_DONE" and order_list_id:
+        matched_pos_id = None
         for pos in _positions.values():
             if pos.oco_order_list_id == order_list_id:
+                matched_pos_id = pos.id
                 pos.oco_order_list_id = None
                 await _save_position(pos)
                 log.info("oco_ref_cleaned", symbol=pos.symbol, order_list_id=order_list_id)
                 break
         await order_manager.mark_oco_done(order_list_id)
+        if matched_pos_id is not None:
+            from backend.trading import trailing_manager
+            trailing_manager.notify_oco_done(matched_pos_id)
 
 
 # --- Price updates & PnL threshold alerts ---

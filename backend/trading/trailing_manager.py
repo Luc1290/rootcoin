@@ -1289,6 +1289,31 @@ async def resume_after_secure(pos_id: int):
         log.info("trailing_resumed_after_secure", symbol=pos.symbol, gain=f"{gain_pct:.2f}%")
 
 
+def notify_oco_done(pos_id: int):
+    """Called by position_tracker when an OCO is ALL_DONE.
+    Fast-path: schedule recovery after a short fill-settle delay
+    instead of waiting for poll + naked grace (~18s)."""
+    if not _running:
+        return
+    tracking = _tracked.get(pos_id)
+    if tracking and tracking.get("manual_override"):
+        return
+    _naked_since.pop(pos_id, None)  # skip grace, we handle it here
+    asyncio.create_task(_fast_recover_after_oco(pos_id))
+
+
+async def _fast_recover_after_oco(pos_id: int):
+    """Wait for fills to settle then re-place OCO immediately."""
+    await asyncio.sleep(5)  # let partial fills propagate
+    pos = _get_pos(pos_id)
+    if not pos or not pos.is_active:
+        return
+    if pos.sl_order_id or pos.tp_order_id or pos.oco_order_list_id:
+        return  # orders already placed during wait
+    log.info("trailing_fast_recover", symbol=pos.symbol, pos_id=pos_id)
+    await _recover_naked_position(pos_id)
+
+
 def is_naked(pos_id: int) -> bool:
     return pos_id in _naked_since
 

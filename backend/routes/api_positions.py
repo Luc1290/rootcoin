@@ -8,7 +8,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.exchange import binance_client
-from backend.exchange.symbol_filters import round_price, round_quantity, validate_order
+from backend.exchange.symbol_filters import (
+    get_max_market_qty, round_price, round_quantity, validate_order,
+)
 from backend.trading import order_manager, position_tracker, trailing_manager
 
 from backend.routes.position_helpers import fetch_order_prices, pos_to_dict
@@ -194,7 +196,23 @@ async def open_position(body: OpenBody):
                 kwargs["type"] = "MARKET"
 
             log.info("open_spot", symbol=symbol, notional=str(notional), qty=str(qty))
-            result = await binance_client.place_order(**kwargs)
+
+            # Chunk if qty exceeds MARKET_LOT_SIZE
+            max_market = get_max_market_qty(symbol)
+            if kwargs["type"] == "MARKET" and max_market and qty > max_market:
+                remaining = qty
+                result = None
+                while remaining > 0:
+                    chunk = round_quantity(symbol, min(remaining, max_market))
+                    if chunk <= 0:
+                        break
+                    chunk_kwargs = {**kwargs, "quantity": str(chunk),
+                                    "newClientOrderId": f"rootcoin_spot_{int(time.time() * 1000)}"}
+                    result = await binance_client.place_order(**chunk_kwargs)
+                    remaining = round_quantity(symbol, remaining - chunk)
+                log.info("open_spot_chunked", symbol=symbol, chunks_max=str(max_market))
+            else:
+                result = await binance_client.place_order(**kwargs)
 
             return {
                 "status": "ok",
@@ -294,18 +312,35 @@ async def open_position(body: OpenBody):
         else:
             kwargs["type"] = "MARKET"
 
-        try:
-            result = await binance_client.place_margin_order(**kwargs)
-        except BinanceAPIException as e:
-            if e.code == -3006:
-                log.warning("margin_buy_exceeded_fallback",
-                            symbol=symbol, side=order_side,
-                            msg="Retrying with NO_SIDE_EFFECT")
-                kwargs["sideEffectType"] = "NO_SIDE_EFFECT"
-                kwargs["newClientOrderId"] = f"rootcoin_open_{int(time.time() * 1000)}"
-                result = await binance_client.place_margin_order(**kwargs)
-            else:
+        async def _place_margin(kw: dict) -> dict:
+            try:
+                return await binance_client.place_margin_order(**kw)
+            except BinanceAPIException as e:
+                if e.code == -3006:
+                    log.warning("margin_buy_exceeded_fallback",
+                                symbol=symbol, side=order_side,
+                                msg="Retrying with NO_SIDE_EFFECT")
+                    kw["sideEffectType"] = "NO_SIDE_EFFECT"
+                    kw["newClientOrderId"] = f"rootcoin_open_{int(time.time() * 1000)}"
+                    return await binance_client.place_margin_order(**kw)
                 raise
+
+        # Chunk if qty exceeds MARKET_LOT_SIZE
+        max_market = get_max_market_qty(symbol)
+        if kwargs["type"] == "MARKET" and max_market and qty > max_market:
+            remaining = qty
+            result = None
+            while remaining > 0:
+                chunk = round_quantity(symbol, min(remaining, max_market))
+                if chunk <= 0:
+                    break
+                chunk_kwargs = {**kwargs, "quantity": str(chunk),
+                                "newClientOrderId": f"rootcoin_open_{int(time.time() * 1000)}"}
+                result = await _place_margin(chunk_kwargs)
+                remaining = round_quantity(symbol, remaining - chunk)
+            log.info("open_margin_chunked", symbol=symbol, chunks_max=str(max_market))
+        else:
+            result = await _place_margin(kwargs)
 
         return {
             "status": "ok",
