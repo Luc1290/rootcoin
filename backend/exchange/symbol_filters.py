@@ -45,6 +45,10 @@ async def _load():
                 f["tick_size"] = Decimal(flt["tickSize"])
                 f["min_price"] = Decimal(flt["minPrice"])
                 f["max_price"] = Decimal(flt["maxPrice"])
+            elif ft == "MARKET_LOT_SIZE":
+                market_max = Decimal(flt.get("maxQty", "0"))
+                if market_max > 0:
+                    f["market_max_qty"] = market_max
             elif ft in ("MIN_NOTIONAL", "NOTIONAL"):
                 f["min_notional"] = Decimal(flt.get("minNotional", "0"))
         if f:
@@ -84,6 +88,11 @@ def round_price(symbol: str, price: Decimal) -> Decimal:
     if tick:
         return _round_step(price, tick)
     return price
+
+
+def get_max_market_qty(symbol: str) -> Decimal | None:
+    f = _filters.get(symbol, {})
+    return f.get("market_max_qty")
 
 
 def validate_order(symbol: str, qty: Decimal, price: Decimal):

@@ -58,7 +58,7 @@ _CAP_LOCK_RATIO = Decimal("0.5")     # lock this fraction of gain above threshol
 # Timings
 _POLL_INTERVAL = 3.0
 _FILL_WAIT = 6.0        # wait for multi-fill to complete
-_NAKED_GRACE = 90.0     # seconds before re-placing OCO on unprotected position
+_NAKED_GRACE = 15.0     # seconds before re-placing OCO on unprotected position
 _MIN_MOVE_INTERVAL = 60.0  # minimum seconds between consecutive trailing moves
 _TP_GUARD_INTERVAL = 1.5   # near-zero cooldown: orders are free, only debounce rapid oscillations
 _RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes

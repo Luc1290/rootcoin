@@ -10,7 +10,9 @@ from backend.exchange import binance_client
 from backend.services import telegram_notifier
 from backend.core.database import async_session
 from backend.core.models import Order, Position
-from backend.exchange.symbol_filters import round_price, round_quantity, validate_order
+from backend.exchange.symbol_filters import (
+    get_max_market_qty, round_price, round_quantity, validate_order,
+)
 
 log = structlog.get_logger()
 
@@ -266,6 +268,51 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal, *, sile
     return result
 
 
+async def _place_market_chunked(
+    pos: Position, side: str, total_qty: Decimal,
+    id_tag: str, db_purpose: str,
+) -> tuple[dict, str]:
+    """Place MARKET order(s), splitting into chunks if qty exceeds MARKET_LOT_SIZE."""
+    max_market = get_max_market_qty(pos.symbol)
+    if max_market and total_qty > max_market:
+        chunks: list[Decimal] = []
+        remaining = total_qty
+        while remaining > 0:
+            chunk = round_quantity(pos.symbol, min(remaining, max_market))
+            if chunk <= 0:
+                break
+            chunks.append(chunk)
+            remaining = round_quantity(pos.symbol, remaining - chunk)
+        log.info("market_order_chunked", symbol=pos.symbol, total=str(total_qty),
+                 chunks=len(chunks), max_market=str(max_market))
+    else:
+        chunks = [total_qty]
+
+    last_result = None
+    last_order_id = ""
+    for chunk_qty in chunks:
+        kwargs = dict(
+            symbol=pos.symbol, side=side, type="MARKET",
+            quantity=str(chunk_qty),
+            newClientOrderId=_client_order_id(id_tag, pos.id),
+        )
+        if _is_margin(pos):
+            if _is_isolated(pos):
+                kwargs["isIsolated"] = "TRUE"
+            kwargs["sideEffectType"] = "AUTO_REPAY"
+            last_result = await binance_client.place_margin_order(**kwargs)
+        else:
+            last_result = await binance_client.place_order(**kwargs)
+        last_order_id = str(last_result["orderId"])
+        await _save_order(
+            binance_order_id=last_order_id, symbol=pos.symbol, side=side,
+            order_type="MARKET", status="NEW", quantity=chunk_qty,
+            market_type=pos.market_type, purpose=db_purpose, position_id=pos.id,
+        )
+
+    return last_result, last_order_id
+
+
 async def close_position(pos: Position, pct: int = 100) -> dict:
     is_full = pct >= 100
     if is_full:
@@ -278,27 +325,9 @@ async def close_position(pos: Position, pct: int = 100) -> dict:
         qty = round_quantity(pos.symbol, partial)
 
     side = _close_side(pos)
-    purpose = "close" if is_full else f"pclose{pct}"
+    id_tag = "close" if is_full else f"pclose{pct}"
 
-    kwargs = dict(
-        symbol=pos.symbol, side=side, type="MARKET",
-        quantity=str(qty), newClientOrderId=_client_order_id(purpose, pos.id),
-    )
-
-    if _is_margin(pos):
-        if _is_isolated(pos):
-            kwargs["isIsolated"] = "TRUE"
-        kwargs["sideEffectType"] = "AUTO_REPAY"
-        result = await binance_client.place_margin_order(**kwargs)
-    else:
-        result = await binance_client.place_order(**kwargs)
-
-    order_id = str(result["orderId"])
-    await _save_order(
-        binance_order_id=order_id, symbol=pos.symbol, side=side,
-        order_type="MARKET", status="NEW", quantity=qty,
-        market_type=pos.market_type, purpose="CLOSE", position_id=pos.id,
-    )
+    result, order_id = await _place_market_chunked(pos, side, qty, id_tag, "CLOSE")
 
     log.info("close_placed", symbol=pos.symbol, side=side, qty=str(qty),
              pct=pct, order_id=order_id)
@@ -343,26 +372,10 @@ async def secure_position(pos: Position) -> dict:
     except Exception:
         log.warning("secure_cancel_orders_failed", symbol=pos.symbol, exc_info=True)
 
-    # Step 2: market sell/buy half
+    # Step 2: market sell/buy half (chunked if exceeds MARKET_LOT_SIZE)
     side = _close_side(pos)
-    kwargs = dict(
-        symbol=pos.symbol, side=side, type="MARKET",
-        quantity=str(half_qty),
-        newClientOrderId=_client_order_id("secure", pos.id),
-    )
-    if _is_margin(pos):
-        if _is_isolated(pos):
-            kwargs["isIsolated"] = "TRUE"
-        kwargs["sideEffectType"] = "AUTO_REPAY"
-        market_result = await binance_client.place_margin_order(**kwargs)
-    else:
-        market_result = await binance_client.place_order(**kwargs)
-
-    market_order_id = str(market_result["orderId"])
-    await _save_order(
-        binance_order_id=market_order_id, symbol=pos.symbol, side=side,
-        order_type="MARKET", status="NEW", quantity=half_qty,
-        market_type=pos.market_type, purpose="SECURE_SELL", position_id=pos.id,
+    market_result, market_order_id = await _place_market_chunked(
+        pos, side, half_qty, "secure", "SECURE_SELL",
     )
     log.info("secure_half_sold", symbol=pos.symbol, qty=str(half_qty),
              order_id=market_order_id)
