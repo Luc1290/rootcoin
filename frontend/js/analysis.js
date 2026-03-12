@@ -688,7 +688,7 @@ const Analysis = (() => {
     function _renderWhales() {
         const el = document.getElementById('analysis-whale');
         const allWhales = _data && _data.whale_alerts ? _data.whale_alerts : [];
-        const whales = allWhales.slice().reverse();
+        const whales = allWhales.slice();
 
         if (!whales.length) {
             el.innerHTML = '';
@@ -719,7 +719,7 @@ const Analysis = (() => {
 
         el.innerHTML = `
         <div class="card">
-            <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2 mb-2">
                 <span class="metric-label">Whale alerts</span>
                 <select id="analysis-whale-filter" class="bg-gray-800 text-xs text-gray-300 border border-gray-600 rounded px-1 py-0.5">
                     <option value="ALL"${_whaleFilter === 'ALL' ? ' selected' : ''}>Tous</option>

@@ -591,7 +591,7 @@ const Cockpit = (() => {
         }).join('');
 
         return `<div class="cockpit-card cockpit-whale-card">
-            <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-2 mb-1">
                 <span class="text-xs text-gray-500">Whales</span>
                 <select id="cockpit-whale-filter" class="bg-gray-800 text-xs text-gray-300 border border-gray-600 rounded px-1 py-0.5">
                     <option value="ALL"${_whaleFilter === 'ALL' ? ' selected' : ''}>Tous</option>
