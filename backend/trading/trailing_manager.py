@@ -162,9 +162,11 @@ async def start():
 
 async def _resume_existing(positions):
     """Rebuild tracking state for positions that have orders after restart."""
-    # Resume positions with OCO or individual SL+TP (margin OCO may lose oco ref)
+    # Resume positions with OCO, individual SL+TP, or SL-only (confirmed mode)
+    is_confirmed = _settings.get("mode", "auto") == "confirmed"
     candidates = [p for p in positions
-                  if p.oco_order_list_id or (p.sl_order_id and p.tp_order_id)]
+                  if p.oco_order_list_id or (p.sl_order_id and p.tp_order_id)
+                  or (is_confirmed and p.sl_order_id)]
     if not candidates:
         return
 
@@ -174,8 +176,20 @@ async def _resume_existing(positions):
         prices = order_prices.get(pos.id, {})
         sl_str = prices.get("sl_price")
         tp_str = prices.get("tp_price")
-        if not sl_str or not tp_str:
+        if not sl_str:
             continue
+        # In confirmed mode, TP may not be on Binance — use last known auto_tp
+        if not tp_str:
+            if not is_confirmed:
+                continue
+            # Fallback: estimate TP from key levels or entry + min_rr
+            analysis = market_analyzer.get_analysis(pos.symbol)
+            key_levels = analysis.get("key_levels", []) if analysis else []
+            min_rr = _settings.get("min_rr", _DEF_MIN_RR)
+            _, fallback_tp = _compute_initial_levels(
+                key_levels, pos.entry_price, pos.side, min_rr,
+            )
+            tp_str = str(round_price(pos.symbol, fallback_tp))
 
         sl_decimal = Decimal(sl_str)
         if pos.side == "LONG":
