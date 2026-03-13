@@ -38,7 +38,8 @@ MACRO_CRYPTO_IMPACT = {
     "nvda": "direct", "cac40": "direct", "dax": "direct", "eurusd": "inverse",
 }
 EARLY_MOVER_MIN_CHANGE = Decimal("0.3")  # min |change| in 5m
-EARLY_MOVER_MIN_VOLUME = Decimal("10000")  # min 24h volume to avoid dust
+EARLY_MOVER_MIN_VOLUME = Decimal("2000")  # min 24h volume to avoid dust
+EARLY_MOVER_MIN_VOL_5M = Decimal("500")  # min 5m quote volume to confirm real activity
 EARLY_MOVER_SURGE_THRESHOLD = Decimal("1.2")  # 1.2x expected 5m volatility
 EARLY_MOVERS_MAX = 8
 SURGE_SQRT_288 = Decimal("17")  # sqrt(288 five-min periods in 24h)
@@ -250,11 +251,13 @@ async def _fetch_tickers(window: str = "4h"):
                     if r5.status == 200:
                         tickers_5m = await r5.json()
                         change_5m_map = {}
+                        vol_5m_map = {}
                         for t5 in tickers_5m:
                             sym = t5.get("symbol", "")
                             if sym.endswith("USDC"):
                                 try:
                                     change_5m_map[sym] = Decimal(t5["priceChangePercent"])
+                                    vol_5m_map[sym] = Decimal(t5["quoteVolume"])
                                 except Exception:
                                     pass
 
@@ -265,10 +268,14 @@ async def _fetch_tickers(window: str = "4h"):
                             c["change_5m"] = change_5m
                             if abs(change_5m) < EARLY_MOVER_MIN_CHANGE:
                                 continue
+                            vol_5m = vol_5m_map.get(c["symbol"], Decimal("0"))
+                            if vol_5m < EARLY_MOVER_MIN_VOL_5M:
+                                continue
                             expected = c["amplitude"] / SURGE_SQRT_288
                             surge = abs(change_5m) / max(expected, Decimal("0.01"))
                             if surge >= EARLY_MOVER_SURGE_THRESHOLD:
                                 c["surge_ratio"] = surge
+                                c["vol_5m"] = vol_5m
                                 early_movers.append(c)
         except Exception:
             log.warning("heatmap_5m_fetch_failed", exc_info=True)
@@ -282,13 +289,12 @@ async def _fetch_tickers(window: str = "4h"):
     for a in top_by_volume + gainers[:TOP_GAINERS_MAX] + movers[:TOP_MOVERS_MAX]:
         if a["symbol"] in early_syms:
             a["is_early_mover"] = True
-            a["surge_ratio"] = next(
-                em["surge_ratio"] for em in early_top if em["symbol"] == a["symbol"]
-            )
+            match = next(em for em in early_top if em["symbol"] == a["symbol"])
+            a["surge_ratio"] = match["surge_ratio"]
             if "change_5m" not in a:
-                a["change_5m"] = next(
-                    em["change_5m"] for em in early_top if em["symbol"] == a["symbol"]
-                )
+                a["change_5m"] = match["change_5m"]
+            if "vol_5m" not in a:
+                a["vol_5m"] = match.get("vol_5m")
 
     # Merge all lists, deduplicate by symbol (keep first occurrence = priority order)
     seen = set()
@@ -332,7 +338,7 @@ async def _fetch_tickers(window: str = "4h"):
             "symbol": a["symbol"],
             "base_asset": a["base_asset"],
             "price": data["price"],
-            "change_24h": data["change"],
+            "change_window": data["change"],
             "volume_24h": str(round(a["volume"], 0)),
             "top_gainer": a.get("is_top_gainer", False),
             "top_mover": a.get("is_top_mover", False),
@@ -344,6 +350,8 @@ async def _fetch_tickers(window: str = "4h"):
             asset_entry["change_5m"] = str(round(a["change_5m"], 2))
         if "surge_ratio" in a:
             asset_entry["surge_ratio"] = str(round(a["surge_ratio"], 1))
+        if "vol_5m" in a:
+            asset_entry["vol_5m"] = str(round(a["vol_5m"], 0))
         assets.append(asset_entry)
 
     _heatmap_cache[window] = {
@@ -354,6 +362,18 @@ async def _fetch_tickers(window: str = "4h"):
 
     # Notify new entries in special categories
     await _notify_new_specials(assets)
+
+
+def _fmt_vol(vol) -> str:
+    try:
+        v = float(vol)
+    except (TypeError, ValueError):
+        return ""
+    if v >= 1_000_000:
+        return f"${v / 1_000_000:.1f}M"
+    if v >= 1_000:
+        return f"${v / 1_000:.1f}K"
+    return f"${v:.0f}"
 
 
 async def _notify_new_specials(assets: list[dict]):
@@ -378,9 +398,11 @@ async def _notify_new_specials(assets: list[dict]):
             change = a.get("change_5m", "?")
             surge = a.get("surge_ratio", "?")
             price = a.get("price", "?")
+            vol_5m = a.get("vol_5m", "?")
             new_entries.append({
                 "sym": sym, "base": base,
                 "change": change, "surge": surge, "price": price,
+                "vol_5m": vol_5m,
             })
             _notif_cooldown[sym] = now
 
@@ -398,8 +420,10 @@ async def _notify_new_specials(assets: list[dict]):
         # One consolidated notification
         lines = []
         for e in new_entries[:8]:
+            vol = _fmt_vol(e["vol_5m"])
             lines.append(
-                f"\U0001F680 <b>{e['base']}</b> {e['change']}% en 5min (x{e['surge']})"
+                f"\U0001F680 <b>{e['base']}</b> {e['change']}% en 5min "
+                f"(x{e['surge']}) {vol}"
             )
         msg = (
             "\U0001F30A <b>March\u00e9 en mouvement</b>\n\n"
@@ -409,7 +433,7 @@ async def _notify_new_specials(assets: list[dict]):
         # Individual early movers
         lines = [
             f"\U0001F680 <b>{e['base']}</b> {e['change']}% en 5min "
-            f"(surge x{e['surge']}) \u2014 ${e['price']}"
+            f"(x{e['surge']}) {_fmt_vol(e['vol_5m'])} \u2014 ${e['price']}"
             for e in new_entries
         ]
         msg = "\U0001F4CA <b>D\u00e9marrage d\u00e9tect\u00e9</b>\n\n" + "\n".join(lines)

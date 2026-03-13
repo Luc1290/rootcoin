@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     orderbook_depth_limit: int = 50
     orderbook_wall_threshold: float = 0.15
 
+    # Momentum alerts
+    momentum_symbols: str = "BTCUSDC,ETHUSDC"
+    momentum_poll_interval: int = 60
+
     # Opportunity detector
     opportunity_min_score: int = 35
     opportunity_cooldown_minutes: int = 30

@@ -14,6 +14,7 @@ from backend.market import (
     kline_manager,
     macro_tracker,
     market_analyzer,
+    momentum_alert,
     orderbook_tracker,
     whale_tracker,
 )
@@ -91,6 +92,7 @@ _MODULE_REGISTRY = [
     ("whale_tracker", lambda: whale_tracker._stream_task, False, False),
     ("orderbook_tracker", lambda: orderbook_tracker._poll_task, False, False),
     ("heatmap_manager", lambda: heatmap_manager._refresh_task, False, False),
+    ("momentum_alert", lambda: momentum_alert._poll_task, False, False),
     ("market_analyzer", lambda: market_analyzer._refresh_task, False, False),
     ("news_tracker", lambda: news_tracker._refresh_task, False, False),
 ]

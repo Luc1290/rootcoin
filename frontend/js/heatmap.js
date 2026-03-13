@@ -60,7 +60,7 @@ const Heatmap = (() => {
         const earlyAssets = _data.assets.filter(a => a.early_mover);
 
         // Summary
-        const changes = volumeAssets.map(a => parseFloat(a.change_24h));
+        const changes = volumeAssets.map(a => parseFloat(a.change_window));
         const avgChange = changes.length ? changes.reduce((s, v) => s + v, 0) / changes.length : 0;
         const positive = changes.filter(c => c > 0).length;
         const negative = changes.filter(c => c < 0).length;
@@ -110,7 +110,7 @@ const Heatmap = (() => {
     }
 
     function _tileHtml(asset) {
-        const change = parseFloat(asset.change_24h);
+        const change = parseFloat(asset.change_window);
         const bgColor = _changeColor(change);
         const textColor = Math.abs(change) > 3 ? '#fff' : (Math.abs(change) > 1 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.7)');
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}% ${_currentWindow}`;
@@ -136,15 +136,16 @@ const Heatmap = (() => {
     }
 
     function _specialTileHtml(asset, isEarly) {
-        const change = parseFloat(isEarly ? (asset.change_5m || 0) : asset.change_24h);
+        const change = parseFloat(isEarly ? (asset.change_5m || 0) : asset.change_window);
         const bgColor = _changeColor(isEarly ? change * 3 : change);
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
         const base = asset.base_asset;
         const price = Utils.fmtPrice(asset.price);
+        const vol5m = isEarly && asset.vol_5m ? _fmtVol(asset.vol_5m) : '';
         const tradeUrl = `https://www.binance.com/en/trade/${base}_USDC?_from=markets&type=cross`;
-        return `<a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-special-tile" style="background:${bgColor};text-decoration:none" title="${asset.symbol} — ${price}">
+        return `<a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-special-tile" style="background:${bgColor};text-decoration:none" title="${asset.symbol} — ${price}${vol5m ? ' — vol 5m: ' + vol5m : ''}">
             <div class="font-bold" style="color:#fff;font-size:11px">${base}</div>
-            <div class="tabular-nums font-semibold" style="color:#fff;font-size:10px">${changeStr}</div>
+            <div class="tabular-nums font-semibold" style="color:#fff;font-size:10px">${changeStr}${vol5m ? ' <span style="opacity:0.7;font-weight:400">' + vol5m + '</span>' : ''}</div>
             <div class="tabular-nums" style="color:rgba(255,255,255,0.85);font-size:9px">${price}</div>
         </a>`;
     }
@@ -170,6 +171,14 @@ const Heatmap = (() => {
             <div class="tabular-nums font-semibold" style="color:${textColor};font-size:10px">${changeStr}</div>
             <div class="tabular-nums" style="color:rgba(255,255,255,0.85);font-size:9px">${valStr}</div>
         </div>`;
+    }
+
+    function _fmtVol(vol) {
+        const v = parseFloat(vol);
+        if (isNaN(v)) return '';
+        if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+        if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
+        return `$${v.toFixed(0)}`;
     }
 
     function _changeColor(change) {

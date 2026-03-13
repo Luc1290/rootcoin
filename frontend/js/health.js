@@ -331,6 +331,7 @@ const Health = (() => {
             notify_levels: 'Niveaux cles',
             notify_pnl: 'Seuils PnL',
             notify_heatmap: 'D\u00e9marrages heatmap',
+            notify_momentum: 'Momentum (15m/1h)',
         };
 
         const catToggles = enabled ? Object.entries(catLabels).map(([key, label]) => {

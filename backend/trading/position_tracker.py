@@ -709,8 +709,10 @@ _last_price_at: dict[str, float] = {}  # symbol -> epoch timestamp of last price
 _pnl_armed: dict[tuple[int, float], bool] = {}  # (pos_id, threshold) -> armed (ready to fire)
 _pnl_usd_armed: dict[tuple[int, float], bool] = {}  # (pos_id, usd_threshold) -> armed
 _PNL_COOLDOWN = 900.0  # 15 min cooldown per (pos_id, threshold) even if re-armed
+_PNL_DEDUP_WINDOW = 90.0  # suppress duplicate PnL notif (% vs $) within 90s per position
 _pnl_last_fire: dict[tuple[int, float], float] = {}  # (pos_id, threshold) -> epoch of last fire
 _pnl_usd_last_fire: dict[tuple[int, float], float] = {}  # same for USD thresholds
+_pnl_any_last_fire: dict[int, float] = {}  # pos_id -> epoch of last any PnL notif (dedup)
 
 
 async def _handle_price_update(msg: dict):
@@ -748,8 +750,11 @@ def _check_pnl_thresholds(pos: Position, prev_pct: float, cur_pct: float):
         if crossed:
             if _pnl_armed.get(key, True):
                 if now - _pnl_last_fire.get(key, 0.0) >= _PNL_COOLDOWN:
+                    if now - _pnl_any_last_fire.get(pos.id, 0.0) < _PNL_DEDUP_WINDOW:
+                        continue
                     _pnl_armed[key] = False
                     _pnl_last_fire[key] = now
+                    _pnl_any_last_fire[pos.id] = now
                     _fire_and_forget(telegram_notifier.notify_pnl_threshold(
                         pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
                         pos.entry_price, pos.current_price, t,
@@ -768,8 +773,11 @@ def _check_pnl_usd_thresholds(pos: Position, prev_usd: float, cur_usd: float):
         if crossed:
             if _pnl_usd_armed.get(key, True):
                 if now - _pnl_usd_last_fire.get(key, 0.0) >= _PNL_COOLDOWN:
+                    if now - _pnl_any_last_fire.get(pos.id, 0.0) < _PNL_DEDUP_WINDOW:
+                        continue
                     _pnl_usd_armed[key] = False
                     _pnl_usd_last_fire[key] = now
+                    _pnl_any_last_fire[pos.id] = now
                     _fire_and_forget(telegram_notifier.notify_pnl_usd_threshold(
                         pos.symbol, pos.side, pos.pnl_pct, pos.pnl_usd,
                         pos.entry_price, pos.current_price, pos.quantity, t,
