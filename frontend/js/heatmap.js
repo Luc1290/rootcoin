@@ -182,7 +182,7 @@ const Heatmap = (() => {
         const change = parseFloat(m.change_pct);
         // For inverted indicators (VIX, DXY), flip color: down = green
         const colorChange = m.inverted ? -change : change;
-        const bgColor = _changeColor(colorChange * 3); // amplify: macro moves are smaller
+        const bgColor = _changeColor(colorChange * 8); // amplify: macro moves are smaller
         const textColor = 'rgba(255,255,255,0.9)';
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
         const val = parseFloat(m.value);
