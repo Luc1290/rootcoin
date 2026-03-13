@@ -49,7 +49,7 @@ RootCoin is designed for personal use and **does not include a built-in authenti
 ### Position Management
 - **Live tracking** — Positions reconstructed from Binance balances + trade history (spot/margin don't have native positions)
 - **Order placement** — Stop Loss, Take Profit, OCO orders with Binance filter validation (LOT_SIZE, PRICE_FILTER, MIN_NOTIONAL)
-- **Smart trailing** — Automatic OCO on new positions with trailing SL/TP that adjusts upward as profit grows
+- **Smart trailing** — Automatic OCO on new positions using key levels (0.6-1% SL), breakeven at +0.5% (covers real fees), capital-aware gain lock, trailing snaps to key levels (never retreats), TP guard, stale tightening, naked recovery, emergency close, manual override detection, max risk 1.5% of capital per trade
 - **One-click close** — Close any position directly from the dashboard
 - **Crash recovery** — Full state reconstruction from Binance on restart, no duplicates
 
