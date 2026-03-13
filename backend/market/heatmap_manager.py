@@ -37,9 +37,9 @@ MACRO_CRYPTO_IMPACT = {
     "usdjpy": "direct", "mstr": "direct", "ibit": "direct", "googl": "direct",
     "nvda": "direct", "cac40": "direct", "dax": "direct", "eurusd": "inverse",
 }
-EARLY_MOVER_MIN_CHANGE = Decimal("0.5")  # min |change| in 5m
+EARLY_MOVER_MIN_CHANGE = Decimal("0.3")  # min |change| in 5m
 EARLY_MOVER_MIN_VOLUME = Decimal("10000")  # min 24h volume to avoid dust
-EARLY_MOVER_SURGE_THRESHOLD = Decimal("1.5")  # 1.5x expected 5m volatility
+EARLY_MOVER_SURGE_THRESHOLD = Decimal("1.2")  # 1.2x expected 5m volatility
 EARLY_MOVERS_MAX = 8
 SURGE_SQRT_288 = Decimal("17")  # sqrt(288 five-min periods in 24h)
 NOTIFY_COOLDOWN = 3600  # 1h cooldown per symbol before re-notifying

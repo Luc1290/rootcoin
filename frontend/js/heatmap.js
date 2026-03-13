@@ -94,15 +94,15 @@ const Heatmap = (() => {
             }
         }
 
-        // Specials (bottom bar)
+        // Specials (bottom bar — 3 columns with titles)
         if (specialsEl) {
             const hasSpecials = earlyAssets.length || gainerAssets.length || moverAssets.length;
             if (hasSpecials) {
                 specialsEl.classList.remove('hidden');
                 specialsEl.innerHTML =
-                    _specialCol('\u{1F680} D\u00e9marrages', 'text-cyan-400', earlyAssets, true) +
-                    _specialCol('\u{1F525} Gainers 24h', 'text-yellow-400', gainerAssets, false) +
-                    _specialCol('\u26A1 Movers 12h', 'text-purple-400', moverAssets, false);
+                    _specialCol('\u{1F680} D\u00e9marrages', earlyAssets, true) +
+                    _specialCol('\u{1F525} Gainers 24h', gainerAssets, false) +
+                    _specialCol('\u26A1 Movers 12h', moverAssets, false);
             } else {
                 specialsEl.classList.add('hidden');
             }
@@ -121,20 +121,21 @@ const Heatmap = (() => {
         <a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-tile" style="background:${bgColor};text-decoration:none" title="${asset.symbol} — ${price}">
             <div class="font-bold text-sm" style="color:${textColor}">${base}</div>
             <div class="text-xs tabular-nums font-semibold" style="color:${textColor}">${changeStr}</div>
-            <div class="text-xs tabular-nums opacity-60" style="color:${textColor}">${price}</div>
+            <div class="text-xs tabular-nums" style="color:rgba(255,255,255,0.85)">${price}</div>
         </a>`;
     }
 
-    function _specialCol(title, colorClass, assets, isEarly) {
-        if (!assets.length) return '<div></div>';
-        const tiles = assets.slice(0, 6).map(a => _smallTileHtml(a, isEarly)).join('');
+    function _specialCol(title, assets, isEarly) {
+        const tiles = assets.length
+            ? assets.slice(0, 6).map(a => _specialTileHtml(a, isEarly)).join('')
+            : '<div class="text-xs text-gray-600" style="grid-column:1/-1;padding:4px 0">Aucun</div>';
         return `<div>
-            <div class="heatmap-specials-title ${colorClass}">${title}</div>
-            <div class="heatmap-specials-wrap">${tiles}</div>
+            <div class="heatmap-specials-title">${title}</div>
+            <div class="heatmap-specials-grid">${tiles}</div>
         </div>`;
     }
 
-    function _smallTileHtml(asset, isEarly) {
+    function _specialTileHtml(asset, isEarly) {
         const change = parseFloat(isEarly ? (asset.change_5m || 0) : asset.change_24h);
         const bgColor = _changeColor(isEarly ? change * 3 : change);
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
@@ -142,8 +143,9 @@ const Heatmap = (() => {
         const price = Utils.fmtPrice(asset.price);
         const tradeUrl = `https://www.binance.com/en/trade/${base}_USDC?_from=markets&type=cross`;
         return `<a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-special-tile" style="background:${bgColor};text-decoration:none" title="${asset.symbol} — ${price}">
-            <div class="font-bold" style="color:#fff;font-size:10px">${base}</div>
-            <div class="tabular-nums" style="color:rgba(255,255,255,0.8);font-size:9px">${changeStr}</div>
+            <div class="font-bold" style="color:#fff;font-size:11px">${base}</div>
+            <div class="tabular-nums font-semibold" style="color:#fff;font-size:10px">${changeStr}</div>
+            <div class="tabular-nums" style="color:rgba(255,255,255,0.85);font-size:9px">${price}</div>
         </a>`;
     }
 
@@ -166,7 +168,7 @@ const Heatmap = (() => {
                 <span style="color:${ciColor};font-size:8px" title="Impact crypto">${ciIcon}</span>
             </div>
             <div class="tabular-nums font-semibold" style="color:${textColor};font-size:10px">${changeStr}</div>
-            <div class="tabular-nums opacity-60" style="color:${textColor};font-size:9px">${valStr}</div>
+            <div class="tabular-nums" style="color:rgba(255,255,255,0.85);font-size:9px">${valStr}</div>
         </div>`;
     }
 
