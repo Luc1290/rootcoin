@@ -17,6 +17,7 @@ _notify_positions: bool = True
 _notify_orders: bool = True
 _notify_levels: bool = True
 _notify_pnl: bool = True
+_notify_heatmap: bool = True
 _http: httpx.AsyncClient | None = None
 _summary_task: asyncio.Task | None = None
 _callback_task: asyncio.Task | None = None
@@ -28,17 +29,19 @@ SETTING_POSITIONS = "notify_positions"
 SETTING_ORDERS = "notify_orders"
 SETTING_LEVELS = "notify_levels"
 SETTING_PNL = "notify_pnl"
-_CATEGORY_KEYS = {SETTING_POSITIONS, SETTING_ORDERS, SETTING_LEVELS, SETTING_PNL}
+SETTING_HEATMAP = "notify_heatmap"
+_CATEGORY_KEYS = {SETTING_POSITIONS, SETTING_ORDERS, SETTING_LEVELS, SETTING_PNL, SETTING_HEATMAP}
 
 
 async def start():
-    global _enabled, _notify_positions, _notify_orders, _notify_levels, _notify_pnl, _http, _summary_task, _callback_task
+    global _enabled, _notify_positions, _notify_orders, _notify_levels, _notify_pnl, _notify_heatmap, _http, _summary_task, _callback_task
     _http = httpx.AsyncClient(timeout=10)
     _enabled = await _load_setting(SETTING_KEY, is_configured())
     _notify_positions = await _load_setting(SETTING_POSITIONS, True)
     _notify_orders = await _load_setting(SETTING_ORDERS, True)
     _notify_levels = await _load_setting(SETTING_LEVELS, True)
     _notify_pnl = await _load_setting(SETTING_PNL, True)
+    _notify_heatmap = await _load_setting(SETTING_HEATMAP, True)
     _summary_task = asyncio.create_task(_periodic_summary_loop())
     _callback_task = asyncio.create_task(_callback_polling_loop())
     log.info("telegram_notifier_started", configured=is_configured(), enabled=_enabled)
@@ -88,12 +91,17 @@ def is_pnl_enabled() -> bool:
     return is_enabled() and _notify_pnl
 
 
+def is_heatmap_enabled() -> bool:
+    return is_enabled() and _notify_heatmap
+
+
 def get_categories() -> dict:
     return {
         SETTING_POSITIONS: _notify_positions,
         SETTING_ORDERS: _notify_orders,
         SETTING_LEVELS: _notify_levels,
         SETTING_PNL: _notify_pnl,
+        SETTING_HEATMAP: _notify_heatmap,
     }
 
 
@@ -108,7 +116,7 @@ async def set_enabled(enabled: bool):
 
 
 async def set_category_enabled(key: str, enabled: bool):
-    global _notify_positions, _notify_orders, _notify_levels, _notify_pnl
+    global _notify_positions, _notify_orders, _notify_levels, _notify_pnl, _notify_heatmap
     if key not in _CATEGORY_KEYS:
         return
     if key == SETTING_POSITIONS:
@@ -119,6 +127,8 @@ async def set_category_enabled(key: str, enabled: bool):
         _notify_levels = enabled
     elif key == SETTING_PNL:
         _notify_pnl = enabled
+    elif key == SETTING_HEATMAP:
+        _notify_heatmap = enabled
     await _save_setting(key, enabled)
     log.info("telegram_category_changed", key=key, enabled=enabled)
 

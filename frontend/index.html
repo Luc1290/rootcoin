@@ -302,7 +302,10 @@
                 </div>
                 <span id="heatmap-freshness" class="text-xs text-gray-500"></span>
             </div>
-            <div id="heatmap-grid" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-1.5"></div>
+            <div class="flex gap-4">
+                <div id="heatmap-grid" class="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-7 gap-1.5 flex-1" style="min-width:0"></div>
+                <div id="heatmap-macro" class="hidden" style="width:200px;flex-shrink:0"></div>
+            </div>
             <div id="heatmap-empty" class="empty-state hidden">
                 <div class="empty-state-icon">🗺</div>
                 <div class="empty-state-text">Chargement de la heatmap...</div>

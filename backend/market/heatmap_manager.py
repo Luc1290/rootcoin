@@ -1,4 +1,5 @@
 import asyncio
+import time as _time
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -6,6 +7,8 @@ import aiohttp
 import structlog
 
 from backend.exchange import binance_client
+from backend.market import macro_tracker
+from backend.services import telegram_notifier
 from backend.core.config import settings
 
 log = structlog.get_logger()
@@ -21,10 +24,31 @@ TOP_GAINERS_MAX = 10
 TOP_MOVER_AMPLITUDE_THRESHOLD = Decimal("12")  # (high-low)/low % to qualify as top mover
 TOP_MOVER_MIN_VOLUME = Decimal("50000")  # min 50k USDC 24h volume to qualify
 TOP_MOVERS_MAX = 10
+MACRO_LABELS = {
+    "sp500": "S&P 500", "nasdaq": "Nasdaq", "dxy": "Dollar", "vix": "Peur",
+    "gold": "Or", "oil": "P\u00e9trole", "us10y": "Taux 10a", "us05y": "Taux 5a",
+    "usdjpy": "Yen", "mstr": "MicroStrategy", "ibit": "ETF BTC", "googl": "Google",
+    "nvda": "Nvidia", "cac40": "CAC 40", "dax": "DAX", "eurusd": "EUR/USD",
+}
+MACRO_INVERTED = {"vix", "dxy"}  # green = down for these (good for crypto)
+MACRO_CRYPTO_IMPACT = {
+    "dxy": "inverse", "vix": "inverse", "nasdaq": "direct", "sp500": "direct",
+    "gold": "inverse", "us10y": "inverse", "us05y": "inverse", "oil": "inverse",
+    "usdjpy": "direct", "mstr": "direct", "ibit": "direct", "googl": "direct",
+    "nvda": "direct", "cac40": "direct", "dax": "direct", "eurusd": "inverse",
+}
+EARLY_MOVER_MIN_CHANGE = Decimal("0.5")  # min |change| in 5m
+EARLY_MOVER_MIN_VOLUME = Decimal("10000")  # min 24h volume to avoid dust
+EARLY_MOVER_SURGE_THRESHOLD = Decimal("2")  # 2x expected 5m volatility
+EARLY_MOVERS_MAX = 8
+SURGE_SQRT_288 = Decimal("17")  # sqrt(288 five-min periods in 24h)
+NOTIFY_COOLDOWN = 4 * 3600  # 4h cooldown per symbol before re-notifying
 
 _heatmap_cache: dict[str, dict] = {}
 _active_window: str = "4h"
 _refresh_task: asyncio.Task | None = None
+_prev_special: set[str] = set()  # symbols in special categories last refresh
+_notif_cooldown: dict[str, float] = {}  # symbol -> last notified timestamp
 
 
 async def start():
@@ -69,15 +93,45 @@ def get_heatmap_data(limit: int | None = None, window: str = "4h") -> dict:
     all_assets = cache.get("assets", [])
     gainers = [a for a in all_assets if a.get("top_gainer")]
     movers = [a for a in all_assets if a.get("top_mover")]
-    volume_based = [a for a in all_assets if not a.get("top_gainer") and not a.get("top_mover")]
-    assets = gainers + movers + volume_based[:top_n]
+    early = [a for a in all_assets if a.get("early_mover")]
+    volume_based = [a for a in all_assets
+                    if not a.get("top_gainer") and not a.get("top_mover") and not a.get("early_mover")]
+    assets = early + gainers + movers + volume_based[:top_n]
     fetched = cache.get("fetched_at")
     is_stale = True
     if fetched:
         age = (datetime.now(timezone.utc) - fetched).total_seconds()
         is_stale = age > STALE_THRESHOLD
+    # Build macro tiles from macro_tracker
+    macro_data = macro_tracker.get_macro_data()
+    macro_tiles = []
+    for key, label in MACRO_LABELS.items():
+        ind = macro_data.get("indicators", {}).get(key)
+        if not ind:
+            continue
+        change = float(ind.get("change_pct", 0))
+        # Compute crypto impact: green triangle if good for crypto, red if bad
+        impact = MACRO_CRYPTO_IMPACT.get(key, "direct")
+        change_f = float(ind.get("change_pct", 0))
+        if impact == "inverse":
+            crypto_good = change_f < 0
+        else:
+            crypto_good = change_f > 0
+        crypto_icon = "up" if crypto_good else "down" if change_f != 0 else "neutral"
+
+        macro_tiles.append({
+            "key": key,
+            "label": label,
+            "value": ind["value"],
+            "change_pct": ind["change_pct"],
+            "trend": ind["trend"],
+            "inverted": key in MACRO_INVERTED,
+            "crypto_impact": crypto_icon,
+        })
+
     return {
         "assets": assets,
+        "macro": macro_tiles,
         "updated_at": fetched.isoformat() if fetched else None,
         "is_stale": is_stale,
         "window": window,
@@ -183,7 +237,47 @@ async def _fetch_tickers(window: str = "4h"):
     for m in movers[:TOP_MOVERS_MAX]:
         m["is_top_mover"] = True
 
-    top = movers[:TOP_MOVERS_MAX] + gainers[:TOP_GAINERS_MAX] + top_by_volume
+    # Detect early movers via 5m rolling window (scan ALL USDC pairs)
+    all_listed = listed_symbols | {m["symbol"] for m in movers[:TOP_MOVERS_MAX]}
+    early_movers = []
+    early_candidates = [c for c in candidates if c["volume"] >= EARLY_MOVER_MIN_VOLUME]
+    if early_candidates:
+        try:
+            url_5m = f"{BINANCE_TICKER_URL}?windowSize=5m"
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as s5:
+                async with s5.get(url_5m) as r5:
+                    if r5.status == 200:
+                        tickers_5m = await r5.json()
+                        change_5m_map = {}
+                        for t5 in tickers_5m:
+                            sym = t5.get("symbol", "")
+                            if sym.endswith("USDC"):
+                                try:
+                                    change_5m_map[sym] = Decimal(t5["priceChangePercent"])
+                                except Exception:
+                                    pass
+
+                        for c in early_candidates:
+                            change_5m = change_5m_map.get(c["symbol"])
+                            if change_5m is None:
+                                continue
+                            c["change_5m"] = change_5m
+                            if abs(change_5m) < EARLY_MOVER_MIN_CHANGE:
+                                continue
+                            expected = c["amplitude"] / SURGE_SQRT_288
+                            surge = abs(change_5m) / max(expected, Decimal("0.01"))
+                            if surge >= EARLY_MOVER_SURGE_THRESHOLD:
+                                c["surge_ratio"] = surge
+                                if c["symbol"] not in all_listed:
+                                    early_movers.append(c)
+        except Exception:
+            log.warning("heatmap_5m_fetch_failed", exc_info=True)
+
+    early_movers.sort(key=lambda a: a.get("surge_ratio", 0), reverse=True)
+    for em in early_movers[:EARLY_MOVERS_MAX]:
+        em["is_early_mover"] = True
+
+    top = early_movers[:EARLY_MOVERS_MAX] + movers[:TOP_MOVERS_MAX] + gainers[:TOP_GAINERS_MAX] + top_by_volume
 
     # Step 2: fetch rolling window for these symbols
     symbols_list = [a["symbol"] for a in top]
@@ -215,7 +309,7 @@ async def _fetch_tickers(window: str = "4h"):
             continue
         if not data["price"] or Decimal(data["price"]) <= 0:
             continue
-        assets.append({
+        asset_entry = {
             "symbol": a["symbol"],
             "base_asset": a["base_asset"],
             "price": data["price"],
@@ -223,12 +317,55 @@ async def _fetch_tickers(window: str = "4h"):
             "volume_24h": str(round(a["volume"], 0)),
             "top_gainer": a.get("is_top_gainer", False),
             "top_mover": a.get("is_top_mover", False),
+            "early_mover": a.get("is_early_mover", False),
             "amplitude": str(round(a.get("amplitude", Decimal("0")), 2)),
             "change_24h_pct": str(round(a["change_pct_24h"], 2)),
-        })
+        }
+        if "change_5m" in a:
+            asset_entry["change_5m"] = str(round(a["change_5m"], 2))
+        if "surge_ratio" in a:
+            asset_entry["surge_ratio"] = str(round(a["surge_ratio"], 1))
+        assets.append(asset_entry)
 
     _heatmap_cache[window] = {
         "assets": assets,
         "fetched_at": datetime.now(timezone.utc),
     }
     log.debug("heatmap_refreshed", window=window, count=len(assets))
+
+    # Notify new entries in special categories
+    await _notify_new_specials(assets)
+
+
+async def _notify_new_specials(assets: list[dict]):
+    global _prev_special
+    now = _time.time()
+
+    # Purge expired cooldowns
+    _notif_cooldown.update({
+        s: t for s, t in _notif_cooldown.items() if now - t < NOTIFY_COOLDOWN
+    })
+
+    current_early = set()
+    new_entries = []
+
+    for a in assets:
+        if not a.get("early_mover"):
+            continue
+        sym = a["symbol"]
+        base = a.get("base_asset", sym.replace("USDC", ""))
+        current_early.add(sym)
+        if sym not in _prev_special and sym not in _notif_cooldown:
+            change = a.get("change_5m", "?")
+            surge = a.get("surge_ratio", "?")
+            price = a.get("price", "?")
+            new_entries.append(
+                f"\U0001F680 <b>{base}</b> {change}% en 5min (surge x{surge}) \u2014 ${price}"
+            )
+            _notif_cooldown[sym] = now
+
+    _prev_special = current_early
+
+    if new_entries and telegram_notifier.is_heatmap_enabled():
+        msg = "\U0001F4CA <b>D\u00e9marrage d\u00e9tect\u00e9</b>\n\n" + "\n".join(new_entries)
+        asyncio.create_task(telegram_notifier.notify(msg))

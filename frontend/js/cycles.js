@@ -108,7 +108,7 @@ const Cycles = (() => {
                 </div>
             </div>
             <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
-                <span class="tabular-nums">Nominal $${notional}</span>
+                <span class="tabular-nums">Montant de la position $${notional}</span>
                 <div class="flex items-center gap-2">
                     <span class="tabular-nums">${formatDate(c.opened_at)}${c.closed_at ? ' → ' + formatDate(c.closed_at) : ''}</span>
                     ${!isOpen ? `<button onclick="event.stopPropagation();Cycles.deleteCycle(${c.id})" class="text-gray-600 hover:text-red-400 transition-colors" title="Supprimer ce cycle">&times;</button>` : ''}

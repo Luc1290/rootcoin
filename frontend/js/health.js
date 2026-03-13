@@ -330,6 +330,7 @@ const Health = (() => {
             notify_orders: 'Ordres (SL/TP/OCO)',
             notify_levels: 'Niveaux cles',
             notify_pnl: 'Seuils PnL',
+            notify_heatmap: 'D\u00e9marrages heatmap',
         };
 
         const catToggles = enabled ? Object.entries(catLabels).map(([key, label]) => {

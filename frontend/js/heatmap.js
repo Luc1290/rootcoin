@@ -52,9 +52,10 @@ const Heatmap = (() => {
         }
 
         // Summary stats
-        const volumeAssets = _data.assets.filter(a => !a.top_gainer && !a.top_mover);
+        const volumeAssets = _data.assets.filter(a => !a.top_gainer && !a.top_mover && !a.early_mover);
         const gainerAssets = _data.assets.filter(a => a.top_gainer);
         const moverAssets = _data.assets.filter(a => a.top_mover);
+        const earlyAssets = _data.assets.filter(a => a.early_mover);
         const changes = volumeAssets.map(a => parseFloat(a.change_24h));
         const avgChange = changes.length ? changes.reduce((s, v) => s + v, 0) / changes.length : 0;
         const positive = changes.filter(c => c > 0).length;
@@ -79,38 +80,52 @@ const Heatmap = (() => {
         const tiles = volumeAssets.map(a => _tileHtml(a)).join('');
         grid.innerHTML = tiles;
 
-        // Insert summary before grid
-        const parent = grid.parentNode;
-        let existingSummary = parent.querySelector('.heatmap-summary');
+        // Macro heatmap (right column)
+        const macroEl = document.getElementById('heatmap-macro');
+        const macroTiles = _data.macro || [];
+        if (macroEl) {
+            if (macroTiles.length) {
+                macroEl.classList.remove('hidden');
+                macroEl.innerHTML = `
+                    <div class="text-xs text-gray-500 font-semibold mb-1.5">Macro</div>
+                    <div class="grid grid-cols-2 gap-1">${macroTiles.map(m => _macroTileHtml(m)).join('')}</div>`;
+            } else {
+                macroEl.classList.add('hidden');
+            }
+        }
+
+        // Insert summary before the flex container
+        const container = grid.parentNode.parentNode;
+        let existingSummary = container.querySelector('.heatmap-summary');
         if (existingSummary) existingSummary.remove();
         const summaryDiv = document.createElement('div');
         summaryDiv.className = 'heatmap-summary';
         summaryDiv.innerHTML = summaryHtml;
-        parent.insertBefore(summaryDiv, grid);
+        container.insertBefore(summaryDiv, grid.parentNode);
 
-        // Top gainers row below grid
-        let gainerRow = parent.querySelector('.heatmap-gainers-row');
-        if (gainerRow) gainerRow.remove();
-        if (gainerAssets.length) {
-            gainerRow = document.createElement('div');
-            gainerRow.className = 'heatmap-gainers-row';
-            gainerRow.innerHTML = `
-                <div class="text-xs text-yellow-400 font-semibold mb-1.5 mt-3">\u{1F525} Top Gainers 24h</div>
-                <div class="flex gap-1.5 overflow-x-auto pb-1">${gainerAssets.map(a => _tileHtml(a)).join('')}</div>`;
-            parent.insertBefore(gainerRow, grid.nextSibling);
-        }
-
-        // Top movers row (high amplitude)
-        let moverRow = parent.querySelector('.heatmap-movers-row');
-        if (moverRow) moverRow.remove();
-        if (moverAssets.length) {
-            moverRow = document.createElement('div');
-            moverRow.className = 'heatmap-movers-row';
-            moverRow.innerHTML = `
-                <div class="text-xs text-purple-400 font-semibold mb-1.5 mt-3">\u26A1 Top Movers (amplitude 12h)</div>
-                <div class="flex gap-1.5 overflow-x-auto pb-1">${moverAssets.map(a => _tileHtml(a)).join('')}</div>`;
-            const after = gainerRow ? gainerRow.nextSibling : grid.nextSibling;
-            parent.insertBefore(moverRow, after);
+        // Special categories — 3-column grid below main heatmap
+        let specialGrid = container.querySelector('.heatmap-special-grid');
+        if (specialGrid) specialGrid.remove();
+        if (earlyAssets.length || gainerAssets.length || moverAssets.length) {
+            const earlyCol = earlyAssets.length ? `
+                <div>
+                    <div class="text-xs text-cyan-400 font-semibold mb-1.5">\u{1F680} D\u00e9marrages (5min)</div>
+                    <div class="flex flex-col gap-1.5">${earlyAssets.map(a => _earlyTileHtml(a)).join('')}</div>
+                </div>` : '<div></div>';
+            const gainerCol = gainerAssets.length ? `
+                <div>
+                    <div class="text-xs text-yellow-400 font-semibold mb-1.5">\u{1F525} Top Gainers 24h</div>
+                    <div class="flex flex-col gap-1.5">${gainerAssets.map(a => _tileHtml(a)).join('')}</div>
+                </div>` : '<div></div>';
+            const moverCol = moverAssets.length ? `
+                <div>
+                    <div class="text-xs text-purple-400 font-semibold mb-1.5">\u26A1 Top Movers (12h)</div>
+                    <div class="flex flex-col gap-1.5">${moverAssets.map(a => _tileHtml(a)).join('')}</div>
+                </div>` : '<div></div>';
+            specialGrid = document.createElement('div');
+            specialGrid.className = 'heatmap-special-grid grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4';
+            specialGrid.innerHTML = earlyCol + gainerCol + moverCol;
+            container.appendChild(specialGrid);
         }
     }
 
@@ -143,6 +158,49 @@ const Heatmap = (() => {
             <div class="text-xs tabular-nums opacity-60" style="color:${textColor}">${price}</div>
             ${subtitle}
         </a>`;
+    }
+
+    function _earlyTileHtml(asset) {
+        const change5m = parseFloat(asset.change_5m || 0);
+        const surge = parseFloat(asset.surge_ratio || 0);
+        const bgColor = _changeColor(change5m * 3); // amplify color for 5m moves
+        const textColor = '#fff';
+        const changeStr = `${change5m >= 0 ? '+' : ''}${change5m.toFixed(2)}% 5m`;
+        const price = Utils.fmtPrice(asset.price);
+        const base = asset.base_asset;
+        const tradeUrl = `https://www.binance.com/en/trade/${base}_USDC?_from=markets&type=cross`;
+        return `
+        <a href="${tradeUrl}" target="_blank" rel="noopener" class="heatmap-tile heatmap-early-mover" style="background:${bgColor};text-decoration:none;display:block" title="${asset.symbol} — surge x${surge.toFixed(0)}">
+            <div class="font-bold text-sm" style="color:${textColor}">\u{1F680} ${base}</div>
+            <div class="text-xs tabular-nums font-semibold" style="color:${textColor}">${changeStr}</div>
+            <div class="text-xs tabular-nums opacity-60" style="color:${textColor}">${price}</div>
+            <div class="text-xs opacity-50" style="color:${textColor}">surge x${surge.toFixed(0)}</div>
+        </a>`;
+    }
+
+    function _macroTileHtml(m) {
+        const change = parseFloat(m.change_pct);
+        // For inverted indicators (VIX, DXY), flip color: down = green
+        const colorChange = m.inverted ? -change : change;
+        const bgColor = _changeColor(colorChange * 3); // amplify: macro moves are smaller
+        const textColor = 'rgba(255,255,255,0.9)';
+        const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`;
+        const val = parseFloat(m.value);
+        const valStr = val >= 1000 ? val.toLocaleString('en', {maximumFractionDigits: 0})
+            : val >= 10 ? val.toFixed(2) : val.toFixed(3);
+        // Crypto impact indicator
+        const ci = m.crypto_impact;
+        const ciColor = ci === 'up' ? '#22c55e' : ci === 'down' ? '#ef4444' : '#9ca3af';
+        const ciIcon = ci === 'up' ? '&#x25B2;' : ci === 'down' ? '&#x25BC;' : '&#x2022;';
+        return `
+        <div class="heatmap-tile" style="background:${bgColor};min-width:0;padding:6px 8px" title="${m.label}: ${valStr} (${changeStr})">
+            <div class="flex items-center justify-between" style="line-height:1.2">
+                <span class="font-bold" style="color:${textColor};font-size:10px">${m.label}</span>
+                <span style="color:${ciColor};font-size:8px" title="Impact crypto">${ciIcon}</span>
+            </div>
+            <div class="tabular-nums font-semibold" style="color:${textColor};font-size:10px">${changeStr}</div>
+            <div class="tabular-nums opacity-60" style="color:${textColor};font-size:9px">${valStr}</div>
+        </div>`;
     }
 
     function _changeColor(change) {
