@@ -624,6 +624,9 @@ select {
     padding: 10px 16px;
     overflow: hidden;
 }
+.heatmap-view.hidden {
+    display: none;
+}
 .heatmap-header {
     display: flex;
     align-items: center;

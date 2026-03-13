@@ -626,6 +626,13 @@ const Cockpit = (() => {
             const dirClass = c.side === 'LONG' ? 'pnl-positive' : 'pnl-negative';
             const ago = c.closed_at ? Utils.timeAgoShort(c.closed_at) : '';
             const dur = c.duration || '';
+            let dateStr = '';
+            if (c.closed_at) {
+                const d = new Date(c.closed_at);
+                const day = d.getDate();
+                const months = ['jan','fev','mar','avr','mai','jun','jul','aou','sep','oct','nov','dec'];
+                dateStr = `${day} ${months[d.getMonth()]}`;
+            }
 
             return `<div class="flex items-center gap-1.5 py-0.5 text-xs leading-tight">
                 <span class="${dirClass}">${dirIcon}</span>
@@ -633,7 +640,7 @@ const Cockpit = (() => {
                 <span class="font-bold tabular-nums ${pnlClass}">${pnlStr}</span>
                 ${soldeStr ? `<span class="tabular-nums ${pnlClass}" style="font-size:10px">${soldeStr}</span>` : ''}
                 ${pnlUsdStr ? `<span class="tabular-nums ${pnlClass}" style="font-size:10px">${pnlUsdStr}</span>` : ''}
-                <span class="text-gray-500">&middot; ${dur || ago}</span>
+                <span class="text-gray-500">&middot; ${dur || ago}${dateStr ? ' · ' + dateStr : ''}</span>
             </div>`;
         }).join('');
 
