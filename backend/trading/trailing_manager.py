@@ -62,7 +62,7 @@ _TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
 _TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key levels
 
 # Capital-aware trailing
-_CAP_MAX_RISK_PCT = Decimal("2.5")   # max loss per trade as % of capital
+_CAP_MAX_RISK_PCT = Decimal("1.5")   # max loss per trade as % of capital
 _CAP_LOCK_THRESHOLD = Decimal("0.8") # lock gains above this % of capital
 _CAP_LOCK_RATIO = Decimal("0.5")     # lock this fraction of gain above threshold
 

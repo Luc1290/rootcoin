@@ -64,7 +64,7 @@ def find_initial_sl_tp(key_levels, entry_price, side):
     if not prices:
         return None, None
 
-    min_dist = Decimal("0.8")
+    min_dist = Decimal("0.6")
     max_dist = DEF_MAX_SL_PCT
 
     if side == "LONG":
@@ -111,7 +111,7 @@ def find_initial_sl_tp(key_levels, entry_price, side):
 
 def adjust_for_rr(key_levels, entry_price, side, min_rr):
     prices = parse_levels(key_levels)
-    min_dist = Decimal("0.8")
+    min_dist = Decimal("0.6")
 
     if side == "LONG":
         below = [p for p in prices
@@ -139,7 +139,7 @@ def adjust_for_rr(key_levels, entry_price, side, min_rr):
     return None, None
 
 
-def find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=Decimal("0.8")):
+def find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=Decimal("0.6")):
     """Find nearest key level for trailing SL.
 
     SHORT: resistance ABOVE current_price (stop buy triggers there on bounce).
