@@ -89,7 +89,7 @@ async def _update_position_order_ref(position: Position, **kwargs):
 # --- Public API ---
 
 
-async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | None = None) -> dict:
+async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | None = None, *, silent: bool = False) -> dict:
     await cancel_position_orders(pos)
     side = _close_side(pos)
     if qty is not None:
@@ -131,9 +131,10 @@ async def place_stop_loss(pos: Position, stop_price: Decimal, qty: Decimal | Non
     await _update_position_order_ref(pos, sl_order_id=order_id)
 
     log.info("sl_placed", symbol=pos.symbol, stop_price=str(stop_price), order_id=order_id)
-    asyncio.create_task(telegram_notifier.notify_sl_placed(
-        pos.symbol, pos.side, stop_price, qty, pos.entry_price,
-    ))
+    if not silent:
+        asyncio.create_task(telegram_notifier.notify_sl_placed(
+            pos.symbol, pos.side, stop_price, qty, pos.entry_price,
+        ))
     return result
 
 
@@ -426,7 +427,7 @@ async def secure_position(pos: Position) -> dict:
              order_id=market_order_id)
 
     # Step 3: SL at breakeven +0.2% for remaining half
-    sl_result = await place_stop_loss(pos, sl_price, qty=remaining_qty)
+    sl_result = await place_stop_loss(pos, sl_price, qty=remaining_qty, silent=True)
 
     log.info("position_secured", symbol=pos.symbol, half_sold=str(half_qty),
              sl_price=str(sl_price), remaining=str(remaining_qty))

@@ -376,7 +376,7 @@ async def _execute_confirmed(pos, tp_price, sl_price, tracking):
     """Confirmed mode: place SL immediately, store TP as candidate.
     A separate tick will promote to full OCO after _CONFIRM_DELAY."""
     # Place SL-only on Binance (cancel existing orders first)
-    await order_manager.place_stop_loss(pos, sl_price)
+    await order_manager.place_stop_loss(pos, sl_price, silent=True)
     # Store TP candidate — will be confirmed by _check_tp_candidate
     old_candidate_tp = tracking.get("candidate_tp")
     if old_candidate_tp != tp_price:
@@ -1105,7 +1105,7 @@ async def _retry_oco_or_fallback_sl(pos, tracking):
             if not pos or pos.oco_order_list_id or pos.sl_order_id:
                 return
             sl = tracking["auto_sl"]
-            await order_manager.place_stop_loss(pos, sl)
+            await order_manager.place_stop_loss(pos, sl, silent=True)
             tracking["oco_list_id"] = None
             tracking["manual_override"] = True
             log.warning("trailing_fallback_sl", symbol=pos.symbol, sl=str(sl))
@@ -1453,7 +1453,7 @@ async def set_mode(mode: str):
             if sl and pos.oco_order_list_id:
                 try:
                     _oco_cancel_expected.add(pid)
-                    await order_manager.place_stop_loss(pos, sl)
+                    await order_manager.place_stop_loss(pos, sl, silent=True)
                     tracking["oco_list_id"] = None
                     if tp:
                         tracking["candidate_tp"] = tp

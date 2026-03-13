@@ -242,7 +242,7 @@ async def notify_position_closed(
     msg = (
         f"{header}\n"
         f"\n"
-        f"\U0001f4c8 Entry {_fp(entry_price)}  \u2192  Exit {_fp(exit_price)}\n"
+        f"\U0001f4c8 Entr\u00e9e {_fp(entry_price)}  \u2192  Sortie {_fp(exit_price)}\n"
         f"\U0001f4b0 PnL brut : {sign_g}{_fp(realized_pnl)}\n"
         f"\U0001f4b8 Frais : -{_fp(abs(fees))}\n"
         f"{'=' * 20}\n"
@@ -333,13 +333,13 @@ async def notify_position_closed_reconciled(
     log.info("close_reconciled_notif_sending", symbol=symbol, side=side)
     lines = [f"\U0001f534 <b>{symbol} {side} — Ferme (reconciliation)</b>", ""]
     if exit_price and exit_price > 0:
-        lines.append(f"Entry {_fp(entry_price)}  \u2192  Exit {_fp(exit_price)}")
+        lines.append(f"Entr\u00e9e {_fp(entry_price)}  \u2192  Sortie {_fp(exit_price)}")
     else:
-        lines.append(f"Entry {_fp(entry_price)}")
+        lines.append(f"Entr\u00e9e {_fp(entry_price)}")
     if net_pnl is not None:
         sign = "+" if net_pnl > 0 else ""
         icon = "\u2705" if net_pnl > 0 else "\u274c"
-        pct_str = f" ({sign}{_fq(pnl_pct)}%)" if pnl_pct is not None else ""
+        pct_str = f" ({sign}{_fpct(pnl_pct)}%)" if pnl_pct is not None else ""
         lines.append(f"{icon} <b>PnL net : {sign}{_fp(net_pnl)}{pct_str}</b>")
     await notify("\n".join(lines), retries=2)
 
@@ -359,7 +359,7 @@ async def notify_sl_placed(
         f"\u26d4 <b>{symbol} — Stop Loss place</b>\n"
         f"\n"
         f"Stop : {_fp(stop_price)} ({dist_pct} \u2192 {pnl})\n"
-        f"Qty : {_fq(qty)} {base}"
+        f"Qt\u00e9 : {_fq(qty)} {base}"
     )
     await notify(msg)
 
@@ -376,7 +376,7 @@ async def notify_tp_placed(
         f"\U0001f3af <b>{symbol} — Take Profit place</b>\n"
         f"\n"
         f"Target : {_fp(tp_price)} ({dist_pct} \u2192 {pnl})\n"
-        f"Qty : {_fq(qty)} {base}"
+        f"Qt\u00e9 : {_fq(qty)} {base}"
     )
     await notify(msg)
 
@@ -409,8 +409,8 @@ async def notify_position_secured(
     msg = (
         f"\U0001f6e1\ufe0f <b>{symbol} {side} — Securise</b>\n"
         f"\n"
-        f"Vendu {_fq(half_qty)} {base} au marche\n"
-        f"Restant {_fq(remaining)} {base} avec SL breakeven @ {_fp(sl_price)}"
+        f"Vendu {_fq(half_qty)} {base} au march\u00e9\n"
+        f"Restant {_fq(remaining)} {base} avec SL \u00e0 {_fp(sl_price)}"
     )
     await notify(msg)
 
@@ -436,17 +436,17 @@ async def notify_trailing_moved(
     capital = await _get_capital()
     cap_str = _cap_pct(pnl_usd, capital)
     if is_breakeven:
-        header = f"\U0001f6e1\ufe0f <b>{symbol} {side} — Breakeven</b>"
-        detail = "SL au breakeven, position protegee."
+        header = f"\U0001f6e1\ufe0f <b>{symbol} {side} — SL prot\u00e8ge les frais</b>"
+        detail = "Position sans risque.\n"
     else:
         header = f"\u2b06\ufe0f <b>{symbol} {side} — Trailing {sign}{float(gain_pct):.2f}%</b>"
-        detail = "Niveaux ajustes."
+        detail = ""
     msg = (
         f"{header}\n"
         f"\n"
-        f"{detail}\n"
+        f"{detail}"
         f"\U0001f4b0 PnL : {pnl_sign}${pnl_usd:,.2f}{cap_str}\n"
-        f"\U0001f4c8 Entree {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
+        f"\U0001f4c8 Entr\u00e9e {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
         f"\U0001f4b5 Valeur : ${value_usd:,.2f} ({_fq(quantity)} {base})\n"
         f"\n"
         f"\U0001f3af TP : {_fp(tp_price)} ({tp_dist} \u2192 {tp_pnl_str})\n"
@@ -466,7 +466,7 @@ async def notify_pnl_threshold(
         return
     sign = "+" if pnl_usd > 0 else ""
     if threshold == 0.0:
-        header = f"\u2696\ufe0f <b>{symbol} {side} — Retour au breakeven</b>"
+        header = f"\u2696\ufe0f <b>{symbol} {side} — Prix de retour \u00e0 l'entr\u00e9e</b>"
     elif threshold > 0:
         header = f"\U0001f4c8 <b>{symbol} {side} — +{threshold:g}% de gain</b>"
     else:
@@ -474,8 +474,8 @@ async def notify_pnl_threshold(
     msg = (
         f"{header}\n"
         f"\n"
-        f"\U0001f4b0 PnL : {sign}{_fp(pnl_usd)} ({sign}{_fq(pnl_pct)}%)\n"
-        f"\U0001f4c8 Entry {_fp(entry_price)}  \u2192  Actuel {_fp(current_price)}"
+        f"\U0001f4b0 PnL : {sign}{_fp(pnl_usd)} ({sign}{_fpct(pnl_pct)}%)\n"
+        f"\U0001f4c8 Entr\u00e9e {_fp(entry_price)}  \u2192  Actuel {_fp(current_price)}"
     )
     await notify(msg)
 
@@ -540,7 +540,7 @@ async def notify_startup_summary():
         lines.append(
             f"{icon} <b>{pos.symbol}</b> {pos.side}\n"
             f"    {_fq(pos.quantity)} {base} @ {_fp(pos.entry_price)}\n"
-            f"    PnL : {sign}{_fp(unrealized)} ({sign}{_fq(u_pct)}%)"
+            f"    PnL : {sign}{_fp(unrealized)} ({sign}{_fpct(u_pct)}%)"
         )
     t_sign = "+" if total_pnl > 0 else ""
     lines.append(f"\n<b>Total : {t_sign}{_fp(total_pnl)}</b>")
@@ -583,7 +583,7 @@ async def _send_periodic_summary():
         lines.append(
             f"{icon} <b>{pos.symbol}</b> {pos.side}\n"
             f"    {_fp(pos.entry_price)}  \u2192  {_fp(pos.current_price or Decimal('0'))}\n"
-            f"    PnL : {sign}{_fp(unrealized)} ({sign}{_fq(u_pct)}%)"
+            f"    PnL : {sign}{_fp(unrealized)} ({sign}{_fpct(u_pct)}%)"
         )
     t_sign = "+" if total_pnl > 0 else ""
     lines.append(f"\n<b>Total : {t_sign}{_fp(total_pnl)}</b>")
@@ -615,12 +615,12 @@ async def notify_level_reached(
 ):
     if not is_levels_enabled():
         return
+    base = symbol.replace("USDC", "").replace("USDT", "")
     lp = Decimal(level_price)
-    dist = abs(float((price - lp) / lp * 100))
     msg = (
-        f"\U0001f4cd <b>{symbol} — {label}</b>\n"
+        f"\U0001f4cd <b>{base} — {label}</b>\n"
         f"\n"
-        f"Prix : {_fp(price)}  (niveau {_fp(lp)}, ecart {dist:.2f}%)"
+        f"Prix actuel : {_fp(price)} (niveau {_fp(lp)})"
     )
     await notify(msg)
 
@@ -823,6 +823,10 @@ def _fq(value: Decimal) -> str:
         return str(int(v))
     s = f"{v:.8f}".rstrip("0").rstrip(".")
     return s
+
+
+def _fpct(value: Decimal) -> str:
+    return f"{float(value):.2f}"
 
 
 def _pnl_usd_str(side: str, entry: Decimal, target: Decimal, qty: Decimal) -> str:

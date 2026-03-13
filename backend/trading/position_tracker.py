@@ -669,12 +669,12 @@ async def _check_borrowed_after_close(symbol: str, market_type: str):
                     total_borrowed=str(borrowed), expected=str(expected_borrowed),
                     orphaned=str(orphaned), interest=str(interest))
 
+        base = symbol.replace("USDC", "").replace("USDT", "")
         msg = (
-            f"\u26a0\ufe0f Emprunt r\u00e9siduel d\u00e9tect\u00e9 apr\u00e8s fermeture {symbol}\n"
-            f"Emprunt\u00e9 : {borrowed:.2f} {quote_asset}\n"
-            f"Attendu (positions actives) : ~{expected_borrowed:.0f} {quote_asset}\n"
-            f"Exc\u00e9dent : ~{orphaned:.0f} {quote_asset}\n"
-            f"Penser \u00e0 rembourser manuellement si non justifi\u00e9"
+            f"\u26a0\ufe0f <b>Emprunt r\u00e9siduel apr\u00e8s fermeture {base}</b>\n"
+            f"\n"
+            f"~{orphaned:,.0f} {quote_asset} emprunt\u00e9s sans position active\n"
+            f"Rembourser sur Binance si pas d'autre position en cours"
         )
         await telegram_notifier.notify(msg)
     except Exception:
