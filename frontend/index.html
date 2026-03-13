@@ -289,23 +289,30 @@
         </div>
 
         <!-- Heatmap view -->
-        <div id="view-heatmap" class="view p-4 hidden">
-            <div class="flex items-center justify-between mb-4">
+        <div id="view-heatmap" class="view hidden heatmap-view">
+            <div class="heatmap-header">
                 <div class="flex items-center gap-3">
-                    <h2 class="text-lg font-bold">Crypto Heatmap</h2>
+                    <h2 class="text-base font-bold">Crypto Heatmap</h2>
                     <div class="flex gap-1" id="heatmap-windows">
-                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-window="15m">15m</button>
-                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-window="1h">1h</button>
-                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium active" data-window="4h">4h</button>
-                        <button class="chart-interval-btn text-xs px-2.5 py-1.5 font-medium" data-window="24h">24h</button>
+                        <button class="chart-interval-btn text-xs px-2 py-1 font-medium" data-window="15m">15m</button>
+                        <button class="chart-interval-btn text-xs px-2 py-1 font-medium" data-window="1h">1h</button>
+                        <button class="chart-interval-btn text-xs px-2 py-1 font-medium active" data-window="4h">4h</button>
+                        <button class="chart-interval-btn text-xs px-2 py-1 font-medium" data-window="24h">24h</button>
                     </div>
                 </div>
                 <span id="heatmap-freshness" class="text-xs text-gray-500"></span>
             </div>
-            <div class="flex gap-4">
-                <div id="heatmap-grid" class="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-7 gap-1.5 flex-1" style="min-width:0"></div>
-                <div id="heatmap-macro" class="hidden" style="width:200px;flex-shrink:0"></div>
+            <div id="heatmap-summary"></div>
+            <div class="heatmap-body">
+                <div class="heatmap-crypto-col">
+                    <div id="heatmap-grid" class="heatmap-crypto-grid"></div>
+                </div>
+                <div id="heatmap-macro" class="heatmap-macro-col hidden">
+                    <div class="heatmap-col-title text-gray-400">Macro</div>
+                    <div id="heatmap-macro-grid" class="heatmap-macro-grid"></div>
+                </div>
             </div>
+            <div id="heatmap-specials" class="heatmap-specials hidden"></div>
             <div id="heatmap-empty" class="empty-state hidden">
                 <div class="empty-state-icon">🗺</div>
                 <div class="empty-state-text">Chargement de la heatmap...</div>

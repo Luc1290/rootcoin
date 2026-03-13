@@ -39,10 +39,12 @@ MACRO_CRYPTO_IMPACT = {
 }
 EARLY_MOVER_MIN_CHANGE = Decimal("0.5")  # min |change| in 5m
 EARLY_MOVER_MIN_VOLUME = Decimal("10000")  # min 24h volume to avoid dust
-EARLY_MOVER_SURGE_THRESHOLD = Decimal("2")  # 2x expected 5m volatility
+EARLY_MOVER_SURGE_THRESHOLD = Decimal("1.5")  # 1.5x expected 5m volatility
 EARLY_MOVERS_MAX = 8
 SURGE_SQRT_288 = Decimal("17")  # sqrt(288 five-min periods in 24h)
-NOTIFY_COOLDOWN = 4 * 3600  # 4h cooldown per symbol before re-notifying
+NOTIFY_COOLDOWN = 3600  # 1h cooldown per symbol before re-notifying
+MARKET_WIDE_SYMBOLS = {"BTCUSDC", "ETHUSDC"}
+MARKET_WIDE_THRESHOLD = 5  # if >= 5 symbols surge, it's a market move
 
 _heatmap_cache: dict[str, dict] = {}
 _active_window: str = "4h"
@@ -237,8 +239,7 @@ async def _fetch_tickers(window: str = "4h"):
     for m in movers[:TOP_MOVERS_MAX]:
         m["is_top_mover"] = True
 
-    # Detect early movers via 5m rolling window (scan ALL USDC pairs)
-    all_listed = listed_symbols | {m["symbol"] for m in movers[:TOP_MOVERS_MAX]}
+    # Detect early movers via 5m rolling window (scan ALL USDC pairs, including top volume)
     early_movers = []
     early_candidates = [c for c in candidates if c["volume"] >= EARLY_MOVER_MIN_VOLUME]
     if early_candidates:
@@ -268,16 +269,34 @@ async def _fetch_tickers(window: str = "4h"):
                             surge = abs(change_5m) / max(expected, Decimal("0.01"))
                             if surge >= EARLY_MOVER_SURGE_THRESHOLD:
                                 c["surge_ratio"] = surge
-                                if c["symbol"] not in all_listed:
-                                    early_movers.append(c)
+                                early_movers.append(c)
         except Exception:
             log.warning("heatmap_5m_fetch_failed", exc_info=True)
 
     early_movers.sort(key=lambda a: a.get("surge_ratio", 0), reverse=True)
-    for em in early_movers[:EARLY_MOVERS_MAX]:
+    early_top = early_movers[:EARLY_MOVERS_MAX]
+    early_syms = {em["symbol"] for em in early_top}
+    for em in early_top:
         em["is_early_mover"] = True
+    # Also flag symbols already in other lists (top volume, gainers, movers)
+    for a in top_by_volume + gainers[:TOP_GAINERS_MAX] + movers[:TOP_MOVERS_MAX]:
+        if a["symbol"] in early_syms:
+            a["is_early_mover"] = True
+            a["surge_ratio"] = next(
+                em["surge_ratio"] for em in early_top if em["symbol"] == a["symbol"]
+            )
+            if "change_5m" not in a:
+                a["change_5m"] = next(
+                    em["change_5m"] for em in early_top if em["symbol"] == a["symbol"]
+                )
 
-    top = early_movers[:EARLY_MOVERS_MAX] + movers[:TOP_MOVERS_MAX] + gainers[:TOP_GAINERS_MAX] + top_by_volume
+    # Merge all lists, deduplicate by symbol (keep first occurrence = priority order)
+    seen = set()
+    top = []
+    for a in early_top + movers[:TOP_MOVERS_MAX] + gainers[:TOP_GAINERS_MAX] + top_by_volume:
+        if a["symbol"] not in seen:
+            seen.add(a["symbol"])
+            top.append(a)
 
     # Step 2: fetch rolling window for these symbols
     symbols_list = [a["symbol"] for a in top]
@@ -359,13 +378,40 @@ async def _notify_new_specials(assets: list[dict]):
             change = a.get("change_5m", "?")
             surge = a.get("surge_ratio", "?")
             price = a.get("price", "?")
-            new_entries.append(
-                f"\U0001F680 <b>{base}</b> {change}% en 5min (surge x{surge}) \u2014 ${price}"
-            )
+            new_entries.append({
+                "sym": sym, "base": base,
+                "change": change, "surge": surge, "price": price,
+            })
             _notif_cooldown[sym] = now
 
     _prev_special = current_early
 
-    if new_entries and telegram_notifier.is_heatmap_enabled():
-        msg = "\U0001F4CA <b>D\u00e9marrage d\u00e9tect\u00e9</b>\n\n" + "\n".join(new_entries)
-        asyncio.create_task(telegram_notifier.notify(msg))
+    if not new_entries or not telegram_notifier.is_heatmap_enabled():
+        return
+
+    # Detect market-wide move: BTC/ETH surging or many symbols at once
+    new_syms = {e["sym"] for e in new_entries}
+    majors = new_syms & MARKET_WIDE_SYMBOLS
+    is_market_wide = bool(majors) or len(new_entries) >= MARKET_WIDE_THRESHOLD
+
+    if is_market_wide:
+        # One consolidated notification
+        lines = []
+        for e in new_entries[:8]:
+            lines.append(
+                f"\U0001F680 <b>{e['base']}</b> {e['change']}% en 5min (x{e['surge']})"
+            )
+        msg = (
+            "\U0001F30A <b>March\u00e9 en mouvement</b>\n\n"
+            + "\n".join(lines)
+        )
+    else:
+        # Individual early movers
+        lines = [
+            f"\U0001F680 <b>{e['base']}</b> {e['change']}% en 5min "
+            f"(surge x{e['surge']}) \u2014 ${e['price']}"
+            for e in new_entries
+        ]
+        msg = "\U0001F4CA <b>D\u00e9marrage d\u00e9tect\u00e9</b>\n\n" + "\n".join(lines)
+
+    asyncio.create_task(telegram_notifier.notify(msg))

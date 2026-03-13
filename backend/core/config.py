@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     macro_refresh_interval: int = 300
     whale_min_quote_qty: int = 100000
     heatmap_top_n: int = 50
-    heatmap_refresh_interval: int = 300
+    heatmap_refresh_interval: int = 120
     news_refresh_interval: int = 600
     news_max_items: int = 30
     orderbook_poll_interval: int = 10
