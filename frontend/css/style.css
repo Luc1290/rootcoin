@@ -706,12 +706,34 @@ select {
 /* ===== Heatmap specials (bottom bar) ===== */
 .heatmap-specials {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 10px;
     margin-top: 6px;
     flex-shrink: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.06);
     padding-top: 6px;
+}
+.heatmap-notif-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+.heatmap-notif-col .notif-col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.heatmap-notif-col .notif-col-scroll {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+@media (max-width: 768px) {
+    .heatmap-specials {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 .heatmap-specials-title {
     font-size: 11px;

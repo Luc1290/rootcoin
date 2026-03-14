@@ -8,6 +8,7 @@ const Notifications = (() => {
         _entries = [];
         await _fetch();
         render();
+        _bindControls();
     }
 
     async function _fetch() {
@@ -46,8 +47,8 @@ const Notifications = (() => {
         let html = '';
         for (const [date, items] of Object.entries(groups)) {
             const label = _formatDate(date);
-            html += '<div class="mb-2">';
-            html += '<div class="text-[10px] text-gray-500 font-medium mb-1 uppercase">' + label + '</div>';
+            html += '<div class="mb-1">';
+            html += '<div class="text-[9px] text-gray-500 font-medium mb-0.5 uppercase">' + label + '</div>';
             html += items.map(_cardHtml).join('');
             html += '</div>';
         }
@@ -58,8 +59,9 @@ const Notifications = (() => {
         if (statsEl) {
             const today = new Date().toISOString().slice(0, 10);
             const todayCount = (groups[today] || []).length;
-            statsEl.textContent = todayCount ? todayCount + " aujourd'hui" : '';
+            statsEl.textContent = todayCount ? todayCount + "j" : '';
         }
+        _bindControls();
     }
 
     function _cardHtml(n) {
@@ -70,31 +72,14 @@ const Notifications = (() => {
         const base = n.symbol.replace('USDC', '').replace('USDT', '');
 
         const typeBadge = n.type === 'momentum'
-            ? '<span class="px-1 py-0.5 text-[9px] font-bold bg-blue-900/50 text-blue-400 rounded">MOM</span>'
-            : '<span class="px-1 py-0.5 text-[9px] font-bold bg-purple-900/50 text-purple-400 rounded">EARLY</span>';
+            ? '<span class="px-0.5 text-[8px] font-bold text-blue-400">M</span>'
+            : '<span class="px-0.5 text-[8px] font-bold text-purple-400">E</span>';
 
-        const tgIcon = n.telegram_sent
-            ? '<span title="Telegram envoy\u00e9" class="text-emerald-600 text-[10px]">\u2713</span>'
-            : '<span title="Non envoy\u00e9" class="text-gray-700 text-[10px]">\u2717</span>';
-
-        let extra = '';
-        if (n.window) extra += '<span class="text-gray-600">' + n.window + '</span>';
-        if (n.surge_ratio) extra += '<span class="text-gray-600">x' + parseFloat(n.surge_ratio).toFixed(1) + '</span>';
-        if (n.volume) {
-            const v = parseFloat(n.volume);
-            let vs = '';
-            if (v >= 1e6) vs = '$' + (v / 1e6).toFixed(1) + 'M';
-            else if (v >= 1e3) vs = '$' + (v / 1e3).toFixed(0) + 'K';
-            else vs = '$' + v.toFixed(0);
-            extra += '<span class="text-gray-600">' + vs + '</span>';
-        }
-
-        return '<div class="flex items-center gap-1.5 px-2 py-1.5 bg-stone-800/30 rounded text-xs">' +
+        return '<div class="flex items-center gap-1 px-1.5 py-1 bg-stone-800/30 rounded text-[10px]">' +
             typeBadge +
-            ' <span class="font-bold text-gray-200 min-w-[3rem]">' + base + '</span>' +
-            ' <span class="' + color + ' font-medium tabular-nums">' + sign + changePct.toFixed(2) + '%</span>' +
-            ' <span class="flex items-center gap-1 text-[10px] ml-auto">' + extra + '</span>' +
-            ' <span class="text-gray-600 text-[10px] min-w-[2.5rem] text-right">' + tgIcon + ' ' + time + '</span>' +
+            ' <span class="font-bold text-gray-200">' + base + '</span>' +
+            ' <span class="' + color + ' font-medium tabular-nums">' + sign + changePct.toFixed(1) + '%</span>' +
+            ' <span class="text-gray-600 text-[9px] ml-auto">' + time + '</span>' +
             '</div>';
     }
 
@@ -113,16 +98,7 @@ const Notifications = (() => {
         return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     }
 
-    // Live WS updates
-    WS.on('notification_log', (data) => {
-        _entries.unshift(data);
-        if (!document.getElementById('view-heatmap')?.classList.contains('hidden')) {
-            render();
-        }
-    });
-
-    // Filter change
-    document.addEventListener('DOMContentLoaded', () => {
+    function _bindControls() {
         const sel = document.getElementById('notif-type-filter');
         if (sel) sel.onchange = () => load();
         const btn = document.getElementById('notif-load-more');
@@ -131,6 +107,14 @@ const Notifications = (() => {
             await _fetch();
             render();
         };
+    }
+
+    // Live WS updates
+    WS.on('notification_log', (data) => {
+        _entries.unshift(data);
+        if (!document.getElementById('view-heatmap')?.classList.contains('hidden')) {
+            render();
+        }
     });
 
     return { load, render };

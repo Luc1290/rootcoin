@@ -95,17 +95,17 @@ const Heatmap = (() => {
             }
         }
 
-        // Specials (bottom bar — 3 columns with titles)
+        // Specials (bottom bar — 4 columns: specials + notif journal)
         if (specialsEl) {
-            const hasSpecials = earlyAssets.length || gainerAssets.length || moverAssets.length;
-            if (hasSpecials) {
-                specialsEl.classList.remove('hidden');
-                specialsEl.innerHTML =
-                    _specialCol('\u{1F680} D\u00e9marrages', earlyAssets, 'early') +
-                    _specialCol('\u{1F525} Gainers 24h', gainerAssets, 'gainer') +
-                    _specialCol('\u26A1 Movers 12h', moverAssets, 'mover');
-            } else {
-                specialsEl.classList.add('hidden');
+            specialsEl.classList.remove('hidden');
+            specialsEl.innerHTML =
+                _specialCol('\u{1F680} D\u00e9marrages', earlyAssets, 'early') +
+                _specialCol('\u{1F525} Gainers 24h', gainerAssets, 'gainer') +
+                _specialCol('\u26A1 Movers 12h', moverAssets, 'mover') +
+                _notifColHtml();
+            // Re-render notif content + rebind controls after DOM rebuild
+            if (typeof Notifications !== 'undefined') {
+                Notifications.render();
             }
         }
     }
@@ -124,6 +124,27 @@ const Heatmap = (() => {
             <div class="text-xs tabular-nums font-semibold" style="color:${textColor}">${changeStr}</div>
             <div class="text-xs tabular-nums" style="color:rgba(255,255,255,0.85)">${price}</div>
         </a>`;
+    }
+
+    function _notifColHtml() {
+        return `<div class="heatmap-notif-col">
+            <div class="notif-col-header">
+                <div class="heatmap-specials-title" style="margin-bottom:0">\u{1F514} Alertes</div>
+                <div class="flex items-center gap-1">
+                    <select id="notif-type-filter" class="px-1 py-0 text-[9px] bg-stone-800 border border-stone-700 rounded text-gray-400" style="height:18px">
+                        <option value="">Toutes</option>
+                        <option value="momentum">Mom</option>
+                        <option value="early_mover">Early</option>
+                    </select>
+                    <span id="notif-stats" class="text-[9px] text-gray-500"></span>
+                </div>
+            </div>
+            <div class="notif-col-scroll">
+                <div id="notif-timeline" class="space-y-0.5"></div>
+                <div id="notif-empty" class="text-center text-[10px] text-gray-600 py-2 hidden">Aucune alerte</div>
+            </div>
+            <button id="notif-load-more" class="text-[9px] text-blue-400 hover:text-blue-300 mt-1 hidden">+ voir plus</button>
+        </div>`;
     }
 
     function _specialCol(title, assets, mode) {
