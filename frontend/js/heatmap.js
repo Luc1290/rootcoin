@@ -149,9 +149,9 @@ const Heatmap = (() => {
 
     function _specialCol(title, assets, mode) {
         const tiles = assets.length
-            ? assets.slice(0, 6).map(a => _specialTileHtml(a, mode)).join('')
+            ? assets.map(a => _specialTileHtml(a, mode)).join('')
             : '<div class="text-xs text-gray-600" style="grid-column:1/-1;padding:4px 0">Aucun</div>';
-        return `<div>
+        return `<div class="heatmap-special-col">
             <div class="heatmap-specials-title">${title}</div>
             <div class="heatmap-specials-grid">${tiles}</div>
         </div>`;

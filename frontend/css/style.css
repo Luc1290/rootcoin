@@ -735,6 +735,17 @@ select {
         grid-template-columns: repeat(2, 1fr);
     }
 }
+.heatmap-special-col {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+.heatmap-special-col .heatmap-specials-grid {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
 .heatmap-specials-title {
     font-size: 11px;
     font-weight: 600;
