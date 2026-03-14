@@ -55,7 +55,8 @@ const Heatmap = (() => {
         }
 
         const volumeAssets = _data.assets.filter(a => !a.top_gainer && !a.top_mover && !a.early_mover);
-        const gainerAssets = _data.assets.filter(a => a.top_gainer);
+        const gainerAssets = _data.assets.filter(a => a.top_gainer || parseFloat(a.change_24h_pct || 0) >= 4)
+            .sort((a, b) => parseFloat(b.change_window || 0) - parseFloat(a.change_window || 0));
         const moverAssets = _data.assets.filter(a => a.top_mover);
         const earlyAssets = _data.assets.filter(a => a.early_mover);
 
@@ -100,9 +101,9 @@ const Heatmap = (() => {
             if (hasSpecials) {
                 specialsEl.classList.remove('hidden');
                 specialsEl.innerHTML =
-                    _specialCol('\u{1F680} D\u00e9marrages', earlyAssets, true) +
-                    _specialCol('\u{1F525} Gainers 24h', gainerAssets, false) +
-                    _specialCol('\u26A1 Movers 12h', moverAssets, false);
+                    _specialCol('\u{1F680} D\u00e9marrages', earlyAssets, 'early') +
+                    _specialCol('\u{1F525} Gainers 24h', gainerAssets, 'gainer') +
+                    _specialCol('\u26A1 Movers 12h', moverAssets, 'mover');
             } else {
                 specialsEl.classList.add('hidden');
             }
@@ -125,9 +126,9 @@ const Heatmap = (() => {
         </a>`;
     }
 
-    function _specialCol(title, assets, isEarly) {
+    function _specialCol(title, assets, mode) {
         const tiles = assets.length
-            ? assets.slice(0, 6).map(a => _specialTileHtml(a, isEarly)).join('')
+            ? assets.slice(0, 6).map(a => _specialTileHtml(a, mode)).join('')
             : '<div class="text-xs text-gray-600" style="grid-column:1/-1;padding:4px 0">Aucun</div>';
         return `<div>
             <div class="heatmap-specials-title">${title}</div>
@@ -135,9 +136,11 @@ const Heatmap = (() => {
         </div>`;
     }
 
-    function _specialTileHtml(asset, isEarly) {
-        const change = parseFloat(isEarly ? (asset.change_5m || 0) : asset.change_window);
-        const bgColor = _changeColor(isEarly ? change * 3 : change);
+    function _specialTileHtml(asset, mode) {
+        const isEarly = mode === 'early';
+        const isGainer = mode === 'gainer';
+        const change = parseFloat(isEarly ? (asset.change_5m || 0) : isGainer ? (asset.change_24h_pct || 0) : asset.change_window);
+        const bgColor = _changeColor(isEarly ? change * 3 : isGainer ? change / 2 : change);
         const changeStr = `${change >= 0 ? '+' : ''}${change.toFixed(1)}%`;
         const base = asset.base_asset;
         const price = Utils.fmtPrice(asset.price);

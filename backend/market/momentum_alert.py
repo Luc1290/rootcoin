@@ -7,6 +7,7 @@ import aiohttp
 import structlog
 
 from backend.core.config import settings
+from backend.market import heatmap_manager
 from backend.services import telegram_notifier
 
 log = structlog.get_logger()
@@ -54,7 +55,15 @@ _state: dict[tuple[str, str], MomentumState] = {}  # (symbol, window) -> state
 
 def _get_symbols() -> list[str]:
     raw = getattr(settings, "momentum_symbols", "") or DEFAULT_SYMBOLS
-    return [s.strip() for s in raw.split(",") if s.strip()]
+    base = [s.strip() for s in raw.split(",") if s.strip()]
+    # Merge heatmap gainers for dynamic monitoring
+    gainer_syms = heatmap_manager.get_gainer_symbols()
+    seen = set(base)
+    for s in gainer_syms:
+        if s not in seen:
+            base.append(s)
+            seen.add(s)
+    return base
 
 
 async def start():
@@ -165,7 +174,7 @@ async def _check_window(window: str, tickers: list[dict], now: float):
         if abs_change < cfg["min_change"]:
             continue
 
-        amplitude = _amplitude_cache.get(sym, Decimal("0"))
+        amplitude = min(_amplitude_cache.get(sym, Decimal("0")), Decimal("15"))
         expected = amplitude / cfg["sqrt_periods"]
         surge = abs_change / max(expected, Decimal("0.01"))
 

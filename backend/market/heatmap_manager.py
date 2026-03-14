@@ -19,7 +19,7 @@ EXCLUDED_BASES = {"FRONT"}
 BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker"
 VALID_WINDOWS = ("15m", "1h", "4h", "24h")
 WINDOW_TO_BINANCE = {"24h": "1d"}  # Binance accepts 1d not 24h
-TOP_GAINER_THRESHOLD = Decimal("6")  # 24h change % to qualify as top gainer
+TOP_GAINER_THRESHOLD = Decimal("4")  # 24h change % to qualify as top gainer
 TOP_GAINERS_MAX = 10
 TOP_MOVER_AMPLITUDE_THRESHOLD = Decimal("12")  # (high-low)/low % to qualify as top mover
 TOP_MOVER_MIN_VOLUME = Decimal("50000")  # min 50k USDC 24h volume to qualify
@@ -271,7 +271,8 @@ async def _fetch_tickers(window: str = "4h"):
                             vol_5m = vol_5m_map.get(c["symbol"], Decimal("0"))
                             if vol_5m < EARLY_MOVER_MIN_VOL_5M:
                                 continue
-                            expected = c["amplitude"] / SURGE_SQRT_288
+                            capped_amp = min(c["amplitude"], Decimal("15"))
+                            expected = capped_amp / SURGE_SQRT_288
                             surge = abs(change_5m) / max(expected, Decimal("0.01"))
                             if surge >= EARLY_MOVER_SURGE_THRESHOLD:
                                 c["surge_ratio"] = surge
@@ -362,6 +363,16 @@ async def _fetch_tickers(window: str = "4h"):
 
     # Notify new entries in special categories
     await _notify_new_specials(assets)
+
+
+def get_gainer_symbols() -> list[str]:
+    """Return symbols currently flagged as top gainers (for momentum monitoring)."""
+    cache = _heatmap_cache.get("4h", {})
+    assets = cache.get("assets", [])
+    return [
+        a["symbol"] for a in assets
+        if a.get("top_gainer") or float(a.get("change_24h_pct", 0)) >= 4
+    ]
 
 
 def _fmt_vol(vol) -> str:
