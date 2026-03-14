@@ -732,6 +732,16 @@ select {
     min-height: 0;
 }
 @media (max-width: 768px) {
+    .heatmap-body {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+    .heatmap-macro-col {
+        width: 100%;
+    }
+    .heatmap-crypto-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
     .heatmap-specials {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -755,12 +765,12 @@ select {
 }
 .heatmap-specials-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 3px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
 }
 .heatmap-special-tile {
-    border-radius: 5px;
-    padding: 5px 8px;
+    border-radius: 4px;
+    padding: 3px 5px;
     text-align: center;
     border: 1px solid rgba(255, 255, 255, 0.08);
     transition: transform 0.15s ease;
