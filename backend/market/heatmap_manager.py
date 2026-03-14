@@ -245,39 +245,47 @@ async def _fetch_tickers(window: str = "4h"):
     early_candidates = [c for c in candidates if c["volume"] >= EARLY_MOVER_MIN_VOLUME]
     if early_candidates:
         try:
-            url_5m = f"{BINANCE_TICKER_URL}?windowSize=5m"
+            early_syms_list = [c["symbol"] for c in early_candidates]
+            batch_size = 100
+            tickers_5m = []
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as s5:
-                async with s5.get(url_5m) as r5:
-                    if r5.status == 200:
-                        tickers_5m = await r5.json()
-                        change_5m_map = {}
-                        vol_5m_map = {}
-                        for t5 in tickers_5m:
-                            sym = t5.get("symbol", "")
-                            if sym.endswith("USDC"):
-                                try:
-                                    change_5m_map[sym] = Decimal(t5["priceChangePercent"])
-                                    vol_5m_map[sym] = Decimal(t5["quoteVolume"])
-                                except Exception:
-                                    pass
+                for i in range(0, len(early_syms_list), batch_size):
+                    batch = early_syms_list[i:i + batch_size]
+                    syms_param = "[" + ",".join(f'"{s}"' for s in batch) + "]"
+                    url_5m = f"{BINANCE_TICKER_URL}?windowSize=5m&symbols={syms_param}"
+                    async with s5.get(url_5m) as r5:
+                        if r5.status == 200:
+                            tickers_5m.extend(await r5.json())
+                        else:
+                            log.warning("heatmap_5m_api_error", status=r5.status, batch=i)
 
-                        for c in early_candidates:
-                            change_5m = change_5m_map.get(c["symbol"])
-                            if change_5m is None:
-                                continue
-                            c["change_5m"] = change_5m
-                            if abs(change_5m) < EARLY_MOVER_MIN_CHANGE:
-                                continue
-                            vol_5m = vol_5m_map.get(c["symbol"], Decimal("0"))
-                            if vol_5m < EARLY_MOVER_MIN_VOL_5M:
-                                continue
-                            capped_amp = min(c["amplitude"], Decimal("15"))
-                            expected = capped_amp / SURGE_SQRT_288
-                            surge = abs(change_5m) / max(expected, Decimal("0.01"))
-                            if surge >= EARLY_MOVER_SURGE_THRESHOLD:
-                                c["surge_ratio"] = surge
-                                c["vol_5m"] = vol_5m
-                                early_movers.append(c)
+            change_5m_map = {}
+            vol_5m_map = {}
+            for t5 in tickers_5m:
+                sym = t5.get("symbol", "")
+                try:
+                    change_5m_map[sym] = Decimal(t5["priceChangePercent"])
+                    vol_5m_map[sym] = Decimal(t5["quoteVolume"])
+                except Exception:
+                    pass
+
+            for c in early_candidates:
+                change_5m = change_5m_map.get(c["symbol"])
+                if change_5m is None:
+                    continue
+                c["change_5m"] = change_5m
+                if abs(change_5m) < EARLY_MOVER_MIN_CHANGE:
+                    continue
+                vol_5m = vol_5m_map.get(c["symbol"], Decimal("0"))
+                if vol_5m < EARLY_MOVER_MIN_VOL_5M:
+                    continue
+                capped_amp = min(c["amplitude"], Decimal("15"))
+                expected = capped_amp / SURGE_SQRT_288
+                surge = abs(change_5m) / max(expected, Decimal("0.01"))
+                if surge >= EARLY_MOVER_SURGE_THRESHOLD:
+                    c["surge_ratio"] = surge
+                    c["vol_5m"] = vol_5m
+                    early_movers.append(c)
         except Exception:
             log.warning("heatmap_5m_fetch_failed", exc_info=True)
 
