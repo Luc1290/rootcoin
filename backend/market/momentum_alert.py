@@ -266,8 +266,7 @@ async def _notify(
         emoji = "\U0001f4c8\U0001f4c8" if direction == "up" else "\U0001f4c9\U0001f4c9"
         msg = (
             f"{emoji} <b>{base} {sign}{change}% en {window}</b>\n"
-            f"${initial_price} \u2192 ${price}\n"
-            f"Prix actuel : ${price}\n"
+            f"Prix : ${initial_price} \u2192 ${price}\n"
             f"{vol_label}"
         )
     else:
