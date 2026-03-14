@@ -53,10 +53,15 @@ class MomentumState:
 _state: dict[tuple[str, str], MomentumState] = {}  # (symbol, window) -> state
 
 
+_base_symbols: set[str] = set()  # BTC/ETH — alert both directions
+
+
 def _get_symbols() -> list[str]:
+    global _base_symbols
     raw = getattr(settings, "momentum_symbols", "") or DEFAULT_SYMBOLS
     base = [s.strip() for s in raw.split(",") if s.strip()]
-    # Merge heatmap gainers for dynamic monitoring
+    _base_symbols = set(base)
+    # Merge heatmap gainers for dynamic monitoring (up alerts only)
     gainer_syms = heatmap_manager.get_gainer_symbols()
     seen = set(base)
     for s in gainer_syms:
@@ -182,6 +187,11 @@ async def _check_window(window: str, tickers: list[dict], now: float):
             continue
 
         direction = "up" if change > 0 else "down"
+
+        # Skip downward alerts for dynamic gainers (can't short them)
+        if direction == "down" and sym not in _base_symbols:
+            continue
+
         key = (sym, window)
 
         if not _should_alert(key, direction, abs_change, cfg["realert_step"], now):
