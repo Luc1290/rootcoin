@@ -39,6 +39,10 @@ async def _broadcast(message: dict):
     _clients.difference_update(dead)
 
 
+async def broadcast_notification(notif: dict):
+    await _broadcast({"type": "notification_log", "data": notif})
+
+
 async def _on_price_update(msg: dict):
     global _positions_dirty
     if not _positions_dirty and position_tracker.get_positions():

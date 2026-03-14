@@ -413,33 +413,44 @@ const Charts = (() => {
     }
 
     async function loadCockpitData() {
-        try {
-            const resp = await fetch('/api/journal/equity?hours=24');
-            const data = await resp.json();
-            if (!_cockpitSeries) return;
+        const lookbacks = [24, 48, 168, 720];
+        for (const hours of lookbacks) {
+            try {
+                const resp = await fetch(`/api/journal/equity?hours=${hours}`);
+                const data = await resp.json();
+                if (!_cockpitSeries) return;
 
-            if (!data.points || !data.points.length) {
-                _cockpitSeries.setData([]);
+                if (!data.points || !data.points.length) {
+                    _cockpitSeries.setData([]);
+                    return;
+                }
+
+                const seen = new Set();
+                const points = [];
+                for (const p of data.points) {
+                    const ts = p.snapshot_at;
+                    const t = Math.floor(new Date(ts + (ts.endsWith('Z') || ts.includes('+') ? '' : 'Z')).getTime() / 1000);
+                    const v = parseFloat(p.total_usd);
+                    if (!seen.has(t) && !isNaN(t) && isFinite(v)) {
+                        seen.add(t);
+                        points.push({ time: t, value: v });
+                    }
+                }
+                points.sort((a, b) => a.time - b.time);
+
+                if (points.length >= 2 && hours < 720) {
+                    const vals = points.map(p => p.value);
+                    const range = Math.max(...vals) - Math.min(...vals);
+                    if (range < 1) continue;
+                }
+
+                _cockpitSeries.setData(points);
+                _cockpitChart.timeScale().fitContent();
+                return;
+            } catch (e) {
+                console.error('Chart: failed to load cockpit portfolio data', e);
                 return;
             }
-
-            const seen = new Set();
-            const points = [];
-            for (const p of data.points) {
-                const ts = p.snapshot_at;
-                const t = Math.floor(new Date(ts + (ts.endsWith('Z') || ts.includes('+') ? '' : 'Z')).getTime() / 1000);
-                const v = parseFloat(p.total_usd);
-                if (!seen.has(t) && !isNaN(t) && isFinite(v)) {
-                    seen.add(t);
-                    points.push({ time: t, value: v });
-                }
-            }
-            points.sort((a, b) => a.time - b.time);
-
-            _cockpitSeries.setData(points);
-            _cockpitChart.timeScale().fitContent();
-        } catch (e) {
-            console.error('Chart: failed to load cockpit portfolio data', e);
         }
     }
 

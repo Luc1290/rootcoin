@@ -9,7 +9,7 @@ from backend.services import log_buffer
 from backend.exchange.binance_client import close_client, init_client
 from backend.core.database import close_db, init_db
 from backend.exchange import symbol_filters, ws_manager
-from backend.services import event_recorder, health_collector, level_alert, news_tracker, opportunity_tracker, telegram_notifier
+from backend.services import event_recorder, health_collector, level_alert, news_tracker, notification_logger, opportunity_tracker, telegram_notifier
 from backend.trading import balance_tracker, position_tracker, price_recorder, trailing_manager
 from backend.market import (
     heatmap_manager, kline_manager, macro_tracker, market_analyzer,
@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
         await news_tracker.start(); started.append("news")
         await health_collector.start(); started.append("health")
         await telegram_notifier.start(); started.append("telegram")
+        await notification_logger.start(); started.append("notif_logger")
         await trailing_manager.start(); started.append("trailing")
         await momentum_alert.start(); started.append("momentum")
         await level_alert.start(); started.append("level_alert")
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 _SHUTDOWN_ORDER = [
     ("trailing", trailing_manager.stop),
     ("momentum", momentum_alert.stop),
+    ("notif_logger", notification_logger.stop),
     ("level_alert", level_alert.stop),
     ("telegram", telegram_notifier.stop),
     ("health", health_collector.stop),
@@ -126,6 +128,7 @@ from backend.routes.api_health import router as health_router
 from backend.routes.api_settings import router as settings_router
 from backend.routes.api_alerts import router as alerts_router
 from backend.routes.api_llm import router as llm_router
+from backend.routes.api_notifications import router as notifications_router
 from backend.routes.ws_dashboard import router as ws_router
 
 app.include_router(dashboard_router)
@@ -147,6 +150,7 @@ app.include_router(health_router)
 app.include_router(settings_router)
 app.include_router(alerts_router)
 app.include_router(llm_router)
+app.include_router(notifications_router)
 app.include_router(ws_router)
 
 if FRONTEND_DIR.exists():

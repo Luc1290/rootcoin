@@ -218,3 +218,24 @@ class TradeSnapshot(Base):
     exit_reason: Mapped[str | None] = mapped_column(String)
     data: Mapped[str] = mapped_column(String, nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class NotificationLog(Base):
+    __tablename__ = "notification_logs"
+    __table_args__ = (
+        Index("ix_notif_logs_created", "created_at"),
+        Index("ix_notif_logs_type", "type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    symbol: Mapped[str] = mapped_column(String, nullable=False)
+    direction: Mapped[str] = mapped_column(String, nullable=False)
+    change_pct: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    window: Mapped[str] = mapped_column(String, nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric, nullable=False)
+    volume: Mapped[Decimal | None] = mapped_column(Numeric)
+    surge_ratio: Mapped[Decimal | None] = mapped_column(Numeric)
+    message: Mapped[str] = mapped_column(String, nullable=False)
+    telegram_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))

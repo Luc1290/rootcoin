@@ -8,7 +8,7 @@ import structlog
 
 from backend.exchange import binance_client
 from backend.market import macro_tracker
-from backend.services import telegram_notifier
+from backend.services import notification_logger, telegram_notifier
 from backend.core.config import settings
 
 log = structlog.get_logger()
@@ -419,7 +419,7 @@ async def _notify_new_specials(assets: list[dict]):
 
     _prev_special = current_early
 
-    if not new_entries or not telegram_notifier.is_heatmap_enabled():
+    if not new_entries:
         return
 
     # Detect market-wide move: BTC/ETH surging or many symbols at once
@@ -428,7 +428,6 @@ async def _notify_new_specials(assets: list[dict]):
     is_market_wide = bool(majors) or len(new_entries) >= MARKET_WIDE_THRESHOLD
 
     if is_market_wide:
-        # One consolidated notification
         lines = []
         for e in new_entries[:8]:
             vol = _fmt_vol(e["vol_5m"])
@@ -441,7 +440,6 @@ async def _notify_new_specials(assets: list[dict]):
             + "\n".join(lines)
         )
     else:
-        # Individual early movers
         lines = [
             f"\U0001F680 <b>{e['base']}</b> {e['change']}% en 5min "
             f"(x{e['surge']}) {_fmt_vol(e['vol_5m'])} \u2014 ${e['price']}"
@@ -449,4 +447,22 @@ async def _notify_new_specials(assets: list[dict]):
         ]
         msg = "\U0001F4CA <b>D\u00e9marrage d\u00e9tect\u00e9</b>\n\n" + "\n".join(lines)
 
-    asyncio.create_task(telegram_notifier.notify(msg))
+    sent = False
+    if telegram_notifier.is_heatmap_enabled():
+        sent = await telegram_notifier.notify(msg)
+
+    for e in new_entries:
+        try:
+            change_val = Decimal(str(e["change"])) if e["change"] != "?" else Decimal("0")
+            price_val = Decimal(str(e["price"])) if e["price"] != "?" else Decimal("0")
+            vol_val = Decimal(str(e["vol_5m"])) if e.get("vol_5m") not in (None, "?") else None
+            surge_val = Decimal(str(e["surge"])) if e.get("surge") not in (None, "?") else None
+        except Exception:
+            continue
+        await notification_logger.record(
+            notif_type="early_mover", symbol=e["sym"],
+            direction="up" if change_val > 0 else "down",
+            change_pct=abs(change_val), window="5m",
+            price=price_val, message=msg, telegram_sent=sent,
+            volume=vol_val, surge_ratio=surge_val,
+        )

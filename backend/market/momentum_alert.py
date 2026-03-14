@@ -8,7 +8,7 @@ import structlog
 
 from backend.core.config import settings
 from backend.market import heatmap_manager
-from backend.services import telegram_notifier
+from backend.services import notification_logger, telegram_notifier
 
 log = structlog.get_logger()
 
@@ -207,7 +207,7 @@ async def _check_window(window: str, tickers: list[dict], now: float):
         base = sym.replace("USDC", "").replace("USDT", "")
         prev = _state.get(key)
         initial_price = prev.initial_price if prev and prev.direction == direction else price
-        await _notify(base, direction, change, window, price, initial_price, quote_vol, vol_ratio, prev is not None)
+        await _notify(sym, base, direction, change, window, price, initial_price, quote_vol, vol_ratio, prev is not None)
 
         _state[key] = MomentumState(
             direction=direction,
@@ -249,13 +249,10 @@ def _fmt_vol(vol: Decimal) -> str:
 
 
 async def _notify(
-    base: str, direction: str, change: Decimal, window: str,
+    sym: str, base: str, direction: str, change: Decimal, window: str,
     price: str, initial_price: str, quote_vol: Decimal,
     vol_ratio: Decimal, is_continued: bool,
 ):
-    if not telegram_notifier.is_momentum_enabled():
-        return
-
     sign = "+" if change > 0 else ""
     vol_str = _fmt_vol(quote_vol)
     vol_label = f"Volume {window} : {vol_str}"
@@ -277,4 +274,13 @@ async def _notify(
             f"Prix actuel : ${price}\n"
             f"{vol_label}"
         )
-    asyncio.create_task(telegram_notifier.notify(msg))
+
+    sent = False
+    if telegram_notifier.is_momentum_enabled():
+        sent = await telegram_notifier.notify(msg)
+
+    await notification_logger.record(
+        notif_type="momentum", symbol=sym, direction=direction,
+        change_pct=abs(change), window=window, price=Decimal(price),
+        message=msg, telegram_sent=sent, volume=quote_vol,
+    )

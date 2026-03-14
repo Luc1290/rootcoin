@@ -6,6 +6,7 @@ const Cockpit = (() => {
     let _lastDayPnlFetch = 0;
     let _news = [];
     let _recentCycles = [];
+    let _notifications = [];
     let _prevPositionKeys = null;
     let _posChartIds = {};
     let _marketSymbol = null;
@@ -27,13 +28,14 @@ const Cockpit = (() => {
 
     async function load() {
         try {
-            const [, anaResp, oppResp, streaksResp, newsResp, cyclesResp] = await Promise.all([
+            const [, anaResp, oppResp, streaksResp, newsResp, cyclesResp, notifResp] = await Promise.all([
                 BalanceStore.load(),
                 fetch('/api/analysis'),
                 fetch('/api/opportunities'),
                 fetch('/api/journal/streaks'),
                 fetch('/api/news'),
                 fetch('/api/cycles?status=closed&limit=10'),
+                fetch('/api/notifications?limit=30'),
             ]);
             if (anaResp.ok) _analysis = await anaResp.json();
             if (oppResp.ok) {
@@ -52,6 +54,10 @@ const Cockpit = (() => {
             if (cyclesResp.ok) {
                 _recentCycles = await cyclesResp.json();
                 if (!Array.isArray(_recentCycles)) _recentCycles = [];
+            }
+            if (notifResp.ok) {
+                const nd = await notifResp.json();
+                _notifications = nd.notifications || [];
             }
             render();
             Charts.createCockpitChart('cockpit-portfolio-chart');
@@ -493,11 +499,11 @@ const Cockpit = (() => {
         const whaleHtml = _buildWhaleCard();
         const cyclesHtml = _buildCyclesCard();
         const trackHtml = _buildTrackRecordCard();
+        const alertsHtml = _buildAlertsCard();
         const newsHtml = _buildNewsCard();
 
-        // Macro + Whales + Cycles + Track Record side by side, News full-width below
         el.innerHTML = `
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">${macroHtml}${whaleHtml}${cyclesHtml}${trackHtml}</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">${macroHtml}${whaleHtml}${cyclesHtml}${trackHtml}${alertsHtml}</div>
             ${newsHtml}`;
         _bindWhaleFilter();
     }
@@ -650,6 +656,39 @@ const Cockpit = (() => {
         </div>`;
     }
 
+    function _buildAlertsCard() {
+        if (!_notifications.length) return '';
+
+        const rows = _notifications.slice(0, 20).map(n => {
+            const base = n.symbol.replace('USDC', '').replace('USDT', '');
+            const changePct = parseFloat(n.change_pct) || 0;
+            const sign = changePct > 0 ? '+' : '';
+            const pnlClass = changePct > 0 ? 'pnl-positive' : 'pnl-negative';
+            const ago = n.created_at ? Utils.timeAgoShort(n.created_at) : '';
+            const typeTag = n.type === 'momentum'
+                ? '<span style="font-size:8px;padding:1px 3px;border-radius:3px;background:rgba(59,130,246,0.15);color:#60a5fa">MOM</span>'
+                : '<span style="font-size:8px;padding:1px 3px;border-radius:3px;background:rgba(168,85,247,0.15);color:#c084fc">EARLY</span>';
+            const tgDot = n.telegram_sent
+                ? '<span style="color:#22c55e;font-size:8px" title="Telegram">\u2713</span>'
+                : '<span style="color:#555;font-size:8px" title="Non envoy\u00e9">\u2717</span>';
+            const surge = n.surge_ratio ? `<span class="text-gray-500" style="font-size:9px">x${parseFloat(n.surge_ratio).toFixed(1)}</span>` : '';
+
+            return `<div class="flex items-center gap-1 py-0.5 text-xs leading-tight">
+                ${typeTag}
+                <span class="font-semibold text-gray-300">${base}</span>
+                <span class="font-bold tabular-nums ${pnlClass}">${sign}${changePct.toFixed(1)}%</span>
+                <span class="text-gray-600" style="font-size:9px">${n.window}</span>
+                ${surge}
+                <span class="text-gray-500 ml-auto" style="font-size:9px">${tgDot} ${ago}</span>
+            </div>`;
+        }).join('');
+
+        return `<div class="cockpit-card" style="border-left:3px solid #6366f1;cursor:pointer" onclick="App.switchTab('heatmap')">
+            <div class="text-xs text-gray-500 mb-1">Alertes</div>
+            <div style="max-height:290px;overflow-y:auto">${rows}</div>
+        </div>`;
+    }
+
     function _buildNewsCard() {
         if (!_news || !_news.length) return '';
 
@@ -762,6 +801,13 @@ const Cockpit = (() => {
                 });
             }
         }
+    });
+
+    WS.on('notification_log', (data) => {
+        _notifications.unshift(data);
+        if (_notifications.length > 30) _notifications.length = 30;
+        if (document.getElementById('view-cockpit').classList.contains('hidden')) return;
+        _renderContext();
     });
 
     WS.on('analysis_update', (data) => {
