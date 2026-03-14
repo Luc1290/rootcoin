@@ -207,7 +207,7 @@ async def _check_window(window: str, tickers: list[dict], now: float):
         base = sym.replace("USDC", "").replace("USDT", "")
         prev = _state.get(key)
         initial_price = prev.initial_price if prev and prev.direction == direction else price
-        await _notify(base, direction, change, window, price, initial_price, vol_ratio, prev is not None)
+        await _notify(base, direction, change, window, price, initial_price, quote_vol, vol_ratio, prev is not None)
 
         _state[key] = MomentumState(
             direction=direction,
@@ -240,27 +240,41 @@ def _purge_stale_states(now: float):
         del _state[k]
 
 
+def _fmt_vol(vol: Decimal) -> str:
+    if vol >= 1_000_000:
+        return f"${vol / 1_000_000:.1f}M"
+    if vol >= 1_000:
+        return f"${vol / 1_000:.0f}K"
+    return f"${vol:.0f}"
+
+
 async def _notify(
     base: str, direction: str, change: Decimal, window: str,
-    price: str, initial_price: str, vol_ratio: Decimal, is_continued: bool,
+    price: str, initial_price: str, quote_vol: Decimal,
+    vol_ratio: Decimal, is_continued: bool,
 ):
     if not telegram_notifier.is_momentum_enabled():
         return
 
     sign = "+" if change > 0 else ""
-    vol_tag = " \U0001F4A5" if vol_ratio >= VOLUME_HIGH_RATIO else ""
+    vol_str = _fmt_vol(quote_vol)
+    vol_label = f"Volume {window} : {vol_str}"
+    if vol_ratio >= VOLUME_HIGH_RATIO:
+        vol_label += f" ({vol_ratio:.1f}x la normale)"
 
     if is_continued:
         emoji = "\U0001f4c8\U0001f4c8" if direction == "up" else "\U0001f4c9\U0001f4c9"
         msg = (
-            f"{emoji} <b>{base} {sign}{change}% en {window}</b>{vol_tag}\n"
-            f"${initial_price} \u2192 ${price}"
+            f"{emoji} <b>{base} {sign}{change}% en {window}</b>\n"
+            f"${initial_price} \u2192 ${price}\n"
+            f"{vol_label}"
         )
     else:
         emoji = "\U0001f4c8" if direction == "up" else "\U0001f4c9"
         verb = "en hausse" if direction == "up" else "en baisse"
         msg = (
-            f"{emoji} <b>{base} {verb} de {sign}{change}% sur les {window}</b>{vol_tag}\n"
-            f"Prix actuel : ${price}"
+            f"{emoji} <b>{base} {verb} de {sign}{change}% sur les {window}</b>\n"
+            f"Prix actuel : ${price}\n"
+            f"{vol_label}"
         )
     asyncio.create_task(telegram_notifier.notify(msg))
