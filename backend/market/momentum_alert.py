@@ -267,6 +267,7 @@ async def _notify(
         msg = (
             f"{emoji} <b>{base} {sign}{change}% en {window}</b>\n"
             f"${initial_price} \u2192 ${price}\n"
+            f"Prix actuel : ${price}\n"
             f"{vol_label}"
         )
     else:
