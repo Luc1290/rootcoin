@@ -216,8 +216,9 @@ def _should_alert(
     if state.direction != direction:
         return True
 
-    # Same direction -> only if move extended enough
-    return abs_change >= state.last_change + realert_step
+    # Same direction -> only if move extended enough (scale step with size)
+    scaled_step = max(realert_step, state.last_change / 2)
+    return abs_change >= state.last_change + scaled_step
 
 
 def _purge_stale_states(now: float):
