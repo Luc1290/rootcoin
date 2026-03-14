@@ -48,6 +48,7 @@ class MomentumState:
     direction: str        # "up" or "down"
     last_change: Decimal  # abs change % when last alerted
     last_alert_at: float  # monotonic time
+    initial_price: str = ""  # price at first alert
 
 
 _state: dict[tuple[str, str], MomentumState] = {}  # (symbol, window) -> state
@@ -204,13 +205,15 @@ async def _check_window(window: str, tickers: list[dict], now: float):
         vol_ratio = quote_vol / max(expected_vol, Decimal("1"))
 
         base = sym.replace("USDC", "").replace("USDT", "")
-        is_continued = key in _state
-        await _notify(base, direction, change, window, price, vol_ratio, is_continued)
+        prev = _state.get(key)
+        initial_price = prev.initial_price if prev and prev.direction == direction else price
+        await _notify(base, direction, change, window, price, initial_price, vol_ratio, prev is not None)
 
         _state[key] = MomentumState(
             direction=direction,
             last_change=abs_change,
             last_alert_at=now,
+            initial_price=initial_price,
         )
 
 
@@ -239,24 +242,25 @@ def _purge_stale_states(now: float):
 
 async def _notify(
     base: str, direction: str, change: Decimal, window: str,
-    price: str, vol_ratio: Decimal, is_continued: bool,
+    price: str, initial_price: str, vol_ratio: Decimal, is_continued: bool,
 ):
     if not telegram_notifier.is_momentum_enabled():
         return
 
-    if direction == "up":
-        emoji = "\U0001f4c8\U0001f4c8" if is_continued else "\U0001f4c8"
-        verb = "continue" if is_continued else "monte"
-    else:
-        emoji = "\U0001f4c9\U0001f4c9" if is_continued else "\U0001f4c9"
-        verb = "continue" if is_continued else "baisse"
-
     sign = "+" if change > 0 else ""
-    vol_tag = " — gros volume" if vol_ratio >= VOLUME_HIGH_RATIO else ""
+    vol_tag = " \U0001F4A5" if vol_ratio >= VOLUME_HIGH_RATIO else ""
 
-    msg = (
-        f"{emoji} <b>{base} {verb} {sign}{change}% en {window}</b>"
-        f"{vol_tag}\n"
-        f"${price}"
-    )
+    if is_continued:
+        emoji = "\U0001f4c8\U0001f4c8" if direction == "up" else "\U0001f4c9\U0001f4c9"
+        msg = (
+            f"{emoji} <b>{base} {sign}{change}% en {window}</b>{vol_tag}\n"
+            f"${initial_price} \u2192 ${price}"
+        )
+    else:
+        emoji = "\U0001f4c8" if direction == "up" else "\U0001f4c9"
+        verb = "en hausse" if direction == "up" else "en baisse"
+        msg = (
+            f"{emoji} <b>{base} {verb} de {sign}{change}% sur les {window}</b>{vol_tag}\n"
+            f"Prix actuel : ${price}"
+        )
     asyncio.create_task(telegram_notifier.notify(msg))
