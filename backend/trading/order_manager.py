@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -13,7 +14,8 @@ from backend.services import telegram_notifier
 from backend.core.database import async_session
 from backend.core.models import Order, Position
 from backend.exchange.symbol_filters import (
-    get_max_market_qty, round_price, round_quantity, validate_order,
+    get_max_market_qty, get_min_notional, round_price, round_quantity,
+    validate_order,
 )
 
 log = structlog.get_logger()
@@ -271,7 +273,10 @@ async def place_oco(pos: Position, tp_price: Decimal, sl_price: Decimal, *, sile
     return result
 
 
-def _build_chunks(symbol: str, total_qty: Decimal, max_qty: Decimal) -> list[Decimal]:
+def _build_chunks(
+    symbol: str, total_qty: Decimal, max_qty: Decimal,
+    min_chunk: Decimal = Decimal(0),
+) -> list[Decimal]:
     chunks: list[Decimal] = []
     remaining = total_qty
     while remaining > 0:
@@ -280,11 +285,28 @@ def _build_chunks(symbol: str, total_qty: Decimal, max_qty: Decimal) -> list[Dec
             break
         chunks.append(chunk)
         remaining = round_quantity(symbol, remaining - chunk)
+    # Merge dust tail into previous chunk to avoid NOTIONAL rejection
+    if len(chunks) >= 2 and min_chunk > 0 and chunks[-1] < min_chunk:
+        chunks[-2] = round_quantity(symbol, chunks[-2] + chunks[-1])
+        chunks.pop()
     return chunks
 
 
-# Binance error codes related to quantity limits
-_QTY_ERROR_CODES = {-1013, -3084, -2010}
+# Binance error codes related to quantity limits (not balance)
+_QTY_ERROR_CODES = {-1013, -3084}
+
+# Parse "maximum market order amount ... is 48348.09" from -3084 messages
+_MAX_QTY_RE = re.compile(r"is\s+([\d.]+)")
+
+
+def _parse_max_from_error(message: str) -> Decimal | None:
+    m = _MAX_QTY_RE.search(message or "")
+    if m:
+        try:
+            return Decimal(m.group(1))
+        except Exception:
+            return None
+    return None
 
 
 async def _place_single_market(
@@ -322,15 +344,20 @@ async def _place_market_chunked(
     Auto-retries with progressively smaller chunks if Binance rejects for quantity."""
     place_fn = binance_client.place_margin_order if _is_margin(pos) else binance_client.place_order
 
+    # Compute min chunk to avoid NOTIONAL rejection on dust remainders
+    min_notional = get_min_notional(pos.symbol)
+    est_price = pos.current_price or Decimal(0)
+    min_chunk = round_quantity(pos.symbol, min_notional / est_price) if est_price > 0 else Decimal(0)
+
     max_market = get_max_market_qty(pos.symbol)
     if max_market and total_qty > max_market:
-        chunks = _build_chunks(pos.symbol, total_qty, max_market)
+        chunks = _build_chunks(pos.symbol, total_qty, max_market, min_chunk)
         log.info("market_order_chunked", symbol=pos.symbol, total=str(total_qty),
                  chunks=len(chunks), max_market=str(max_market))
     else:
         chunks = [total_qty]
 
-    # Try placing the first chunk — if qty rejected, halve and retry
+    # Try placing the first chunk — if qty rejected, shrink and retry
     for attempt in range(_MAX_RECHUNK_ATTEMPTS + 1):
         try:
             last_result, last_order_id = await _place_single_market(
@@ -340,21 +367,35 @@ async def _place_market_chunked(
         except BinanceAPIException as exc:
             if exc.code not in _QTY_ERROR_CODES or attempt == _MAX_RECHUNK_ATTEMPTS:
                 raise
-            # Shrink chunks: divide max by 10 each attempt
-            divisor = 10 ** (attempt + 1)
-            fallback_max = round_quantity(pos.symbol, total_qty / divisor)
+            # For -3084, parse the actual max from Binance error message
+            parsed_max = _parse_max_from_error(exc.message) if exc.code == -3084 else None
+            if parsed_max and parsed_max > 0:
+                fallback_max = round_quantity(pos.symbol, parsed_max)
+            else:
+                # Fallback: divide by 10 each attempt
+                divisor = 10 ** (attempt + 1)
+                fallback_max = round_quantity(pos.symbol, total_qty / divisor)
             if fallback_max <= 0:
                 raise
-            chunks = _build_chunks(pos.symbol, total_qty, fallback_max)
+            chunks = _build_chunks(pos.symbol, total_qty, fallback_max, min_chunk)
             log.warning("market_order_rechunk", symbol=pos.symbol, attempt=attempt + 1,
                         fallback_max=str(fallback_max), chunks=len(chunks),
+                        parsed_max=str(parsed_max) if parsed_max else None,
                         error=exc.message)
 
     # Place remaining chunks (first one already done)
-    for chunk_qty in chunks[1:]:
-        last_result, last_order_id = await _place_single_market(
-            pos, place_fn, side, chunk_qty, id_tag, db_purpose,
-        )
+    for i, chunk_qty in enumerate(chunks[1:], 1):
+        try:
+            last_result, last_order_id = await _place_single_market(
+                pos, place_fn, side, chunk_qty, id_tag, db_purpose,
+            )
+        except BinanceAPIException as exc:
+            is_last = (i == len(chunks) - 1)
+            if is_last and exc.code in (-1013, -2010):
+                log.warning("market_chunk_dust_skipped", symbol=pos.symbol,
+                            chunk=str(chunk_qty), error=exc.message)
+            else:
+                raise
 
     return last_result, last_order_id
 
@@ -373,7 +414,19 @@ async def close_position(pos: Position, pct: int = 100) -> dict:
     side = _close_side(pos)
     id_tag = "close" if is_full else f"pclose{pct}"
 
-    result, order_id = await _place_market_chunked(pos, side, qty, id_tag, "CLOSE")
+    try:
+        result, order_id = await _place_market_chunked(pos, side, qty, id_tag, "CLOSE")
+    except BinanceAPIException as exc:
+        # SHORT margin: -2010 may be caused by fee buffer inflating qty beyond balance
+        if exc.code == -2010 and pos.side == "SHORT" and _is_margin(pos) and is_full:
+            exact_qty = round_quantity(pos.symbol, pos.quantity)
+            log.warning("close_retry_without_buffer", symbol=pos.symbol,
+                        original=str(qty), exact=str(exact_qty))
+            result, order_id = await _place_market_chunked(
+                pos, side, exact_qty, id_tag, "CLOSE",
+            )
+        else:
+            raise
 
     log.info("close_placed", symbol=pos.symbol, side=side, qty=str(qty),
              pct=pct, order_id=order_id)

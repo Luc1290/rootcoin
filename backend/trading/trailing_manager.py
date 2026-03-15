@@ -82,6 +82,7 @@ _tracked: dict[int, dict] = {}
 _known_ids: set[int] = set()
 _naked_since: dict[int, float] = {}  # pos_id -> monotonic timestamp
 _oco_cancel_expected: set[int] = set()  # pos_ids whose OCO cancel should not trigger recovery
+_emergency_closing: set[int] = set()  # pos_ids with emergency close in progress
 _settings: dict = {}
 _running = False
 _monitor_task: asyncio.Task | None = None
@@ -233,6 +234,7 @@ async def stop():
     _known_ids.clear()
     _naked_since.clear()
     _oco_cancel_expected.clear()
+    _emergency_closing.clear()
     log.info("trailing_manager_stopped")
 
 
@@ -318,7 +320,7 @@ async def _position_monitor_loop():
                         continue
                     past_sl = (pos.side == "LONG" and pos.current_price <= sl) or \
                               (pos.side == "SHORT" and pos.current_price >= sl)
-                    if past_sl:
+                    if past_sl and pid not in _emergency_closing:
                         log.warning("trailing_price_past_sl_active",
                                     symbol=pos.symbol, current=str(pos.current_price),
                                     sl=str(sl), side=pos.side)
@@ -487,11 +489,23 @@ async def _handle_new_position(pos_id: int):
 
 async def _emergency_close(pos, *, reason: str = ""):
     """Last-resort market close when OCO is impossible (price past SL)."""
+    pid = pos.id
+    if pid in _emergency_closing:
+        return
+    _emergency_closing.add(pid)
     try:
+        # Re-check: position may have been closed by SL fills during the race
+        active = position_tracker.get_positions()
+        if pid not in active:
+            log.info("emergency_close_skipped_already_closed",
+                     symbol=pos.symbol, reason=reason)
+            _tracked.pop(pid, None)
+            return
+
         log.warning("emergency_close_triggered", symbol=pos.symbol,
                      side=pos.side, reason=reason)
-        await order_manager.close_position(pos)
-        _tracked.pop(pos.id, None)
+        await order_manager.close_position(active[pid])
+        _tracked.pop(pid, None)
         asyncio.create_task(telegram_notifier.notify(
             f"🚨 EMERGENCY CLOSE {pos.symbol} ({pos.side})\n"
             f"Raison: {reason}\n"
@@ -503,6 +517,8 @@ async def _emergency_close(pos, *, reason: str = ""):
             f"🚨 ÉCHEC EMERGENCY CLOSE {pos.symbol}\n"
             f"Impossible de fermer la position. Action manuelle requise!",
         ))
+    finally:
+        _emergency_closing.discard(pid)
 
 
 async def _recover_naked_position(pos_id: int):
@@ -912,10 +928,12 @@ async def _promote_tp_to_oco(pos, tracking, tp_price):
         })
         log.info("confirmed_tp_promoted", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price))
+        current = pos.current_price or pos.entry_price
+        gain = _gain_pct(pos.side, pos.entry_price, current)
         asyncio.create_task(telegram_notifier.notify_trailing_moved(
             pos.symbol, pos.side, sl_price, tp_price,
-            pos.entry_price, pos.current_price or pos.entry_price,
-            pos.quantity, tracking.get("last_step_pct", Decimal(0)),
+            pos.entry_price, current,
+            pos.quantity, gain,
             is_breakeven=False,
         ))
     except Exception:
