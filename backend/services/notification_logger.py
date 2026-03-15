@@ -1,4 +1,5 @@
 import asyncio
+import time as _time
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
@@ -12,6 +13,30 @@ log = structlog.get_logger()
 
 CLEANUP_INTERVAL = 3600  # 1 hour
 RETENTION_DAYS = 30
+
+# ── Confirmation filter (cross-type pending tracker) ─────────
+PENDING_TTL = 600  # 10 min — window for cross-type confirmation
+
+_pending: dict[str, float] = {}  # symbol → monotonic timestamp of 1st detection
+
+
+def check_or_pend(symbol: str) -> bool:
+    """Return True if symbol was already pending (= confirmed).
+    Return False if this is the 1st detection (= now pending)."""
+    now = _time.monotonic()
+    expired = [s for s, t in _pending.items() if now - t > PENDING_TTL]
+    for s in expired:
+        del _pending[s]
+    if symbol in _pending:
+        del _pending[symbol]
+        return True
+    _pending[symbol] = now
+    return False
+
+
+def clear_pending(symbol: str):
+    """Remove symbol from pending (after bypass notification)."""
+    _pending.pop(symbol, None)
 
 _cleanup_task: asyncio.Task | None = None
 

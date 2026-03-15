@@ -736,8 +736,17 @@ select {
         flex-direction: column;
         overflow-y: auto;
     }
+    .heatmap-crypto-col {
+        min-height: 50%;
+        flex-shrink: 0;
+    }
     .heatmap-macro-col {
         width: 100%;
+        max-height: 180px;
+        flex-shrink: 0;
+    }
+    .heatmap-macro-grid {
+        overflow-y: auto;
     }
     .heatmap-crypto-grid {
         grid-template-columns: repeat(4, 1fr);

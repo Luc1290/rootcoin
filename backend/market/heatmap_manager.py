@@ -46,6 +46,7 @@ SURGE_SQRT_288 = Decimal("17")  # sqrt(288 five-min periods in 24h)
 NOTIFY_COOLDOWN = 3600  # 1h cooldown per symbol before re-notifying
 MARKET_WIDE_SYMBOLS = {"BTCUSDC", "ETHUSDC"}
 MARKET_WIDE_THRESHOLD = 5  # if >= 5 symbols surge, it's a market move
+INSTANT_EARLY_PCT = Decimal("2.0")  # >= 2% → immediate alert, skip confirmation
 
 _heatmap_cache: dict[str, dict] = {}
 _active_window: str = "4h"
@@ -413,17 +414,40 @@ async def _notify_new_specials(assets: list[dict]):
         sym = a["symbol"]
         base = a.get("base_asset", sym.replace("USDC", ""))
         current_early.add(sym)
-        if sym not in _prev_special and sym not in _notif_cooldown:
-            change = a.get("change_5m", "?")
-            surge = a.get("surge_ratio", "?")
-            price = a.get("price", "?")
-            vol_5m = a.get("vol_5m", "?")
-            new_entries.append({
-                "sym": sym, "base": base,
-                "change": change, "surge": surge, "price": price,
-                "vol_5m": vol_5m,
-            })
+        if sym in _notif_cooldown:
+            continue
+
+        change = a.get("change_5m", "?")
+        surge = a.get("surge_ratio", "?")
+        price = a.get("price", "?")
+        vol_5m = a.get("vol_5m", "?")
+        entry = {
+            "sym": sym, "base": base,
+            "change": change, "surge": surge, "price": price,
+            "vol_5m": vol_5m,
+        }
+
+        if sym not in _prev_special:
+            # First scan for this symbol — confirmation filter
+            try:
+                change_abs = abs(Decimal(str(change))) if change != "?" else Decimal("0")
+            except Exception:
+                change_abs = Decimal("0")
+            if change_abs >= INSTANT_EARLY_PCT:
+                new_entries.append(entry)
+                _notif_cooldown[sym] = now
+                notification_logger.clear_pending(sym)
+            elif notification_logger.check_or_pend(sym):
+                # Cross-type confirmed (momentum saw it first)
+                new_entries.append(entry)
+                _notif_cooldown[sym] = now
+            else:
+                log.debug("early_mover_pending", symbol=sym, change=str(change))
+        elif sym in notification_logger._pending:
+            # 2nd consecutive scan: was pending from last scan → confirmed
+            new_entries.append(entry)
             _notif_cooldown[sym] = now
+            notification_logger.clear_pending(sym)
 
     _prev_special = current_early
 

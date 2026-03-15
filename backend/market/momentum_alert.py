@@ -35,6 +35,7 @@ WINDOWS = {
 
 VOLUME_HIGH_RATIO = Decimal("1.5")  # 1.5x expected volume = "gros volume"
 STATE_DECAY = 1800  # 30min — reset state if no further move
+INSTANT_ALERT_PCT = Decimal("3.0")  # >= 3% → immediate alert, skip confirmation
 AMPLITUDE_CACHE_TTL = 900  # 15min — refresh 24h amplitude cache
 
 _poll_task: asyncio.Task | None = None
@@ -49,6 +50,7 @@ class MomentumState:
     last_change: Decimal  # abs change % when last alerted
     last_alert_at: float  # monotonic time
     initial_price: str = ""  # price at first alert
+    count: int = 0        # detection count in this direction (notify from 2nd)
 
 
 _state: dict[tuple[str, str], MomentumState] = {}  # (symbol, window) -> state
@@ -207,13 +209,32 @@ async def _check_window(window: str, tickers: list[dict], now: float):
         base = sym.replace("USDC", "").replace("USDT", "")
         prev = _state.get(key)
         initial_price = prev.initial_price if prev and prev.direction == direction else price
-        await _notify(sym, base, direction, change, window, price, initial_price, quote_vol, vol_ratio, prev is not None)
+        prev_count = prev.count if prev and prev.direction == direction else 0
+
+        # Confirmation filter: decide whether to notify
+        if abs_change >= INSTANT_ALERT_PCT:
+            do_notify, is_continued = True, prev_count >= 2
+            notification_logger.clear_pending(sym)
+        elif prev_count == 0:
+            do_notify = notification_logger.check_or_pend(sym)
+            is_continued = False
+        elif prev_count == 1:
+            do_notify, is_continued = True, False
+            notification_logger.clear_pending(sym)
+        else:
+            do_notify, is_continued = True, True
+
+        if do_notify:
+            await _notify(sym, base, direction, change, window, price, initial_price, quote_vol, vol_ratio, is_continued)
+        else:
+            log.debug("momentum_pending", symbol=sym, change=str(change), window=window)
 
         _state[key] = MomentumState(
             direction=direction,
             last_change=abs_change,
             last_alert_at=now,
             initial_price=initial_price,
+            count=prev_count + 1,
         )
 
 
