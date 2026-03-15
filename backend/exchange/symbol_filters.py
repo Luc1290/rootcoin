@@ -99,6 +99,11 @@ def get_max_market_qty(symbol: str) -> Decimal | None:
     return market or lot
 
 
+def get_min_qty(symbol: str) -> Decimal:
+    f = _filters.get(symbol, {})
+    return f.get("min_qty", Decimal("0"))
+
+
 def get_min_notional(symbol: str) -> Decimal:
     f = _filters.get(symbol, {})
     return f.get("min_notional", Decimal("0"))

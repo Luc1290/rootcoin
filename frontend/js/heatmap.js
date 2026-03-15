@@ -137,6 +137,7 @@ const Heatmap = (() => {
                         <option value="early_mover">Early</option>
                     </select>
                     <span id="notif-stats" class="text-[9px] text-gray-500"></span>
+                    <button id="notif-clear-all" class="text-[9px] text-red-400 hover:text-red-300" title="Vider tout">\u2715</button>
                 </div>
             </div>
             <div class="notif-col-scroll">

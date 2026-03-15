@@ -40,6 +40,13 @@ async def fast_load_from_db():
                 pos.quantity = Decimal("0")
                 pos.closed_at = datetime.now(timezone.utc)
                 pos.updated_at = datetime.now(timezone.utc)
+                if pos.realized_pnl is not None and pos.realized_pnl_pct is None:
+                    from backend.trading import pnl
+                    pos.realized_pnl_pct = pnl.realized_pnl_pct(
+                        pos.realized_pnl, pos.entry_fees_usd,
+                        pos.exit_fees_usd, pos.entry_quantity,
+                        pos.entry_quantity or Decimal("0"), pos.entry_price,
+                    )
                 await session.merge(pos)
                 continue
             tracker._positions[pos.id] = pos

@@ -156,6 +156,13 @@ async def get_stats() -> dict:
     }
 
 
+async def clear_all():
+    async with async_session() as session:
+        result = await session.execute(delete(NotificationLog))
+        await session.commit()
+        return result.rowcount
+
+
 # ── Cleanup ──────────────────────────────────────────────────
 
 async def _cleanup_loop():

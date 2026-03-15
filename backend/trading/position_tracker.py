@@ -6,7 +6,7 @@ from decimal import Decimal
 import structlog
 from sqlalchemy import select
 
-from backend.exchange import binance_client, ws_manager
+from backend.exchange import binance_client, symbol_filters, ws_manager
 from backend.trading import order_manager, pnl
 from backend.trading import position_reconciler
 from backend.services import journal_snapshotter, telegram_notifier
@@ -184,9 +184,13 @@ async def _maybe_unsubscribe_symbol(symbol: str):
     log.info("symbol_auto_unsubscribed", symbol=symbol)
 
 
-def _is_dust(quantity: Decimal, price: Decimal) -> bool:
+def _is_dust(quantity: Decimal, price: Decimal, symbol: str = "") -> bool:
     if quantity <= 0:
         return True
+    if symbol:
+        min_qty = symbol_filters.get_min_qty(symbol)
+        if min_qty and quantity < min_qty:
+            return True
     return quantity * price < DUST_THRESHOLD_USD
 
 
@@ -498,7 +502,7 @@ async def _reduce_or_close(
 
     new_qty = position.quantity - qty
 
-    if _is_dust(new_qty, price):
+    if _is_dust(new_qty, price, position.symbol):
         position.realized_pnl_pct = pnl.realized_pnl_pct(
             position.realized_pnl, position.entry_fees_usd,
             position.exit_fees_usd, position.entry_quantity,

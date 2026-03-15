@@ -471,7 +471,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<div class="cockpit-card" style="border-left:3px solid #c9956b">
+        return `<div class="cockpit-card" style="border-left:3px solid #c9956b;cursor:pointer" onclick="App.switchTab('analysis')">
             <div class="flex items-center justify-between mb-1">
                 <span class="text-xs text-gray-500">Track Record</span>
                 <span class="text-xs text-gray-500">/ $${(REF_SIZE/1000).toFixed(0)}k</span>
@@ -562,7 +562,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<details class="context-section context-macro cockpit-card"${openAttr} style="border-left:3px solid #a78b6d">
+        return `<details class="context-section context-macro cockpit-card"${openAttr} style="border-left:3px solid #a78b6d;cursor:pointer" onclick="if(event.target.tagName!=='SUMMARY')App.switchTab('analysis')">
             <summary>Macro</summary>
             <div>${items}</div>
         </details>`;
@@ -596,7 +596,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<div class="cockpit-card cockpit-whale-card">
+        return `<div class="cockpit-card cockpit-whale-card" style="cursor:pointer" onclick="if(event.target.tagName!=='SELECT')App.switchTab('analysis')">
             <div class="flex items-center gap-2 mb-1">
                 <span class="text-xs text-gray-500">Whales</span>
                 <select id="cockpit-whale-filter" class="bg-gray-800 text-xs text-gray-300 border border-gray-600 rounded px-1 py-0.5">
@@ -650,7 +650,7 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<div class="cockpit-card" style="border-left:3px solid #a78b6d;cursor:pointer" onclick="App.switchTab('cycles')">
+        return `<div class="cockpit-card" style="border-left:3px solid #a78b6d;cursor:pointer" onclick="App.switchTab('trades')">
             <div class="text-xs text-gray-500 mb-1">Derniers cycles</div>
             ${rows}
         </div>`;
@@ -683,9 +683,12 @@ const Cockpit = (() => {
             </div>`;
         }).join('');
 
-        return `<div class="cockpit-card" style="border-left:3px solid #6366f1;cursor:pointer" onclick="App.switchTab('heatmap')">
-            <div class="text-xs text-gray-500 mb-1">Alertes</div>
-            <div style="max-height:290px;overflow-y:auto">${rows}</div>
+        return `<div class="cockpit-card" style="border-left:3px solid #6366f1">
+            <div class="flex items-center justify-between mb-1">
+                <div class="text-xs text-gray-500 cursor-pointer" onclick="App.switchTab('heatmap')">Alertes</div>
+                <button class="text-[9px] text-red-400 hover:text-red-300" onclick="event.stopPropagation();Cockpit.clearAlerts()" title="Vider tout">\u2715</button>
+            </div>
+            <div style="max-height:290px;overflow-y:auto;cursor:pointer" onclick="App.switchTab('heatmap')">${rows}</div>
         </div>`;
     }
 
@@ -853,5 +856,14 @@ const Cockpit = (() => {
         } catch {}
     }, 120_000);
 
-    return { load };
+    async function clearAlerts() {
+        try {
+            const resp = await fetch('/api/notifications', { method: 'DELETE' });
+            if (!resp.ok) return;
+            _notifications = [];
+            _renderContext();
+        } catch (e) { /* ignore */ }
+    }
+
+    return { load, clearAlerts };
 })();

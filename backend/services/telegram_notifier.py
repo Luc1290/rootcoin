@@ -424,14 +424,19 @@ async def notify_trailing_moved(
         return
     sl_dist = _pct_distance(side, entry_price, sl_price)
     tp_dist = _pct_distance(side, entry_price, tp_price)
-    pnl_usd = float((current_price - entry_price) * quantity)
+    gross = float((current_price - entry_price) * quantity)
     if side == "SHORT":
-        pnl_usd = -pnl_usd
+        gross = -gross
+    fees = float((entry_price + current_price) * quantity) * 0.001
+    pnl_usd = gross - fees
     sl_pnl_str = _pnl_usd_str(side, entry_price, sl_price, quantity)
     tp_pnl_str = _pnl_usd_str(side, entry_price, tp_price, quantity)
     value_usd = float(current_price * quantity)
+    entry_cost = float(entry_price * quantity)
+    pnl_pct = (pnl_usd / entry_cost * 100) if entry_cost > 0 else 0
     sign = "+" if gain_pct >= 0 else ""
     pnl_sign = "+" if pnl_usd >= 0 else ""
+    pct_sign = "+" if pnl_pct >= 0 else ""
     base = symbol.replace("USDC", "").replace("USDT", "")
     capital = await _get_capital()
     cap_str = _cap_pct(pnl_usd, capital)
@@ -445,7 +450,7 @@ async def notify_trailing_moved(
         f"{header}\n"
         f"\n"
         f"{detail}"
-        f"\U0001f4b0 PnL : {pnl_sign}${pnl_usd:,.2f}{cap_str}\n"
+        f"\U0001f4b0 PnL : {pnl_sign}${pnl_usd:,.2f} ({pct_sign}{pnl_pct:.2f}%{cap_str})\n"
         f"\U0001f4c8 Entr\u00e9e {_fp(entry_price)} \u2192 Actuel {_fp(current_price)}\n"
         f"\U0001f4b5 Valeur : ${value_usd:,.2f} ({_fq(quantity)} {base})\n"
         f"\n"
@@ -471,10 +476,12 @@ async def notify_pnl_threshold(
         header = f"\U0001f4c8 <b>{symbol} {side} — +{threshold:g}% de gain</b>"
     else:
         header = f"\U0001f4c9 <b>{symbol} {side} — {threshold:g}% de perte</b>"
+    capital = await _get_capital()
+    cap_str = _cap_pct(float(pnl_usd), capital)
     msg = (
         f"{header}\n"
         f"\n"
-        f"\U0001f4b0 PnL : {sign}{_fp(pnl_usd)} ({sign}{_fpct(pnl_pct)}%)\n"
+        f"\U0001f4b0 PnL : {sign}{_fp(pnl_usd)} ({sign}{_fpct(pnl_pct)}%{cap_str})\n"
         f"\U0001f4c8 Entr\u00e9e {_fp(entry_price)}  \u2192  Actuel {_fp(current_price)}"
     )
     await notify(msg)

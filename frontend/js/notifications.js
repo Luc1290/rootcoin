@@ -98,6 +98,15 @@ const Notifications = (() => {
         return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     }
 
+    async function clearAll() {
+        try {
+            const resp = await fetch('/api/notifications', { method: 'DELETE' });
+            if (!resp.ok) return;
+            _entries = [];
+            render();
+        } catch (e) { /* ignore */ }
+    }
+
     function _bindControls() {
         const sel = document.getElementById('notif-type-filter');
         if (sel) sel.onchange = () => load();
@@ -107,6 +116,8 @@ const Notifications = (() => {
             await _fetch();
             render();
         };
+        const clr = document.getElementById('notif-clear-all');
+        if (clr) clr.onclick = () => clearAll();
     }
 
     // Live WS updates
@@ -117,5 +128,5 @@ const Notifications = (() => {
         }
     });
 
-    return { load, render };
+    return { load, render, clearAll };
 })();

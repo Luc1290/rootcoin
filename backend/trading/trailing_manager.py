@@ -1070,11 +1070,24 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
                 pos.entry_price, current_price, pos.quantity,
                 gain_pct, is_breakeven=is_breakeven,
             ))
-    except Exception:
+    except Exception as exc:
         log.error("trailing_move_failed", symbol=pos.symbol, exc_info=True)
-        # place_oco cancelled old orders then failed to place new ones
-        # => position is naked. Retry OCO with fresh prices, else fallback SL.
-        await _retry_oco_or_fallback_sl(pos, tracking)
+        # If we were tightening (BE / tp_guard / trailing up) and the SL failed
+        # because price already dropped past our intended level, emergency close
+        # instead of retrying with a worse SL.
+        is_tighten = is_breakeven or tp_guard
+        is_trigger_now = (
+            isinstance(exc, BinanceAPIException) and exc.code == -2010
+            and "trigger immediately" in str(exc).lower()
+        )
+        if is_tighten and is_trigger_now:
+            log.warning("trailing_tighten_breached",
+                        symbol=pos.symbol, intended_sl=str(new_sl_price))
+            await _emergency_close(pos, reason="tighten_breached")
+        else:
+            # place_oco cancelled old orders then failed to place new ones
+            # => position is naked. Retry OCO with fresh prices, else fallback SL.
+            await _retry_oco_or_fallback_sl(pos, tracking)
     finally:
         tracking["moving"] = False
 

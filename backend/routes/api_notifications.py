@@ -20,6 +20,12 @@ async def get_notifications(
     }
 
 
+@router.delete("")
+async def clear_notifications():
+    count = await notification_logger.clear_all()
+    return {"deleted": count}
+
+
 @router.get("/stats")
 async def get_stats():
     return await notification_logger.get_stats()
