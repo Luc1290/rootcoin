@@ -76,6 +76,8 @@ _TP_GUARD_INTERVAL = 1.5        # near-zero cooldown: orders are free, only debo
 _RESNAP_INTERVAL = 300.0   # re-evaluate SL from key levels every 5 minutes
 _OVERRIDE_REMINDER = 7200.0  # remind user after 2h of manual control
 _CONFIRM_DELAY = 3.0       # confirmed mode: seconds TP must be stable before confirming in tracking
+_DCA_QTY_THRESHOLD = Decimal("0.05")  # 5% qty change triggers SL re-place
+_DCA_DEBOUNCE = 8.0        # seconds to wait after DCA before re-placing SL
 
 # State
 _tracked: dict[int, dict] = {}
@@ -211,6 +213,7 @@ async def _resume_existing(positions):
             "last_step_pct": resumed_pct + _DEF_OFFSET if is_trailing else Decimal(0),
             "initial_at": _time.monotonic() - max(age_secs, 0),
             "last_tighten_at": _time.monotonic(),  # cooldown after restart
+            "tracked_qty": pos.quantity,
         }
         log.info("trailing_resumed", symbol=pos.symbol, pos_id=pos.id,
                  sl=sl_str, tp=tp_str, has_oco=bool(pos.oco_order_list_id),
@@ -303,6 +306,30 @@ async def _position_monitor_loop():
                     elif _time.monotonic() - _naked_since[pid] > _NAKED_GRACE:
                         _naked_since.pop(pid)
                         asyncio.create_task(_recover_naked_position(pid))
+
+            # Detect DCA: position qty changed → re-place SL for full qty (all modes)
+            for pid, tracking in list(_tracked.items()):
+                if tracking.get("moving") or tracking.get("manual_override"):
+                    continue
+                pos = active.get(pid)
+                if not pos:
+                    continue
+                old_qty = tracking.get("tracked_qty", Decimal(0))
+                if old_qty <= 0:
+                    tracking["tracked_qty"] = pos.quantity
+                    continue
+                change = abs(pos.quantity - old_qty) / old_qty
+                if change >= _DCA_QTY_THRESHOLD:
+                    # Debounce: mark the DCA time, re-place after delay
+                    dca_at = tracking.get("dca_detected_at", 0.0)
+                    if not dca_at:
+                        tracking["dca_detected_at"] = _time.monotonic()
+                        log.info("trailing_dca_detected", symbol=pos.symbol,
+                                 old_qty=str(old_qty), new_qty=str(pos.quantity))
+                    elif _time.monotonic() - dca_at >= _DCA_DEBOUNCE:
+                        tracking["dca_detected_at"] = 0.0
+                        tracking["moving"] = True
+                        asyncio.create_task(_replace_sl_for_dca(pos, tracking))
 
             # Detect price past SL — SL limit triggered but not filled (flash crash)
             if not is_manual:
@@ -467,10 +494,12 @@ async def _handle_new_position(pos_id: int):
             "last_move_at": 0.0,
             "last_step_pct": Decimal(0),
             "initial_at": _time.monotonic(),
+            "tracked_qty": pos.quantity,
         }
         oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False,
                                     tracking=new_tracking)
         new_tracking["oco_list_id"] = oco_id
+        new_tracking["tracked_qty"] = pos.quantity  # refresh after await
         _tracked[pos.id] = new_tracking
         log.info("trailing_initial_oco", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price), rr=f"{rr:.1f}")
@@ -618,10 +647,12 @@ async def _recover_naked_position(pos_id: int):
             "last_move_at": _time.monotonic(),
             "last_step_pct": last_step_pct,
             "initial_at": _time.monotonic(),
+            "tracked_qty": pos.quantity,
         }
         oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False,
                                     tracking=new_tracking)
         new_tracking["oco_list_id"] = oco_id
+        new_tracking["tracked_qty"] = pos.quantity
         _tracked[pos.id] = new_tracking
         log.info("trailing_naked_recovery", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price),
@@ -632,6 +663,32 @@ async def _recover_naked_position(pos_id: int):
         await _emergency_close(pos, reason="oco_failed")
     except Exception:
         log.error("trailing_naked_recovery_failed", symbol=pos.symbol, exc_info=True)
+
+
+async def _replace_sl_for_dca(pos, tracking):
+    """Re-place SL with updated quantity after DCA, keeping same price levels."""
+    try:
+        sl_price = tracking["auto_sl"]
+        tp_price = tracking["auto_tp"]
+        tracking["tracked_qty"] = pos.quantity
+
+        mode = _settings.get("mode", "auto")
+        if mode == "confirmed":
+            await order_manager.place_stop_loss(pos, sl_price, silent=True)
+        else:
+            # Auto / manual: cancel existing, re-place (or re-propose in manual)
+            await order_manager.cancel_position_orders(pos)
+            oco_id = await _execute_oco(pos, tp_price, sl_price, is_breakeven=False,
+                                        tracking=tracking)
+            tracking["oco_list_id"] = oco_id
+        log.info("trailing_dca_sl_replaced", symbol=pos.symbol, mode=mode,
+                 sl=str(sl_price), tp=str(tp_price), qty=str(pos.quantity))
+    except (BinanceAPIException, ValueError) as exc:
+        log.error("trailing_dca_replace_failed", symbol=pos.symbol, error=str(exc))
+    except Exception:
+        log.error("trailing_dca_replace_failed", symbol=pos.symbol, exc_info=True)
+    finally:
+        tracking["moving"] = False
 
 
 async def _tighten_stale_position(pos, tracking):
@@ -1057,6 +1114,7 @@ async def _move_oco(pos, tracking, gain_pct, current_price, is_breakeven=False, 
             "manual_override": False,
             "last_move_at": _time.monotonic(),
             "last_step_pct": gain_pct,
+            "tracked_qty": pos.quantity,
         })
 
         sl_source = "level" if not is_breakeven else "breakeven"
