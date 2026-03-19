@@ -17,20 +17,20 @@ from backend.services import telegram_notifier
 log = structlog.get_logger()
 
 CROSS_TOLERANCE = Decimal("0.0005")  # ±0.05% band around level
-COOLDOWN_DEFAULT = 14400  # 4h per (symbol, level_price)
+COOLDOWN_DEFAULT = 7200  # 2h per (symbol, level_price)
 COOLDOWN_BY_TYPE = {
-    "PP": 14400, "D_H": 14400, "D_L": 14400,  # 4h pivot, 4h session H/L
-    "R3": 14400, "S3": 14400,  # 4h extreme pivots
-    "PDC": 14400, "VWAP": 7200,  # 4h prev close, 2h VWAP (moves intraday)
-    "W_PP": 28800, "W_H": 28800, "W_L": 28800,  # 8h weekly levels
-    "FIB_382": 21600, "FIB_50": 21600, "FIB_618": 21600,  # 6h fib
-    "FIB_1272": 21600, "FIB_1618": 21600,  # 6h fib extensions
-    "PSYCH": 28800,  # 8h psychological levels
+    "PP": 7200, "D_H": 7200, "D_L": 7200,  # 2h pivot, 2h session H/L
+    "R3": 7200, "S3": 7200,  # 2h extreme pivots
+    "PDC": 7200, "VWAP": 3600,  # 2h prev close, 1h VWAP (moves intraday)
+    "W_PP": 14400, "W_H": 14400, "W_L": 14400,  # 4h weekly levels
+    "FIB_382": 10800, "FIB_50": 10800, "FIB_618": 10800,  # 3h fib
+    "FIB_1272": 10800, "FIB_1618": 10800,  # 3h fib extensions
+    "PSYCH": 14400,  # 4h psychological levels
 }
 # Types where price changes often (new daily high/low, recent swing) →
 # cooldown keyed on (symbol, type) instead of (symbol, exact_price)
 _TYPE_KEYED_COOLDOWNS = {"D_H", "D_L", "VWAP", "RH1", "RH2", "RH3", "RL1", "RL2", "RL3", "PP"}
-SYMBOL_COOLDOWN = 3600  # 1h min between alerts for same symbol
+SYMBOL_COOLDOWN = 1200  # 20min min between alerts for same symbol
 ALERT_SYMBOLS = {"BTCUSDC"}  # only these symbols send Telegram level alerts
 
 # Velocity-based cooldown reduction — bypass cooldowns during fast moves
