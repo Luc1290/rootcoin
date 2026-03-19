@@ -7,13 +7,13 @@ Capital-aware: reads portfolio total from balance snapshots to:
 
 Settings (DB key -> default):
   trailing_enabled    -> "1"
-  trailing_activation -> "0.5"   (gain % for first move -> breakeven)
-  trailing_breakeven  -> "0.2"   (SL % for first move, covers fees)
-  trailing_step       -> "0.15"  (min gain increment between level checks)
-  trailing_offset     -> "0.5"   (SL = gain - offset%)
-  trailing_tp_guard   -> "0.3"   (% proximity to TP -> force move, works pre-activation)
-  trailing_min_rr     -> "1.5"   (min R:R for initial OCO)
-  trailing_tighten_after -> "1"  (hours before tightening stale/ranging OR trailing-stalled positions, 0=disabled)
+  trailing_activation -> "1"     (gain % for first move -> breakeven)
+  trailing_breakeven  -> "0.5"   (SL % for first move, covers fees)
+  trailing_step       -> "0.5"   (min gain increment between level checks)
+  trailing_offset     -> "1.5"   (SL = gain - offset%)
+  trailing_tp_guard   -> "0.5"   (% proximity to TP -> force move, works pre-activation)
+  trailing_min_rr     -> "1.2"   (min R:R for initial OCO)
+  trailing_tighten_after -> "4"  (hours before tightening stale/ranging OR trailing-stalled positions, 0=disabled)
 """
 
 import asyncio
@@ -49,20 +49,20 @@ from backend.trading.trailing_levels import (
 log = structlog.get_logger()
 
 # Defaults
-_DEF_ACTIVATION = Decimal("0.5")
-_DEF_BREAKEVEN = Decimal("0.2")
-_DEF_STEP = Decimal("0.15")
-_DEF_OFFSET = Decimal("0.5")
-_DEF_TP_GUARD = Decimal("0.3")
-_DEF_MIN_RR = Decimal("1.5")
-_MAX_SL_GAP = Decimal("0.5")  # max unprotected gain % before forcing SL advance
-_DEF_TIGHTEN_AFTER = Decimal("1")  # hours before tightening stale/ranging positions
-_TIGHTEN_INTERVAL = 1800.0  # 30min between tighten re-evaluations
+_DEF_ACTIVATION = Decimal("1")
+_DEF_BREAKEVEN = Decimal("0.5")
+_DEF_STEP = Decimal("0.5")
+_DEF_OFFSET = Decimal("1.5")
+_DEF_TP_GUARD = Decimal("0.5")
+_DEF_MIN_RR = Decimal("1.2")
+_MAX_SL_GAP = Decimal("2")  # max unprotected gain % before forcing SL advance
+_DEF_TIGHTEN_AFTER = Decimal("4")  # hours before tightening stale/ranging positions
+_TIGHTEN_INTERVAL = 3600.0  # 1h between tighten re-evaluations
 _TIGHTEN_MIN_RR = Decimal("1.0")  # relaxed R:R for tightening (vs 1.5 initial)
 _TIGHTEN_GAP_REDUCTION = Decimal("0.3")  # reduce SL/TP gap by 30% when no key levels
 
 # Capital-aware trailing
-_CAP_MAX_RISK_PCT = Decimal("1.5")   # max loss per trade as % of capital
+_CAP_MAX_RISK_PCT = Decimal("15")    # max loss per trade as % of capital (3% SL × 5x leverage)
 _CAP_LOCK_THRESHOLD = Decimal("0.8") # lock gains above this % of capital
 _CAP_LOCK_RATIO = Decimal("0.5")     # lock this fraction of gain above threshold
 

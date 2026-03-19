@@ -7,8 +7,9 @@ Safe to call from any context without race-condition risk.
 from decimal import Decimal
 
 # Defaults (shared with trailing_manager)
-DEF_FALLBACK_SL_PCT = Decimal("1")   # fallback SL distance % when no key levels
-DEF_MAX_SL_PCT = Decimal("1")        # max SL distance % from entry (cap losses)
+DEF_FALLBACK_SL_PCT = Decimal("3")   # fallback SL distance % when no key levels
+DEF_MAX_SL_PCT = Decimal("3")        # max SL distance % from entry (cap losses)
+DEF_MIN_SL_PCT = Decimal("1.5")      # min SL distance % from entry (skip noise levels)
 
 
 def gain_pct(side: str, entry: Decimal, current: Decimal) -> Decimal:
@@ -64,7 +65,7 @@ def find_initial_sl_tp(key_levels, entry_price, side):
     if not prices:
         return None, None
 
-    min_dist = Decimal("0.6")
+    min_dist = DEF_MIN_SL_PCT
     max_dist = DEF_MAX_SL_PCT
 
     if side == "LONG":
@@ -111,7 +112,7 @@ def find_initial_sl_tp(key_levels, entry_price, side):
 
 def adjust_for_rr(key_levels, entry_price, side, min_rr):
     prices = parse_levels(key_levels)
-    min_dist = Decimal("0.6")
+    min_dist = DEF_MIN_SL_PCT
 
     if side == "LONG":
         below = [p for p in prices
@@ -139,7 +140,7 @@ def adjust_for_rr(key_levels, entry_price, side, min_rr):
     return None, None
 
 
-def find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=Decimal("0.6")):
+def find_trailing_sl_level(key_levels, current_price, side, min_dist_pct=DEF_MIN_SL_PCT):
     """Find nearest key level for trailing SL.
 
     SHORT: resistance ABOVE current_price (stop buy triggers there on bounce).
