@@ -619,17 +619,31 @@ async def notify_price_alert(
 
 async def notify_level_reached(
     symbol: str, price: Decimal, level_price: str, level_type: str, label: str,
+    approach: str = "", interpretation: str = "", opportunity: str = "",
+    bias_dir: str = "", bias_score: int = 0,
 ):
     if not is_levels_enabled():
         return
     base = symbol.replace("USDC", "").replace("USDT", "")
     lp = Decimal(level_price)
-    msg = (
-        f"\U0001f4cd <b>{base} — {label}</b>\n"
-        f"\n"
-        f"Prix actuel : {_fp(price)} (niveau {_fp(lp)})"
-    )
-    await notify(msg)
+    arrow = "\u25b2" if approach == "below" else "\u25bc"
+    approach_txt = "par le bas" if approach == "below" else "par le haut"
+
+    lines = [
+        f"\U0001f4cd <b>{base} \u2014 {label}</b>",
+        "",
+        f"{arrow} Approche {approach_txt} \u2192 {interpretation}",
+        f"\U0001f4a1 {opportunity}",
+    ]
+
+    if bias_dir:
+        bias_emoji = "\U0001f7e2" if bias_dir == "LONG" else "\U0001f534" if bias_dir == "SHORT" else "\u26aa"
+        lines.append(f"{bias_emoji} Biais : {bias_dir} {bias_score}/100")
+
+    lines.append("")
+    lines.append(f"Prix : {_fp(price)} (niveau {_fp(lp)})")
+
+    await notify("\n".join(lines))
 
 
 # ── Pending order notifications (manual mode) ────────────────

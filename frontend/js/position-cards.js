@@ -35,6 +35,85 @@ const PositionCards = (() => {
         return ` | ${sign}${pct.toFixed(2)}% solde`;
     }
 
+    function _buildRRHtml(p) {
+        const sl = parseFloat(p.sl_price);
+        const tp = parseFloat(p.tp_price);
+        const current = parseFloat(p.current_price) || 0;
+        const qty = parseFloat(p.quantity) || 0;
+        const hasOrders = p.sl_order_id || p.tp_order_id || p.oco_order_list_id || p.pending_confirmation;
+        if (!sl || !tp || !current || !qty || !hasOrders) return '';
+
+        let risk, reward;
+        if (p.side === 'LONG') {
+            risk = current - sl;
+            reward = tp - current;
+        } else {
+            risk = sl - current;
+            reward = current - tp;
+        }
+
+        const riskUsd = Math.abs(risk * qty);
+        const rewardUsd = Math.abs(reward * qty);
+
+        // Price already past TP or SL
+        if (risk <= 0 || reward <= 0) {
+            if (reward <= 0) {
+                return `<div class="rr-bar" data-field="rr">
+                    <span class="text-emerald-400 text-xs font-medium">TP atteint — pense a securiser</span>
+                </div>`;
+            }
+            return `<div class="rr-bar" data-field="rr">
+                <span class="text-red-400 text-xs font-medium">SL depasse — attention</span>
+            </div>`;
+        }
+
+        const ratio = reward / risk;
+        const ratioStr = ratio.toFixed(1);
+
+        // Progress: 0% = at SL, 100% = at TP
+        const totalRange = Math.abs(tp - sl);
+        const fromSl = p.side === 'LONG' ? current - sl : sl - current;
+        const progressPct = Math.min(100, Math.max(0, (fromSl / totalRange) * 100));
+
+        // Dynamic explanation
+        let hint, hintClass;
+        if (progressPct > 85) {
+            hint = 'Proche du TP, pense a securiser';
+            hintClass = 'text-emerald-400';
+        } else if (progressPct < 15) {
+            hint = 'Proche du SL, attention';
+            hintClass = 'text-red-400';
+        } else if (ratio >= 3) {
+            hint = `Tu risques $${riskUsd.toFixed(0)} pour gagner $${rewardUsd.toFixed(0)} — excellent ratio`;
+            hintClass = 'text-emerald-400';
+        } else if (ratio >= 1.5) {
+            hint = `Tu risques $${riskUsd.toFixed(0)} pour gagner $${rewardUsd.toFixed(0)} — ratio favorable`;
+            hintClass = 'text-blue-400';
+        } else if (ratio >= 1) {
+            hint = `Tu risques $${riskUsd.toFixed(0)} pour gagner $${rewardUsd.toFixed(0)} — ratio correct`;
+            hintClass = 'text-gray-400';
+        } else {
+            hint = `Tu risques $${riskUsd.toFixed(0)} pour gagner $${rewardUsd.toFixed(0)} — risque > gain`;
+            hintClass = 'text-orange-400';
+        }
+
+        const rrColor = ratio >= 2 ? 'text-emerald-400' : ratio >= 1 ? 'text-blue-400' : 'text-orange-400';
+
+        return `<div class="rr-bar" data-field="rr">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="${rrColor} text-xs font-bold tabular-nums">R:R 1:${ratioStr}</span>
+                <span class="text-gray-600 text-xs">|</span>
+                <span class="text-red-400 text-xs tabular-nums">-$${riskUsd.toFixed(0)}</span>
+                <span class="text-gray-600 text-xs">/</span>
+                <span class="text-emerald-400 text-xs tabular-nums">+$${rewardUsd.toFixed(0)}</span>
+                <div class="flex-1 h-1.5 bg-stone-700 rounded-full overflow-hidden ml-1">
+                    <div class="h-full rounded-full transition-all duration-500" style="width:${progressPct.toFixed(0)}%;background:linear-gradient(90deg,#ef4444,#eab308,#22c55e)"></div>
+                </div>
+            </div>
+            <div class="${hintClass} text-xs">${hint}</div>
+        </div>`;
+    }
+
     function buildCardHtml(p) {
         const pnl = parseFloat(p.pnl_usd) || 0;
         const pnlPct = parseFloat(p.pnl_pct) || 0;
@@ -85,6 +164,7 @@ const PositionCards = (() => {
                     <div class="text-gray-600 text-xs tabular-nums" data-field="pnl-detail">brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}</div>
                 </div>
             </div>
+            ${_buildRRHtml(p)}
             <div class="mini-chart-container" id="chart-pos-${p.id}" style="height:120px"></div>
             <div class="flex items-center gap-2 flex-wrap mt-3" data-field="actions">
                 ${_buildBadgesHtml(p)}
@@ -221,6 +301,24 @@ const PositionCards = (() => {
         const detailEl = f('pnl-detail');
         if (detailEl) {
             detailEl.textContent = `brut ${grossPnl >= 0 ? '+' : ''}$${grossPnl.toFixed(2)} | fees $${totalFees.toFixed(2)}`;
+        }
+
+        const rrEl = f('rr');
+        const newRR = _buildRRHtml(p);
+        if (rrEl && newRR) {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = newRR;
+            const newRREl = tmp.firstElementChild;
+            if (newRREl) rrEl.replaceWith(newRREl);
+        } else if (rrEl && !newRR) {
+            rrEl.remove();
+        } else if (!rrEl && newRR) {
+            const chartEl = card.querySelector('.mini-chart-container');
+            if (chartEl) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = newRR;
+                chartEl.before(tmp.firstElementChild);
+            }
         }
 
         const actionsEl = f('actions');

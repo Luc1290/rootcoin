@@ -167,7 +167,8 @@ async def _on_price(msg: dict):
         is_inside = band_low <= price <= band_high
 
         if was_outside and is_inside:
-            _try_alert(symbol, price, level)
+            approach = "below" if prev < band_low else "above"
+            _try_alert(symbol, price, prev, level, approach, analysis)
 
 
 async def _check_custom_alerts(symbol: str, prev: Decimal, price: Decimal):
@@ -225,7 +226,46 @@ async def _deactivate_alert(alert_id: int):
         log.error("deactivate_alert_failed", alert_id=alert_id, exc_info=True)
 
 
-def _try_alert(symbol: str, price: Decimal, level: dict):
+def _interpret_level(level_type: str, approach: str) -> tuple[str, str]:
+    """Return (interpretation, opportunity) based on level type and approach direction."""
+    # Resistance-like levels
+    resistance_types = {"R1", "R2", "R3", "D_H", "W_H", "SW_H", "FIB_1272", "FIB_1618"}
+    # Support-like levels
+    support_types = {"S1", "S2", "S3", "D_L", "W_L", "SW_L"}
+    # Fib retracement (support in uptrend, resistance in downtrend)
+    fib_types = {"FIB_382", "FIB_50", "FIB_618"}
+    # Neutral levels
+    neutral_types = {"PP", "W_PP", "PDC", "VWAP", "PSYCH"}
+
+    if level_type in resistance_types:
+        if approach == "below":
+            return "Test de résistance", "\U0001f534 Rejet probable \u2192 short"
+        else:
+            return "Cassure résistance par le haut", "\U0001f7e2 Continuation haussière \u2192 long"
+    elif level_type in support_types:
+        if approach == "above":
+            return "Test de support", "\U0001f7e2 Rebond probable \u2192 long"
+        else:
+            return "Cassure support par le bas", "\U0001f534 Continuation baissière \u2192 short"
+    elif level_type in fib_types:
+        if approach == "above":
+            return "Test retracement Fib", "\U0001f7e2 Rebond probable \u2192 long"
+        else:
+            return "Cassure Fib par le bas", "\U0001f534 Continuation baissière \u2192 short"
+    elif level_type in neutral_types:
+        if approach == "below":
+            return "Franchissement par le bas", "\U0001f7e2 Signal haussier \u2192 long"
+        else:
+            return "Franchissement par le haut", "\U0001f534 Signal baissier \u2192 short"
+    else:
+        if approach == "below":
+            return "Approche par le bas", "\u2753 À surveiller"
+        else:
+            return "Approche par le haut", "\u2753 À surveiller"
+
+
+def _try_alert(symbol: str, price: Decimal, prev: Decimal,
+               level: dict, approach: str, analysis: dict):
     now = time.monotonic()
     divisor = _cooldown_divisor(symbol)
     # Global per-symbol rate limit
@@ -242,9 +282,19 @@ def _try_alert(symbol: str, price: Decimal, level: dict):
         return
     _cooldowns[key] = now
     _symbol_last_alert[symbol] = now
-    velocity_tag = "" if divisor == 1 else " ⚡" if divisor == 6 else " ⚡⚡"
+    velocity_tag = "" if divisor == 1 else " \u26a1" if divisor == 6 else " \u26a1\u26a1"
+
+    interpretation, opportunity = _interpret_level(level_type, approach)
+
+    bias = analysis.get("bias", {})
+    bias_dir = bias.get("direction", "")
+    bias_score = bias.get("confidence", 0)
+
     log.info("level_alert_triggered", symbol=symbol, level_type=level.get("type"),
-             price=str(price), level_price=level.get("price"), velocity_divisor=divisor)
+             price=str(price), level_price=level.get("price"),
+             approach=approach, velocity_divisor=divisor)
     asyncio.create_task(telegram_notifier.notify_level_reached(
-        symbol, price, level["price"], level.get("type", ""), level.get("label", "") + velocity_tag,
+        symbol, price, level["price"], level.get("type", ""),
+        level.get("label", "") + velocity_tag,
+        approach, interpretation, opportunity, bias_dir, bias_score,
     ))
