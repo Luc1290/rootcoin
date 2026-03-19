@@ -34,36 +34,51 @@ Si l'utilisateur a une position ouverte, reponds a SA situation : hold ? renforc
 S'il n'a pas de position, propose une entree.
 
 REGLES STRICTES :
-- Tu DOIS choisir une direction : LONG ou SHORT. Jamais FLAT, jamais "attendre".
-- Tes niveaux (entry, SL, TP) doivent etre precis au dollar pres.
+- Tu choisis LONG, SHORT, ou FLAT.
+- FLAT = pas de trade. Utilise FLAT quand :
+  * La confiance est sous 40%
+  * Le R:R ajuste (R:R × confiance/100 - 1 × (1-confiance/100)) est negatif
+  * Les signaux macro et technique se contredisent clairement
+  * Le volume est anemique (session asiatique, weekend) ET pas de catalyst
+  * Ton track record sur cette direction est mauvais (ex: short avec 2W/4L = evite les shorts fragiles)
+- Si FLAT : entry/SL/TP/risk_reward a 0, mais remplis TOUT le reste (market_read, explanation, key_signal).
+  Explique POURQUOI c'est FLAT et a quel prix/condition tu entrerais.
+- Si LONG ou SHORT : niveaux precis au dollar pres.
 - Reponds UNIQUEMENT en JSON valide, sans markdown, sans commentaire autour.
+
+FILTRE ESPERANCE MATHEMATIQUE (applique AVANT de valider un signal) :
+- Calcule: EV = (confiance/100 × R:R) - ((100-confiance)/100 × 1)
+- Si EV < 0.05, le trade ne vaut pas le risque -> FLAT
+- Exemple: confiance 48%, R:R 1.1 -> EV = 0.48×1.1 - 0.52×1 = -0.008 -> FLAT
 
 Format JSON attendu :
 {
-  "direction": "LONG ou SHORT",
+  "direction": "LONG, SHORT, ou FLAT",
   "entry": 00000.00,
   "stop_loss": 00000.00,
   "tp1": 00000.00,
   "tp2": 00000.00,
   "risk_reward": 0.0,
   "confidence": 72,
+  "expected_value": 0.00,
   "confidence_factors": {
     "pour": ["facteur positif 1", "facteur positif 2"],
     "contre": ["facteur negatif 1"]
   },
   "market_read": "3-5 phrases avec ta lecture macro+geopolitique+technique. Ton feeling de trader, pas une liste d'indicateurs. Fais les liens entre les events.",
-  "explanation": "3-5 phrases justifiant ta decision avec les donnees concretes",
+  "explanation": "3-5 phrases justifiant ta decision avec les donnees concretes. Si FLAT : decris le setup que tu attendrais pour entrer.",
   "position_advice": "Si position ouverte : hold/renforcer/sortir/deplacer SL + pourquoi. Si pas de position : 'Pas de position ouverte.'",
   "key_signal": "Le signal principal en 1 phrase",
-  "invalidation": "Ce qui invaliderait ce trade en 1 phrase"
+  "invalidation": "Ce qui invaliderait ce trade (ou re-activerait un signal si FLAT) en 1 phrase",
+  "conditional_entries": "Si FLAT, decris 1-2 scenarios conditionnels : 'LONG si prix atteint X avec condition Y' / 'SHORT si rejet confirme a Z'"
 }
 
 REGLES CONFIDENCE (score 0-100) :
 - 85-100 : Confluence forte sur 3+ timeframes, macro alignee, orderbook confirme, pas de news contraire
 - 70-84 : Confluence correcte sur 2+ TF, quelques signaux mixtes mais biais clair
 - 55-69 : Signaux contradictoires, setup present mais contexte incertain
-- 40-54 : Setup fragile, majorite des indicateurs non alignes
-- 0-39 : Contre-tendance ou quasi aucun signal favorable
+- 40-54 : Setup fragile, majorite des indicateurs non alignes -> probablement FLAT sauf R:R exceptionnel
+- 0-39 : Contre-tendance ou quasi aucun signal favorable -> FLAT obligatoire
 - Sois PRECIS : 72 et 78 ne sont pas la meme chose. Utilise toute l'echelle.
 - Liste dans confidence_factors les elements concrets (indicateurs, niveaux, macro) pour et contre."""
 
@@ -108,7 +123,7 @@ async def analyze(symbol: str) -> dict:
         client = anthropic.AsyncAnthropic(api_key=api_key)
         message = await client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=1500,
+            max_tokens=2000,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -122,7 +137,7 @@ async def analyze(symbol: str) -> dict:
         result["output_tokens"] = message.usage.output_tokens
         _analyses[symbol] = result
 
-        if result.get("direction"):
+        if result.get("direction") and result["direction"] != "FLAT":
             await _save_to_db(result)
 
         log.info("llm_analysis_done", symbol=symbol, direction=result.get("direction"),
