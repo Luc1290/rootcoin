@@ -57,15 +57,18 @@ async def _load():
 
 
 async def _run_refresh():
+    retry_delay = 0
     while True:
         try:
-            await asyncio.sleep(REFRESH_INTERVAL)
+            await asyncio.sleep(REFRESH_INTERVAL if retry_delay == 0 else retry_delay)
             await _load()
             log.info("symbol_filters_refreshed", count=len(_filters))
+            retry_delay = 0
         except asyncio.CancelledError:
             break
         except Exception:
-            log.error("symbol_filters_refresh_failed", exc_info=True)
+            retry_delay = min(retry_delay * 2 or 30, 300)  # 30s, 60s, 120s, 300s max
+            log.error("symbol_filters_refresh_failed", retry_in=retry_delay, exc_info=True)
 
 
 def _round_step(value: Decimal, step: Decimal) -> Decimal:

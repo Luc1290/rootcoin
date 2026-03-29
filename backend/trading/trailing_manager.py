@@ -92,6 +92,8 @@ _pending: dict[int, dict] = {}  # pos_id -> {sl, tp, proposed_at, timeout_task, 
 _capital_cache: Decimal = Decimal(0)
 _capital_cache_at: float = 0.0
 _CAPITAL_CACHE_TTL = 60.0
+_error_backoff: dict[int, float] = {}  # pos_id -> monotonic time until retry OK
+_ERROR_BACKOFF_SECS = 300.0  # 5 minutes backoff on unrecoverable errors (-3048, -3045)
 
 
 # ── Settings ─────────────────────────────────────────────────
@@ -260,6 +262,7 @@ async def _position_monitor_loop():
             for pid in closed:
                 _tracked.pop(pid, None)
                 _naked_since.pop(pid, None)
+                _error_backoff.pop(pid, None)
                 old_pending = _pending.pop(pid, None)
                 if old_pending and old_pending.get("timeout_task"):
                     old_pending["timeout_task"].cancel()
@@ -552,6 +555,11 @@ async def _emergency_close(pos, *, reason: str = ""):
 
 async def _recover_naked_position(pos_id: int):
     """Re-place OCO after grace period on unprotected position."""
+    backoff_until = _error_backoff.get(pos_id)
+    if backoff_until and _time.monotonic() < backoff_until:
+        return  # still in backoff after unrecoverable error
+    _error_backoff.pop(pos_id, None)
+
     pos = _get_pos(pos_id)
     if not pos:
         return
@@ -657,7 +665,17 @@ async def _recover_naked_position(pos_id: int):
         log.info("trailing_naked_recovery", symbol=pos.symbol,
                  sl=str(sl_price), tp=str(tp_price),
                  trailing=trailing_active, gain=f"{gain_pct:.2f}%")
-    except (BinanceAPIException, ValueError) as exc:
+    except BinanceAPIException as exc:
+        if exc.code in (-3048, -3045):
+            _error_backoff[pos.id] = _time.monotonic() + _ERROR_BACKOFF_SECS
+            log.warning("trailing_naked_backoff", symbol=pos.symbol,
+                        code=exc.code, error=str(exc),
+                        retry_in=f"{_ERROR_BACKOFF_SECS:.0f}s")
+        else:
+            log.error("trailing_naked_recovery_failed", symbol=pos.symbol,
+                      error=str(exc), gain=f"{gain_pct:.2f}%")
+            await _emergency_close(pos, reason="oco_failed")
+    except ValueError as exc:
         log.error("trailing_naked_recovery_failed", symbol=pos.symbol,
                   error=str(exc), gain=f"{gain_pct:.2f}%")
         await _emergency_close(pos, reason="oco_failed")
@@ -683,7 +701,14 @@ async def _replace_sl_for_dca(pos, tracking):
             tracking["oco_list_id"] = oco_id
         log.info("trailing_dca_sl_replaced", symbol=pos.symbol, mode=mode,
                  sl=str(sl_price), tp=str(tp_price), qty=str(pos.quantity))
-    except (BinanceAPIException, ValueError) as exc:
+    except BinanceAPIException as exc:
+        if exc.code in (-3048, -3045, -2010):
+            _error_backoff[pos.id] = _time.monotonic() + _ERROR_BACKOFF_SECS
+            log.warning("trailing_dca_backoff", symbol=pos.symbol,
+                        code=exc.code, retry_in=f"{_ERROR_BACKOFF_SECS:.0f}s")
+        else:
+            log.error("trailing_dca_replace_failed", symbol=pos.symbol, error=str(exc))
+    except ValueError as exc:
         log.error("trailing_dca_replace_failed", symbol=pos.symbol, error=str(exc))
     except Exception:
         log.error("trailing_dca_replace_failed", symbol=pos.symbol, exc_info=True)

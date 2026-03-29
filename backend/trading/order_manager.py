@@ -768,11 +768,17 @@ async def _get_open_orders(symbol: str, market_type: str) -> list:
 
 
 async def _cancel_oco(symbol: str, order_list_id: str, market_type: str):
-    if market_type == "SPOT":
-        await binance_client.cancel_oco_order(symbol, order_list_id)
-    else:
-        await binance_client.cancel_margin_oco_order(
-            symbol, order_list_id,
-            is_isolated=(market_type == "ISOLATED_MARGIN"),
-        )
+    try:
+        if market_type == "SPOT":
+            await binance_client.cancel_oco_order(symbol, order_list_id)
+        else:
+            await binance_client.cancel_margin_oco_order(
+                symbol, order_list_id,
+                is_isolated=(market_type == "ISOLATED_MARGIN"),
+            )
+    except BinanceAPIException as e:
+        if e.code == -2011:
+            log.info("oco_already_gone", symbol=symbol, order_list_id=order_list_id)
+        else:
+            raise
     await mark_oco_done(order_list_id)

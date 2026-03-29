@@ -15,6 +15,7 @@ from backend.trading import pnl as pnl_module
 log = structlog.get_logger()
 
 _analyses: dict[str, dict] = {}  # symbol -> last analysis
+_credit_error_until: float = 0.0  # monotonic time: block requests until credits are topped up
 
 SYSTEM_PROMPT = """Tu es un trader senior macro/crypto pour un desk institutionnel. 15 ans d'experience.
 Tu trades des crypto sur Binance margin cross x5. Capital : ~10 000 USDC. Horizon : scalping / intraday.
@@ -110,6 +111,11 @@ EXPIRY_HOURS = 24
 
 
 async def analyze(symbol: str) -> dict:
+    import time as _t
+    global _credit_error_until
+    if _credit_error_until and _t.monotonic() < _credit_error_until:
+        return {"error": "Credits Anthropic API insuffisants. Recharger sur console.anthropic.com."}
+
     api_key = settings.anthropic_api_key.get_secret_value()
     if not api_key:
         return {"error": "ANTHROPIC_API_KEY non configuree dans .env"}
@@ -144,8 +150,13 @@ async def analyze(symbol: str) -> dict:
                  tokens_in=message.usage.input_tokens, tokens_out=message.usage.output_tokens)
         return result
     except Exception as e:
-        log.error("llm_analysis_failed", symbol=symbol, error=str(e), exc_info=True)
-        return {"error": str(e), "symbol": symbol}
+        err_str = str(e)
+        if "credit balance is too low" in err_str:
+            _credit_error_until = _t.monotonic() + 3600  # block for 1h
+            log.error("llm_credits_exhausted", symbol=symbol)
+            return {"error": "Credits Anthropic API insuffisants. Recharger sur console.anthropic.com.", "symbol": symbol}
+        log.error("llm_analysis_failed", symbol=symbol, error=err_str, exc_info=True)
+        return {"error": err_str, "symbol": symbol}
 
 
 # ── DB persistence ────────────────────────────────────────
